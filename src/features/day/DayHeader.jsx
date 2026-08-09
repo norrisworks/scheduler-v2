@@ -1,0 +1,66 @@
+import { addDays, formatDateLong, todayISO } from '../../lib/dates'
+
+export default function DayHeader({ date, onDateChange, sessionCount, busy, onRefresh }) {
+  const today = todayISO()
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-4 py-2.5">
+      <div className="flex items-center gap-1">
+        <NavButton onClick={() => onDateChange(addDays(date, -1))} label="Previous day">
+          ‹
+        </NavButton>
+        <NavButton onClick={() => onDateChange(addDays(date, 1))} label="Next day">
+          ›
+        </NavButton>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onDateChange(today)}
+        disabled={date === today}
+        className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-40"
+      >
+        Today
+      </button>
+
+      <div className="min-w-0">
+        <h1 className="truncate text-base font-semibold text-slate-900">{formatDateLong(date)}</h1>
+        <p className="text-xs text-slate-500">
+          {sessionCount} session{sessionCount === 1 ? '' : 's'}
+          {date === today ? ' · today' : ''}
+        </p>
+      </div>
+
+      <div className="ml-auto flex items-center gap-2">
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => e.target.value && onDateChange(e.target.value)}
+          aria-label="Jump to date"
+          className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-700"
+        />
+        <button
+          type="button"
+          onClick={() => onRefresh()}
+          disabled={busy}
+          className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-40"
+        >
+          {busy ? 'Refreshing…' : 'Refresh'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function NavButton({ onClick, label, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="h-8 w-8 rounded-lg border border-slate-300 text-lg leading-none text-slate-600 transition hover:bg-slate-100"
+    >
+      {children}
+    </button>
+  )
+}
