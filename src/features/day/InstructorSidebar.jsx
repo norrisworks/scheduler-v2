@@ -10,6 +10,7 @@ export default function InstructorSidebar({
   sessions,
   armedInstructorId,
   onArm,
+  onDragStateChange,
 }) {
   const load = useMemo(() => {
     const map = new Map()
@@ -53,6 +54,7 @@ export default function InstructorSidebar({
             load={load.get(instructor.id)}
             armed={armedInstructorId === instructor.id}
             onArm={onArm}
+            onDragStateChange={onDragStateChange}
           />
         ))}
 
@@ -69,6 +71,7 @@ export default function InstructorSidebar({
                 load={load.get(instructor.id)}
                 armed={armedInstructorId === instructor.id}
                 onArm={onArm}
+                onDragStateChange={onDragStateChange}
               />
             ))}
           </>
@@ -82,7 +85,7 @@ export default function InstructorSidebar({
   )
 }
 
-function InstructorRow({ instructor, shift, load, armed, onArm }) {
+function InstructorRow({ instructor, shift, load, armed, onArm, onDragStateChange }) {
   const capabilities = [
     instructor.can_teach_elementary && 'E',
     instructor.can_teach_middle && 'M',
@@ -96,7 +99,9 @@ function InstructorRow({ instructor, shift, load, armed, onArm }) {
       onDragStart={(e) => {
         e.dataTransfer.setData(INSTRUCTOR_DRAG_TYPE, instructor.id)
         e.dataTransfer.effectAllowed = 'move'
+        onDragStateChange?.(true)
       }}
+      onDragEnd={() => onDragStateChange?.(false)}
       onClick={() => onArm(armed ? null : instructor.id)}
       aria-pressed={armed}
       className={

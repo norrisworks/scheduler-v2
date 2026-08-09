@@ -1,111 +1,147 @@
 import { useMemo } from 'react'
-import { formatTimeMeridiem } from '../../lib/dates'
+import { formatTime, minutesToTime } from '../../lib/dates'
 import { LEVELS, UNSET_LEVEL, levelOf } from './levels'
+import { sessionEndMinutes } from './shiftCoverage'
+import {
+  SLOT_HEIGHT,
+  SLOT_MINUTES,
+  SUBCOL_WIDTH,
+  buildTimeAxis,
+  columnWidth,
+  packSubColumns,
+  sessionGeometry,
+  subColumnLeft,
+} from './timeGrid'
 import SessionCard from './SessionCard'
 
+const GUTTER = 56 // px
+
 export default function ScheduleGrid({
+  date,
   sessions,
   instructorsById,
   shiftByInstructor,
   notesByStudent,
+  nowMinutes,
+  selectedId,
+  dragActive,
   armedInstructor,
+  onSelect,
   onAssign,
   onUnassign,
   onStatusChange,
 }) {
-  const { columns, rows } = useMemo(() => {
+  const { axis, columns } = useMemo(() => {
     const hasUnset = sessions.some((s) => levelOf(s) === UNSET_LEVEL.key)
-    const columns = hasUnset ? [...LEVELS, UNSET_LEVEL] : LEVELS
+    const defs = hasUnset ? [...LEVELS, UNSET_LEVEL] : LEVELS
 
-    const byTime = new Map()
-    for (const session of sessions) {
-      const list = byTime.get(session.start_time)
-      if (list) list.push(session)
-      else byTime.set(session.start_time, [session])
+    return {
+      axis: buildTimeAxis(date, sessions),
+      columns: defs.map((def) => {
+        const mine = sessions.filter((s) => levelOf(s) === def.key)
+        return { def, sessions: mine, pack: packSubColumns(mine) }
+      }),
     }
-
-    const rows = [...byTime.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([time, list]) => ({
-        time,
-        cells: columns.map((col) =>
-          list
-            .filter((s) => levelOf(s) === col.key)
-            .sort((a, b) => (a.student?.name ?? '').localeCompare(b.student?.name ?? '')),
-        ),
-      }))
-
-    return { columns, rows }
-  }, [sessions])
-
-  if (sessions.length === 0) {
-    return (
-      <div className="flex h-full items-center justify-center px-6 py-20 text-center">
-        <div>
-          <p className="text-sm font-medium text-slate-600">No sessions on this day.</p>
-          <p className="mt-1 text-xs text-slate-400">
-            Sessions arrive from the materializer, the Radius import, or manual entry.
-          </p>
-        </div>
-      </div>
-    )
-  }
-
-  const template = `4.75rem repeat(${columns.length}, minmax(11rem, 1fr))`
+  }, [date, sessions])
 
   return (
     <div className="min-w-fit p-4">
-      <div className="grid gap-x-3" style={{ gridTemplateColumns: template }}>
-        <div className="sticky top-0 z-10 bg-slate-100 pb-2" />
-        {columns.map((col) => (
-          <div key={col.key} className="sticky top-0 z-10 bg-slate-100 pb-2">
-            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5">
-              <span className={`h-2 w-2 rounded-full ${col.accent}`} />
-              <span className="text-sm font-semibold text-slate-800">{col.label}</span>
-              <span className="ml-auto text-xs text-slate-400">
-                {sessions.filter((s) => levelOf(s) === col.key).length}
-              </span>
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 bg-slate-100 px-4 pt-4 pb-2">
+        <div className="flex gap-3">
+          <div style={{ width: GUTTER }} className="shrink-0" />
+          {columns.map(({ def, sessions: mine, pack }) => (
+            <div key={def.key} style={{ width: columnWidth(pack.count) }} className="shrink-0">
+              <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5">
+                <span className={`h-2 w-2 shrink-0 rounded-full ${def.accent}`} />
+                <span className="truncate text-xs font-semibold text-slate-800">{def.label}</span>
+                <span className="ml-auto text-xs text-slate-400">{mine.length}</span>
+              </div>
             </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex gap-3">
+        <div style={{ width: GUTTER, height: axis.height }} className="relative shrink-0">
+          {axis.slots.map((minutes, i) => (
+            <span
+              key={minutes}
+              className="absolute right-0 -translate-y-1/2 text-[10px] text-slate-500 tabular-nums"
+              style={{ top: i * SLOT_HEIGHT }}
+            >
+              {formatTime(minutesToTime(minutes))}
+            </span>
+          ))}
+        </div>
+
+        {columns.map(({ def, pack }) => (
+          <div
+            key={def.key}
+            style={{ width: columnWidth(pack.count), height: axis.height }}
+            className="relative shrink-0"
+          >
+            {axis.slots.map((minutes, i) => (
+              <div
+                key={minutes}
+                className={
+                  'absolute inset-x-0 border-t ' +
+                  (minutes % 60 === 0 ? 'border-slate-300' : 'border-slate-200')
+                }
+                style={{ top: i * SLOT_HEIGHT }}
+              />
+            ))}
+
+            {nowMinutes !== null &&
+              nowMinutes >= axis.start &&
+              nowMinutes <= axis.end && (
+                <div
+                  className="absolute inset-x-0 z-10 border-t-2 border-emerald-500/70"
+                  style={{ top: ((nowMinutes - axis.start) / SLOT_MINUTES) * SLOT_HEIGHT }}
+                />
+              )}
+
+            {pack.sorted.map((session) => {
+              const { top, height } = sessionGeometry(session, axis)
+              const startMin = axis.start + (top / SLOT_HEIGHT) * SLOT_MINUTES
+              const active =
+                nowMinutes !== null &&
+                nowMinutes >= startMin &&
+                nowMinutes < sessionEndMinutes(session)
+
+              return (
+                <SessionCard
+                  key={session.id}
+                  session={session}
+                  instructor={instructorsById.get(session.instructor_id) ?? null}
+                  shift={shiftByInstructor.get(session.instructor_id) ?? null}
+                  notes={notesByStudent.get(session.student_id) ?? []}
+                  style={{
+                    top,
+                    height: height - 2,
+                    left: subColumnLeft(pack.indexById.get(session.id) ?? 0),
+                    width: SUBCOL_WIDTH,
+                  }}
+                  selected={selectedId === session.id}
+                  active={active}
+                  dragActive={dragActive}
+                  armedInstructor={armedInstructor}
+                  onSelect={onSelect}
+                  onAssign={onAssign}
+                  onUnassign={onUnassign}
+                  onStatusChange={onStatusChange}
+                />
+              )
+            })}
           </div>
         ))}
-
-        {rows.map((row) => (
-          <Row key={row.time} row={row}>
-            {row.cells.map((cell, i) => (
-              <div key={columns[i].key} className="min-w-0 space-y-2 border-t border-slate-200 py-2">
-                {cell.map((session) => (
-                  <SessionCard
-                    key={session.id}
-                    session={session}
-                    instructor={instructorsById.get(session.instructor_id) ?? null}
-                    shift={shiftByInstructor.get(session.instructor_id) ?? null}
-                    notes={notesByStudent.get(session.student_id) ?? []}
-                    armedInstructor={armedInstructor}
-                    onAssign={onAssign}
-                    onUnassign={onUnassign}
-                    onStatusChange={onStatusChange}
-                  />
-                ))}
-              </div>
-            ))}
-          </Row>
-        ))}
       </div>
-    </div>
-  )
-}
 
-// `display: contents` lets the row's cells participate in the outer grid, so
-// every column stays aligned across every time row.
-function Row({ row, children }) {
-  return (
-    <div className="contents">
-      <div className="border-t border-slate-200 py-2 text-right">
-        <span className="text-sm font-semibold text-slate-700">
-          {formatTimeMeridiem(row.time)}
-        </span>
-      </div>
-      {children}
+      {sessions.length === 0 && (
+        <p className="mt-6 text-center text-xs text-slate-400">
+          No sessions on this day. Sessions arrive from the materializer, the Radius import, or
+          manual entry.
+        </p>
+      )}
     </div>
   )
 }

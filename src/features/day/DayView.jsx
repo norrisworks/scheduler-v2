@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useCenter } from '../centers/CenterProvider'
-import { todayISO } from '../../lib/dates'
+import { centerNowTime, timeToMinutes, todayISO } from '../../lib/dates'
 import Spinner from '../../components/Spinner'
 import { useDaySchedule } from './useDaySchedule'
 import DayHeader from './DayHeader'
@@ -11,6 +11,9 @@ export default function DayView() {
   const { centerId } = useCenter()
   const [date, setDate] = useState(todayISO)
   const [armedInstructorId, setArmedInstructorId] = useState(null)
+  const [selectedId, setSelectedId] = useState(null)
+  const [dragActive, setDragActive] = useState(false)
+  const [nowTick, setNowTick] = useState(() => centerNowTime())
 
   const {
     sessions,
@@ -26,20 +29,26 @@ export default function DayView() {
     dismissError,
   } = useDaySchedule(centerId, date)
 
-  const instructorsById = useMemo(
-    () => new Map(instructors.map((i) => [i.id, i])),
-    [instructors],
-  )
-
+  const instructorsById = useMemo(() => new Map(instructors.map((i) => [i.id, i])), [instructors])
   const armedInstructor = instructorsById.get(armedInstructorId) ?? null
 
-  // Escape clears a click-to-assign selection.
+  // Drives the "session running now" ring and the current-time line. Only
+  // meaningful on today; other days have no now.
   useEffect(() => {
-    if (!armedInstructorId) return
-    const onKey = (e) => e.key === 'Escape' && setArmedInstructorId(null)
+    const timer = setInterval(() => setNowTick(centerNowTime()), 60_000)
+    return () => clearInterval(timer)
+  }, [])
+  const nowMinutes = date === todayISO() ? timeToMinutes(nowTick) : null
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return
+      setArmedInstructorId(null)
+      setSelectedId(null)
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [armedInstructorId])
+  }, [])
 
   return (
     <div className="flex h-full flex-col">
@@ -82,11 +91,16 @@ export default function DayView() {
             <Spinner label="Loading day…" />
           ) : (
             <ScheduleGrid
+              date={date}
               sessions={sessions}
               instructorsById={instructorsById}
               shiftByInstructor={shiftByInstructor}
               notesByStudent={notesByStudent}
+              nowMinutes={nowMinutes}
+              selectedId={selectedId}
+              dragActive={dragActive}
               armedInstructor={armedInstructor}
+              onSelect={setSelectedId}
               onAssign={assign}
               onUnassign={unassign}
               onStatusChange={setStatus}
@@ -100,6 +114,7 @@ export default function DayView() {
           sessions={sessions}
           armedInstructorId={armedInstructorId}
           onArm={setArmedInstructorId}
+          onDragStateChange={setDragActive}
         />
       </div>
     </div>

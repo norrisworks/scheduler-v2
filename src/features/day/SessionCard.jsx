@@ -1,16 +1,28 @@
 import { useState } from 'react'
-import { formatTimeMeridiem, minutesToTime } from '../../lib/dates'
-import { readableTextOn, tint } from '../../lib/colors'
+import { formatTime } from '../../lib/dates'
 import { STATUSES } from './levels'
-import { coverageWarning, sessionEndMinutes } from './shiftCoverage'
+import { ACADEMIC_STATUS, BRAND_RED, SLOT_CERTAINTY } from './studentOptions'
+import { coverageWarning } from './shiftCoverage'
 import { INSTRUCTOR_DRAG_TYPE } from './dnd'
 
+/**
+ * Layout, sizing and row order follow the v1 card verbatim (v1_reference
+ * session_card). Two deliberate departures, both required by BRIEF.md:
+ *   - notes are pinned student_notes at readable size, not 8px student.notes
+ *   - session status (cancelled / no_show / completed) is shown at all, which
+ *     v1 had no concept of
+ */
 export default function SessionCard({
   session,
   instructor,
   shift,
   notes = [],
+  style,
+  selected,
+  active,
+  dragActive,
   armedInstructor,
+  onSelect,
   onAssign,
   onUnassign,
   onStatusChange,
@@ -19,9 +31,9 @@ export default function SessionCard({
 
   const student = session.student
   const status = STATUSES[session.status] ?? STATUSES.scheduled
-  const endTime = minutesToTime(sessionEndMinutes(session))
+  const certainty = SLOT_CERTAINTY[student?.slot_certainty]
+  const academic = ACADEMIC_STATUS[student?.academic_status ?? student?.performance]
   const warning = coverageWarning(instructor, shift, session)
-  const accent = instructor?.color ?? null
 
   function handleDragOver(e) {
     if (!e.dataTransfer.types.includes(INSTRUCTOR_DRAG_TYPE)) return
@@ -38,11 +50,22 @@ export default function SessionCard({
     if (instructorId) onAssign(session.id, instructorId)
   }
 
-  // Click-to-assign: arm an instructor in the sidebar, then click cards. Keeps
-  // the view usable on a tablet, where HTML5 drag events never fire.
+  // Armed instructor turns clicks into assignments (tablet path, where HTML5
+  // drag never fires). Otherwise a click selects, as it did in v1.
   function handleClick() {
     if (armedInstructor) onAssign(session.id, armedInstructor.id)
+    else onSelect(selected ? null : session.id)
   }
+
+  const ring = dragOver
+    ? `2px solid ${BRAND_RED}`
+    : selected
+      ? `2px solid ${BRAND_RED}`
+      : active
+        ? '2px solid #22C55E'
+        : dragActive
+          ? `2px solid ${BRAND_RED}80`
+          : null
 
   return (
     <div
@@ -50,114 +73,133 @@ export default function SessionCard({
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
       onClick={handleClick}
+      title={student?.name}
       className={
-        'group relative rounded-lg border bg-white p-2.5 text-left shadow-sm transition ' +
-        (dragOver
-          ? 'border-brand-500 ring-2 ring-brand-200'
-          : 'border-slate-200 hover:border-slate-300') +
-        (status.muted ? ' opacity-60' : '') +
-        (armedInstructor ? ' cursor-copy' : '')
+        'group absolute flex cursor-pointer flex-col overflow-hidden rounded-lg p-1.5 shadow-sm transition-all ' +
+        (status.muted ? 'opacity-60' : '')
       }
-      style={accent ? { backgroundColor: tint(accent, 0.07) } : undefined}
+      style={{
+        ...style,
+        backgroundColor: instructor ? `${instructor.color}20` : '#f3f4f6',
+        borderLeft: `3px solid ${instructor?.color || '#d1d5db'}`,
+        // v1: a first-day student gets a full brand-red border, which
+        // deliberately replaces the instructor stripe.
+        ...(student?.first_day ? { border: `3px solid ${BRAND_RED}` } : null),
+        ...(ring ? { outline: ring, outlineOffset: '-2px' } : null),
+      }}
     >
-      <span
-        aria-hidden
-        className="absolute inset-y-0 left-0 w-1 rounded-l-lg"
-        style={{ backgroundColor: accent ?? '#e2e8f0' }}
-      />
-
-      <div className="pl-1.5">
-        <div className="flex items-start gap-2">
+      {/* Row 1: certainty dot, name, grade */}
+      <div className="flex items-center gap-1">
+        {certainty && (
           <span
-            className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${status.dot}`}
-            title={status.label}
+            className="h-1.5 w-1.5 shrink-0 rounded-full"
+            style={{ backgroundColor: certainty.color }}
+            title={certainty.label}
           />
-          <div className="min-w-0 flex-1">
-            <p
-              className={
-                'truncate text-sm font-semibold text-slate-900 ' +
-                (session.status === 'cancelled' ? 'line-through' : '')
-              }
-            >
-              {student?.name ?? 'Unknown student'}
-            </p>
-            <p className="mt-0.5 text-xs text-slate-500">
-              {formatTimeMeridiem(session.start_time)}–{formatTimeMeridiem(endTime)}
-              {student?.grade ? ` · Gr ${student.grade}` : ''}
-              {session.duration !== 60 ? ` · ${session.duration}m` : ''}
-            </p>
-          </div>
+        )}
+        <div
+          className={
+            'truncate text-[11px] font-medium ' +
+            (session.status === 'cancelled' ? 'line-through' : '')
+          }
+          style={{ color: instructor?.color || '#374151' }}
+        >
+          {student?.name || 'Unknown'}
         </div>
-
-        {(student?.first_day || student?.needs_schoolwork || session.source === 'radius') && (
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {student?.first_day && <Flag className="bg-emerald-100 text-emerald-800">First day</Flag>}
-            {student?.needs_schoolwork && (
-              <Flag className="bg-sky-100 text-sky-800">Schoolwork</Flag>
-            )}
-            {session.source === 'radius' && <Flag className="bg-slate-100 text-slate-600">Radius</Flag>}
-          </div>
+        {student?.grade && (
+          <span className="shrink-0 rounded bg-zinc-200 px-1 py-0.5 text-[9px] text-zinc-600">
+            {student.grade}
+          </span>
         )}
+      </div>
 
-        {session.notes && (
-          <p className="mt-1.5 rounded bg-amber-50 px-1.5 py-1 text-xs text-amber-900">
-            {session.notes}
-          </p>
-        )}
+      {/* Row 2: time and duration */}
+      <div className="mt-0.5 text-[9px] text-zinc-500">
+        {formatTime(session.start_time)} • {session.duration}m
+      </div>
 
-        {notes.map((note) => (
-          <p
-            key={note.id}
-            className="mt-1.5 rounded bg-slate-100 px-1.5 py-1 text-xs text-slate-700"
-            title={note.note_type}
+      {/* Row 3: academic status, and session status when it isn't the norm */}
+      <div className="mt-0.5 flex flex-wrap items-center gap-1">
+        {academic && (
+          <span
+            className="rounded px-1 py-0.5 text-[8px] font-medium"
+            style={{ backgroundColor: academic.bg, color: academic.color }}
           >
-            {note.body}
-          </p>
-        ))}
+            {academic.label}
+          </span>
+        )}
+        {session.status !== 'scheduled' && (
+          <span className="inline-flex items-center gap-1 rounded bg-white/70 px-1 py-0.5 text-[8px] font-semibold text-zinc-700">
+            <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
+            {status.label}
+          </span>
+        )}
+      </div>
 
-        <div className="mt-2 flex items-center gap-1.5">
-          {instructor ? (
-            <>
-              <span
-                className="inline-flex min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium"
-                style={{ backgroundColor: instructor.color, color: readableTextOn(instructor.color) }}
-              >
-                <span className="truncate">{instructor.name}</span>
-              </span>
-              {warning && (
-                <span
-                  className="cursor-help text-xs text-amber-600"
-                  title={warning}
-                  aria-label={warning}
-                >
-                  ⚠
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onUnassign(session.id)
-                }}
-                className="ml-auto rounded px-1 text-xs text-slate-400 opacity-0 transition group-hover:opacity-100 hover:bg-slate-100 hover:text-slate-700"
-                aria-label={`Unassign ${instructor.name}`}
-              >
-                ✕
-              </button>
-            </>
-          ) : (
-            <span className="rounded border border-dashed border-slate-300 px-1.5 py-0.5 text-xs text-slate-400">
-              Unassigned
-            </span>
+      {/* Middle: pinned notes and the day's one-liner. BRIEF.md requires these
+          at readable size; v1 rendered them at 8px. */}
+      {(session.notes || notes.length > 0) && (
+        <div className="mt-1 min-h-0 flex-1 space-y-0.5 overflow-hidden">
+          {session.notes && (
+            <p className="line-clamp-2 text-[11px] leading-snug break-words text-amber-900">
+              {session.notes}
+            </p>
           )}
+          {notes.map((note) => (
+            <p
+              key={note.id}
+              className="line-clamp-2 text-[11px] leading-snug break-words text-zinc-700"
+              title={note.body}
+            >
+              {note.body}
+            </p>
+          ))}
         </div>
+      )}
 
+      <div className="flex-1" />
+
+      {/* Bottom: instructor left, Supp badge right */}
+      <div className="mt-0.5 flex items-center justify-between gap-1">
+        {instructor ? (
+          <span className="flex min-w-0 items-center gap-0.5">
+            <span className="truncate text-[9px]" style={{ color: instructor.color }}>
+              → {instructor.name}
+            </span>
+            {warning && (
+              <span className="shrink-0 text-[9px] text-amber-600" title={warning} aria-label={warning}>
+                ⚠
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onUnassign(session.id)
+              }}
+              aria-label={`Unassign ${instructor.name}`}
+              className="shrink-0 rounded px-0.5 text-[9px] text-zinc-400 opacity-0 transition group-hover:opacity-100 hover:text-zinc-700"
+            >
+              ✕
+            </button>
+          </span>
+        ) : (
+          <span />
+        )}
+        {student?.needs_schoolwork && (
+          <span className="shrink-0 rounded bg-[#FFEB3B] px-1 py-0.5 text-[8px] font-bold text-black">
+            Supp
+          </span>
+        )}
+      </div>
+
+      {selected && (
         <select
           value={session.status}
           onClick={(e) => e.stopPropagation()}
           onChange={(e) => onStatusChange(session.id, e.target.value)}
           aria-label={`Status for ${student?.name ?? 'session'}`}
-          className="mt-1.5 w-full rounded border border-slate-200 bg-white px-1 py-0.5 text-xs text-slate-600 opacity-0 transition focus:opacity-100 group-hover:opacity-100"
+          className="mt-1 w-full rounded border border-zinc-300 bg-white px-1 py-0.5 text-[10px] text-zinc-700"
         >
           {Object.entries(STATUSES).map(([value, meta]) => (
             <option key={value} value={value}>
@@ -165,13 +207,7 @@ export default function SessionCard({
             </option>
           ))}
         </select>
-      </div>
+      )}
     </div>
-  )
-}
-
-function Flag({ children, className }) {
-  return (
-    <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${className}`}>{children}</span>
   )
 }
