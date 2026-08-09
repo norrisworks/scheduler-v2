@@ -1,0 +1,11 @@
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.local
+.env.*.local
+.vercel
+.claude/settings.local.json
+.DS_Store
+*.log
