@@ -3,6 +3,8 @@ import { useCenter } from '../centers/CenterProvider'
 import { centerNowTime, timeToMinutes, todayISO } from '../../lib/dates'
 import Spinner from '../../components/Spinner'
 import { useDaySchedule } from './useDaySchedule'
+import { buildTimeAxis } from './timeGrid'
+import { buildSlotStats } from './load'
 import DayHeader from './DayHeader'
 import ScheduleGrid from './ScheduleGrid'
 import InstructorSidebar from './InstructorSidebar'
@@ -18,6 +20,7 @@ export default function DayView() {
   const {
     sessions,
     instructors,
+    shifts,
     shiftByInstructor,
     notesByStudent,
     loading,
@@ -31,6 +34,14 @@ export default function DayView() {
 
   const instructorsById = useMemo(() => new Map(instructors.map((i) => [i.id, i])), [instructors])
   const armedInstructor = instructorsById.get(armedInstructorId) ?? null
+
+  // The axis lives here so the grid and the sidebar gauges are measured
+  // against exactly the same list of 30-minute slots.
+  const axis = useMemo(() => buildTimeAxis(date, sessions), [date, sessions])
+  const slotStats = useMemo(
+    () => buildSlotStats(axis.slots, sessions, shifts),
+    [axis.slots, sessions, shifts],
+  )
 
   // Drives the "session running now" ring and the current-time line. Only
   // meaningful on today; other days have no now.
@@ -91,7 +102,8 @@ export default function DayView() {
             <Spinner label="Loading day…" />
           ) : (
             <ScheduleGrid
-              date={date}
+              axis={axis}
+              slotStats={slotStats}
               sessions={sessions}
               instructorsById={instructorsById}
               shiftByInstructor={shiftByInstructor}
@@ -112,6 +124,8 @@ export default function DayView() {
           instructors={instructors}
           shiftByInstructor={shiftByInstructor}
           sessions={sessions}
+          axis={axis}
+          nowMinutes={nowMinutes}
           armedInstructorId={armedInstructorId}
           onArm={setArmedInstructorId}
           onDragStateChange={setDragActive}

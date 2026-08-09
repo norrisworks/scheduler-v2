@@ -6,7 +6,6 @@ import {
   SLOT_HEIGHT,
   SLOT_MINUTES,
   SUBCOL_WIDTH,
-  buildTimeAxis,
   columnWidth,
   packSubColumns,
   sessionGeometry,
@@ -14,10 +13,43 @@ import {
 } from './timeGrid'
 import SessionCard from './SessionCard'
 
-const GUTTER = 56 // px
+const GUTTER = 74 // px — time label plus the slot's student count
+
+const PRESSURE_STYLE = {
+  empty: 'bg-slate-100 text-slate-300',
+  ok: 'bg-slate-200 text-slate-600',
+  // Count exceeds what the instructors on shift can cover at the normal 3:1
+  // ratio — the overbooked warning the owner scans for.
+  over: 'bg-amber-200 text-amber-900',
+  over_stretch: 'bg-red-200 text-red-800',
+  uncovered: 'bg-red-500 text-white',
+}
+
+function SlotCount({ stat }) {
+  if (!stat) return null
+
+  const title =
+    stat.onShift === 0
+      ? `${stat.students} student${stat.students === 1 ? '' : 's'}, nobody on shift`
+      : `${stat.students} student${stat.students === 1 ? '' : 's'} · ${stat.onShift} on shift · ` +
+        `capacity ${stat.capacity} (stretch ${stat.stretchCapacity})`
+
+  return (
+    <span
+      className={
+        'min-w-[1.15rem] rounded px-1 text-center text-[10px] leading-4 font-semibold tabular-nums ' +
+        PRESSURE_STYLE[stat.pressure]
+      }
+      title={title}
+    >
+      {stat.students}
+    </span>
+  )
+}
 
 export default function ScheduleGrid({
-  date,
+  axis,
+  slotStats,
   sessions,
   instructorsById,
   shiftByInstructor,
@@ -31,18 +63,15 @@ export default function ScheduleGrid({
   onUnassign,
   onStatusChange,
 }) {
-  const { axis, columns } = useMemo(() => {
+  const columns = useMemo(() => {
     const hasUnset = sessions.some((s) => levelOf(s) === UNSET_LEVEL.key)
     const defs = hasUnset ? [...LEVELS, UNSET_LEVEL] : LEVELS
 
-    return {
-      axis: buildTimeAxis(date, sessions),
-      columns: defs.map((def) => {
-        const mine = sessions.filter((s) => levelOf(s) === def.key)
-        return { def, sessions: mine, pack: packSubColumns(mine) }
-      }),
-    }
-  }, [date, sessions])
+    return defs.map((def) => {
+      const mine = sessions.filter((s) => levelOf(s) === def.key)
+      return { def, sessions: mine, pack: packSubColumns(mine) }
+    })
+  }, [sessions])
 
   return (
     <div className="min-w-fit p-4">
@@ -66,10 +95,13 @@ export default function ScheduleGrid({
           {axis.slots.map((minutes, i) => (
             <span
               key={minutes}
-              className="absolute right-0 -translate-y-1/2 text-[10px] text-slate-500 tabular-nums"
+              className="absolute right-0 flex -translate-y-1/2 items-center gap-1"
               style={{ top: i * SLOT_HEIGHT }}
             >
-              {formatTime(minutesToTime(minutes))}
+              <span className="text-[10px] text-slate-500 tabular-nums">
+                {formatTime(minutesToTime(minutes))}
+              </span>
+              <SlotCount stat={slotStats[i]} />
             </span>
           ))}
         </div>

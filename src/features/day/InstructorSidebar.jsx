@@ -1,100 +1,146 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { formatTimeMeridiem } from '../../lib/dates'
 import { readableTextOn } from '../../lib/colors'
 import { peakConcurrent } from './shiftCoverage'
+import {
+  NORMAL_RATIO,
+  STRETCH_RATIO,
+  instructorCurrentCount,
+  instructorLoadBySlot,
+  instructorTotalCount,
+  loadCellColor,
+  occupiesFloor,
+} from './load'
+import LoadGauge from './LoadGauge'
 import { INSTRUCTOR_DRAG_TYPE } from './dnd'
 
 export default function InstructorSidebar({
   instructors,
   shiftByInstructor,
   sessions,
+  axis,
+  nowMinutes,
   armedInstructorId,
   onArm,
   onDragStateChange,
 }) {
-  const load = useMemo(() => {
+  // v1_reference: only instructors on shift are listed. Off-shift staff stay
+  // reachable behind a disclosure — Workstream coverage is partial, and
+  // someone who is physically here still has to be assignable.
+  const [showOffShift, setShowOffShift] = useState(false)
+
+  const stats = useMemo(() => {
     const map = new Map()
-    // Cancelled sessions still hold an assignment row but cost nobody time.
-    const billable = sessions.filter((s) => s.status !== 'cancelled')
     for (const instructor of instructors) {
-      const mine = billable.filter((s) => s.instructor_id === instructor.id)
-      map.set(instructor.id, { total: mine.length, peak: peakConcurrent(mine) })
+      const mine = sessions.filter((s) => s.instructor_id === instructor.id && occupiesFloor(s))
+      map.set(instructor.id, {
+        total: instructorTotalCount(sessions, instructor.id),
+        now: instructorCurrentCount(sessions, instructor.id, nowMinutes),
+        peak: peakConcurrent(mine),
+        load: instructorLoadBySlot(sessions, instructor.id, axis.slots),
+      })
     }
     return map
-  }, [instructors, sessions])
+  }, [instructors, sessions, axis.slots, nowMinutes])
 
-  const scheduled = instructors.filter((i) => shiftByInstructor.has(i.id))
-  const offToday = instructors.filter((i) => !shiftByInstructor.has(i.id))
-  const unassignedCount = sessions.filter(
-    (s) => !s.instructor_id && s.status !== 'cancelled',
-  ).length
+  const onShift = instructors.filter((i) => shiftByInstructor.has(i.id))
+  const offShift = instructors.filter((i) => !shiftByInstructor.has(i.id))
+  const unassigned = sessions.filter((s) => !s.instructor_id && occupiesFloor(s)).length
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-l border-slate-200 bg-white">
+    <aside className="flex w-72 shrink-0 flex-col border-l border-slate-200 bg-white">
       <div className="border-b border-slate-200 px-4 py-3">
         <h2 className="text-sm font-semibold text-slate-900">Instructors</h2>
         <p className="mt-0.5 text-xs text-slate-500">
-          {scheduled.length} on shift · {unassignedCount} session
-          {unassignedCount === 1 ? '' : 's'} unassigned
+          {onShift.length} on shift · {unassigned} unassigned
         </p>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto p-2">
-        {scheduled.length === 0 && offToday.length === 0 && (
+        {onShift.length === 0 && (
           <p className="px-2 py-6 text-center text-xs text-slate-400">
-            No active instructors at this center.
+            Nobody is on shift for this date.
           </p>
         )}
 
-        {scheduled.map((instructor) => (
+        {onShift.map((instructor) => (
           <InstructorRow
             key={instructor.id}
             instructor={instructor}
             shift={shiftByInstructor.get(instructor.id)}
-            load={load.get(instructor.id)}
+            stats={stats.get(instructor.id)}
+            slots={axis.slots}
             armed={armedInstructorId === instructor.id}
             onArm={onArm}
             onDragStateChange={onDragStateChange}
           />
         ))}
 
-        {offToday.length > 0 && (
-          <>
-            <p className="mt-4 mb-1 px-2 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
-              Not scheduled today
-            </p>
-            {offToday.map((instructor) => (
-              <InstructorRow
-                key={instructor.id}
-                instructor={instructor}
-                shift={null}
-                load={load.get(instructor.id)}
-                armed={armedInstructorId === instructor.id}
-                onArm={onArm}
-                onDragStateChange={onDragStateChange}
-              />
-            ))}
-          </>
+        {offShift.length > 0 && (
+          <div className="mt-3 border-t border-slate-200 pt-2">
+            <button
+              type="button"
+              onClick={() => setShowOffShift((v) => !v)}
+              className="w-full px-2 py-1 text-left text-[11px] font-semibold tracking-wide text-slate-400 uppercase hover:text-slate-600"
+            >
+              {showOffShift ? '▾' : '▸'} Not on shift ({offShift.length})
+            </button>
+            {showOffShift &&
+              offShift.map((instructor) => (
+                <InstructorRow
+                  key={instructor.id}
+                  instructor={instructor}
+                  shift={null}
+                  stats={stats.get(instructor.id)}
+                  slots={axis.slots}
+                  armed={armedInstructorId === instructor.id}
+                  onArm={onArm}
+                  onDragStateChange={onDragStateChange}
+                />
+              ))}
+          </div>
         )}
       </div>
 
-      <p className="border-t border-slate-200 px-4 py-2.5 text-[11px] leading-snug text-slate-400">
-        Drag onto a session to assign, or tap to select then tap sessions.
-      </p>
+      <div className="border-t border-slate-200 px-4 py-2.5">
+        <div className="flex items-center gap-2 text-[10px] text-slate-500">
+          <span>Load</span>
+          <Swatch load={0} label="0" />
+          <Swatch load={1} label="1–2" />
+          <Swatch load={NORMAL_RATIO} label="3" />
+          <Swatch load={STRETCH_RATIO} label="4+ cap" />
+        </div>
+        <p className="mt-1.5 text-[11px] leading-snug text-slate-400">
+          Drag onto a session to assign, or tap to select then tap sessions.
+        </p>
+      </div>
     </aside>
   )
 }
 
-function InstructorRow({ instructor, shift, load, armed, onArm, onDragStateChange }) {
+function Swatch({ load, label }) {
+  return (
+    <span className="flex items-center gap-1">
+      <span
+        className="h-2 w-3 rounded-[1px]"
+        style={{ backgroundColor: loadCellColor(load, '#475569') }}
+      />
+      {label}
+    </span>
+  )
+}
+
+function InstructorRow({ instructor, shift, stats, slots, armed, onArm, onDragStateChange }) {
   const capabilities = [
     instructor.can_teach_elementary && 'E',
     instructor.can_teach_middle && 'M',
     instructor.can_teach_high && 'H',
   ].filter(Boolean)
 
+  const atCap = (stats?.peak ?? 0) >= STRETCH_RATIO
+
   return (
-    <button
-      type="button"
+    <div
       draggable
       onDragStart={(e) => {
         e.dataTransfer.setData(INSTRUCTOR_DRAG_TYPE, instructor.id)
@@ -103,41 +149,74 @@ function InstructorRow({ instructor, shift, load, armed, onArm, onDragStateChang
       }}
       onDragEnd={() => onDragStateChange?.(false)}
       onClick={() => onArm(armed ? null : instructor.id)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onArm(armed ? null : instructor.id)
+        }
+      }}
       aria-pressed={armed}
       className={
-        'mb-1 flex w-full cursor-grab items-center gap-2 rounded-lg border px-2 py-1.5 text-left transition active:cursor-grabbing ' +
+        'mb-1 w-full cursor-grab rounded-lg border px-2 py-1.5 text-left transition active:cursor-grabbing ' +
         (armed
           ? 'border-brand-400 bg-brand-50 ring-2 ring-brand-200'
           : 'border-transparent hover:border-slate-200 hover:bg-slate-50') +
         (shift ? '' : ' opacity-60')
       }
     >
-      <span
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[10px] font-bold"
-        style={{ backgroundColor: instructor.color, color: readableTextOn(instructor.color) }}
-      >
-        {initials(instructor.name)}
-      </span>
-
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-slate-800">{instructor.name}</span>
-        <span className="block truncate text-[11px] text-slate-500">
-          {shift
-            ? `${formatTimeMeridiem(shift.start_time)}–${formatTimeMeridiem(shift.end_time)}`
-            : 'No shift'}
-          {' · '}
-          {capabilities.join('') || 'no levels'}
-          {instructor.last_resort ? ' · last resort' : ''}
+      <div className="flex items-center gap-2">
+        <span
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[10px] font-bold"
+          style={{ backgroundColor: instructor.color, color: readableTextOn(instructor.color) }}
+        >
+          {initials(instructor.name)}
         </span>
-      </span>
 
-      <span className="shrink-0 text-right">
-        <span className="block text-sm font-semibold text-slate-900">{load?.total ?? 0}</span>
-        <span className="block text-[10px] text-slate-400" title="Peak concurrent students">
-          pk {load?.peak ?? 0}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-slate-800">
+            {instructor.name}
+          </span>
+          <span className="block truncate text-[11px] text-slate-500">
+            {shift
+              ? `${formatTimeMeridiem(shift.start_time)}–${formatTimeMeridiem(shift.end_time)}`
+              : 'No shift'}
+            {' · '}
+            {capabilities.join('') || 'no levels'}
+            {instructor.last_resort ? ' · last resort' : ''}
+          </span>
         </span>
-      </span>
-    </button>
+
+        <span className="shrink-0 text-right">
+          {stats?.now !== null && stats?.now !== undefined && (
+            <span
+              className={
+                'block text-[10px] font-semibold ' +
+                (stats.now > 0 ? 'text-emerald-600' : 'text-slate-300')
+              }
+            >
+              now {stats.now}
+            </span>
+          )}
+          <span
+            className={'block text-sm font-semibold ' + (atCap ? 'text-red-600' : 'text-slate-900')}
+            title={`${stats?.total ?? 0} today · peak ${stats?.peak ?? 0} at once`}
+          >
+            {stats?.total ?? 0}
+          </span>
+        </span>
+      </div>
+
+      <div className="mt-1.5">
+        <LoadGauge
+          slots={slots}
+          load={stats?.load ?? []}
+          color={instructor.color}
+          label={`${instructor.name} load by half hour`}
+        />
+      </div>
+    </div>
   )
 }
 

@@ -3,6 +3,7 @@ import { levelOf, UNSET_LEVEL } from '../src/features/day/levels.js'
 import { readableTextOn, tint } from '../src/lib/colors.js'
 import { centerHours, buildTimeAxis, sessionGeometry, packSubColumns, columnWidth, subColumnLeft, SLOT_HEIGHT } from '../src/features/day/timeGrid.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime } from '../src/lib/dates.js'
+import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, loadCellColor } from '../src/features/day/load.js'
 
 const checks = []
 const eq = (label, got, want) => checks.push([label, got, want, JSON.stringify(got) === JSON.stringify(want)])
@@ -87,6 +88,70 @@ eq('empty column still has width 1', packSubColumns([]).count, 1)
 eq('single column width is 95', columnWidth(1), 95)
 eq('three columns width includes gaps', columnWidth(3), 3 * 95 + 2 * 4)
 eq('sub-column 2 left offset', subColumnLeft(2), 2 * 99)
+
+// ---- per-slot load: v1 getSessionsAtTime / getInstructorLoadByTime
+const st = (start, duration, status, instructor_id, id = `${start}/${instructor_id}`) =>
+  ({ id, start_time: start, duration, status, instructor_id })
+
+// A session counts in every slot it overlaps: slot >= start AND slot < end.
+const oneHour = [st('16:00:00', 60, 'scheduled', 'i1')]
+eq('slot at session start counts',  studentsAtSlot(oneHour, 16 * 60), 1)
+eq('slot inside session counts',    studentsAtSlot(oneHour, 16 * 60 + 30), 1)
+eq('slot at session end excluded',  studentsAtSlot(oneHour, 17 * 60), 0)
+eq('slot before session excluded',  studentsAtSlot(oneHour, 15 * 60 + 30), 0)
+
+// Cancelled and no-show free the capacity they were holding.
+const mixedStatus = [
+  st('16:00:00', 60, 'scheduled', 'i1', 'a'),
+  st('16:00:00', 60, 'cancelled', 'i1', 'b'),
+  st('16:00:00', 60, 'no_show',   'i1', 'c'),
+  st('16:00:00', 60, 'completed', 'i2', 'd'),
+]
+eq('cancelled and no_show excluded from slot count', studentsAtSlot(mixedStatus, 16 * 60), 2)
+eq('completed still occupies the floor', occupiesFloor(st('16:00:00',60,'completed','i1')), true)
+eq('cancelled does not occupy the floor', occupiesFloor(st('16:00:00',60,'cancelled','i1')), false)
+
+// Instructor load per slot, across a 3-slot axis.
+const axisSlots = [15 * 60 + 30, 16 * 60, 16 * 60 + 30]
+const loaded = [
+  st('15:30:00', 60, 'scheduled', 'i1', 'p'),
+  st('15:30:00', 60, 'scheduled', 'i1', 'q'),
+  st('16:00:00', 60, 'scheduled', 'i1', 'r'),
+  st('15:30:00', 60, 'scheduled', 'i2', 's'),
+  st('15:30:00', 60, 'cancelled', 'i1', 't'),
+]
+eq('instructor load by slot', instructorLoadBySlot(loaded, 'i1', axisSlots), [2, 3, 1])
+eq('other instructor load by slot', instructorLoadBySlot(loaded, 'i2', axisSlots), [1, 1, 0])
+eq('day total excludes cancelled', instructorTotalCount(loaded, 'i1'), 3)
+eq('current count at 16:00', instructorCurrentCount(loaded, 'i1', 16 * 60), 3)
+eq('current count is null off today', instructorCurrentCount(loaded, 'i1', null), null)
+
+// On-shift capacity at a slot.
+const shifts = [shift('15:00:00','19:00:00'), shift('15:30:00','17:00:00')]
+eq('two on shift at 16:00', instructorsOnShiftAtSlot(shifts, 16 * 60), 2)
+eq('one on shift at 17:00', instructorsOnShiftAtSlot(shifts, 17 * 60), 1)
+eq('shift end is exclusive', instructorsOnShiftAtSlot([shift('15:00:00','17:00:00')], 17 * 60), 0)
+
+// Pressure: 3 is the normal ratio, 4 the stretch cap.
+eq('at ratio 3 is ok',            slotPressure(6, 2), 'ok')
+eq('one over ratio 3 is over',    slotPressure(7, 2), 'over')
+eq('at stretch cap is over',      slotPressure(8, 2), 'over')
+eq('past stretch cap',            slotPressure(9, 2), 'over_stretch')
+eq('students with nobody on shift', slotPressure(1, 0), 'uncovered')
+eq('empty slot',                  slotPressure(0, 0), 'empty')
+
+const stats = buildSlotStats([16 * 60], mixedStatus, [shift('15:00:00','19:00:00')])
+eq('slot stats shape', stats[0], {
+  minutes: 960, students: 2, onShift: 1, capacity: 3, stretchCapacity: 4, pressure: 'ok',
+})
+
+// Gauge intensity: 0 empty, 1-2 light, 3 solid, 4+ red at cap.
+eq('load 0 cell is empty',   loadCellColor(0, '#1E88E5'), '#E2E8F0')
+eq('load 1 cell is light',   loadCellColor(1, '#1E88E5'), 'rgba(30, 136, 229, 0.3)')
+eq('load 2 cell is mid',     loadCellColor(2, '#1E88E5'), 'rgba(30, 136, 229, 0.55)')
+eq('load 3 cell is solid',   loadCellColor(3, '#1E88E5'), 'rgba(30, 136, 229, 1)')
+eq('load 4 cell is red',     loadCellColor(4, '#1E88E5'), '#DC2626')
+eq('load 9 cell is red',     loadCellColor(9, '#1E88E5'), '#DC2626')
 
 // ---- dates: always America/New_York, never toISOString
 // 9pm ET on Aug 9 is already Aug 10 in UTC. v1 showed tomorrow after 8pm.
