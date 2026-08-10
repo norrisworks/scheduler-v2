@@ -1,6 +1,14 @@
 import { addDays, formatDateLong, todayISO } from '../../lib/dates'
 
-export default function DayHeader({ date, onDateChange, sessionCount, busy, onRefresh }) {
+export default function DayHeader({
+  date,
+  onDateChange,
+  sessionCount,
+  busy,
+  onRefresh,
+  orientation,
+  onOrientationChange,
+}) {
   const today = todayISO()
 
   return (
@@ -32,6 +40,27 @@ export default function DayHeader({ date, onDateChange, sessionCount, busy, onRe
       </div>
 
       <div className="ml-auto flex items-center gap-2">
+        <div
+          className="flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5"
+          role="group"
+          aria-label="Day view orientation"
+        >
+          <OrientationButton
+            active={orientation === 'vertical'}
+            onClick={() => onOrientationChange('vertical')}
+            label="Time down, levels across"
+          >
+            Levels
+          </OrientationButton>
+          <OrientationButton
+            active={orientation === 'transposed'}
+            onClick={() => onOrientationChange('transposed')}
+            label="Time across, one row per student"
+          >
+            Students
+          </OrientationButton>
+        </div>
+
         <input
           type="date"
           value={date}
@@ -49,6 +78,23 @@ export default function DayHeader({ date, onDateChange, sessionCount, busy, onRe
         </button>
       </div>
     </div>
+  )
+}
+
+function OrientationButton({ active, onClick, label, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      title={label}
+      className={
+        'rounded-md px-2.5 py-1 text-xs font-semibold transition ' +
+        (active ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-500 hover:text-slate-800')
+      }
+    >
+      {children}
+    </button>
   )
 }
 

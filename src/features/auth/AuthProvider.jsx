@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { ROLE_ADMIN, getPinnedCenter, getRole } from './roles'
 
 const AuthContext = createContext(null)
 
@@ -27,9 +28,16 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+  const user = session?.user ?? null
+  const role = useMemo(() => getRole(user), [user])
+  const pinnedCenter = useMemo(() => getPinnedCenter(user), [user])
+
   const value = {
     session,
-    user: session?.user ?? null,
+    user,
+    role,
+    isAdmin: role === ROLE_ADMIN,
+    pinnedCenter,
     loading,
     signIn: (email, password) =>
       supabase.auth.signInWithPassword({ email: email.trim(), password }),

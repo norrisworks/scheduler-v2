@@ -1,7 +1,8 @@
 ﻿import { shiftCoversSession, coverageWarning, peakConcurrent, sessionEndMinutes } from '../src/features/day/shiftCoverage.js'
 import { levelOf, UNSET_LEVEL } from '../src/features/day/levels.js'
 import { readableTextOn, tint } from '../src/lib/colors.js'
-import { centerHours, buildTimeAxis, sessionGeometry, packSubColumns, columnWidth, subColumnLeft, SLOT_HEIGHT } from '../src/features/day/timeGrid.js'
+import { centerHours, buildTimeAxis, sessionGeometry, packSubColumns, columnWidth, subColumnLeft, SLOT_HEIGHT, SLOT_WIDTH, sessionSpan, axisWidth, groupByStudent } from '../src/features/day/timeGrid.js'
+import { getRole, getPinnedCenter, centerMatchesPin } from '../src/features/auth/roles.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime } from '../src/lib/dates.js'
 import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, loadCellColor } from '../src/features/day/load.js'
 
@@ -152,6 +153,58 @@ eq('load 2 cell is mid',     loadCellColor(2, '#1E88E5'), 'rgba(30, 136, 229, 0.
 eq('load 3 cell is solid',   loadCellColor(3, '#1E88E5'), 'rgba(30, 136, 229, 1)')
 eq('load 4 cell is red',     loadCellColor(4, '#1E88E5'), '#DC2626')
 eq('load 9 cell is red',     loadCellColor(9, '#1E88E5'), '#DC2626')
+
+// ---- transposed orientation geometry and student grouping
+const tAxis = buildTimeAxis('2026-08-10', [])
+eq('axis width spans the day', axisWidth(tAxis), 10 * SLOT_WIDTH)
+eq('15:30 bar starts two slots in', sessionSpan(sess('15:30:00'), tAxis).left, 2 * SLOT_WIDTH)
+eq('60-min bar is two slots wide',  sessionSpan(sess('15:30:00'), tAxis).width, 2 * SLOT_WIDTH)
+eq('30-min bar is one slot wide',   sessionSpan(sess('15:30:00', 30), tAxis).width, SLOT_WIDTH)
+eq('axis-start bar sits at zero',   sessionSpan(sess('14:30:00'), tAxis).left, 0)
+
+// One row per student, however many sessions they have that afternoon.
+const withStudent = (name, id, start, duration = 60) => ({
+  id: `${id}-${start}`, student_id: id, student: { name }, start_time: start, duration,
+  status: 'scheduled',
+})
+const rows = groupByStudent([
+  withStudent('Zoe Harper', 'z', '16:30:00'),
+  withStudent('Ava Bennett', 'a', '15:30:00'),
+  withStudent('Ava Bennett', 'a', '17:30:00'),
+])
+eq('two students produce two rows', rows.length, 2)
+eq('a student\'s sessions share one row', rows[0].sessions.length, 2)
+eq('rows sort by first session time', rows.map(r => r.student.name), ['Ava Bennett', 'Zoe Harper'])
+eq('sessions within a row are time-ordered',
+   rows[0].sessions.map(s => s.start_time), ['15:30:00', '17:30:00'])
+eq('no sessions, no rows', groupByStudent([]).length, 0)
+
+// ---- role pinning (app_metadata is service-role-only, so it is trustworthy)
+const admin = { app_metadata: { role: 'admin' } }
+const floorMv = { app_metadata: { role: 'floor', center_code: 'mv' } }
+const floorById = { app_metadata: { role: 'floor', center_id: 'uuid-bb' } }
+const legacy = { app_metadata: {} }
+
+eq('explicit admin', getRole(admin), 'admin')
+eq('floor role', getRole(floorMv), 'floor')
+eq('absent role stays unrestricted', getRole(legacy), 'admin')
+eq('no user at all', getRole(undefined), 'admin')
+eq('unknown role is not floor', getRole({ app_metadata: { role: 'wat' } }), 'admin')
+
+eq('admins are not pinned', getPinnedCenter(admin), null)
+eq('floor pin by code is upper-cased', getPinnedCenter(floorMv), { id: null, code: 'MV' })
+eq('floor pin by id', getPinnedCenter(floorById), { id: 'uuid-bb', code: null })
+eq('floor with no center is not pinned', getPinnedCenter({ app_metadata: { role: 'floor' } }), null)
+
+const mv = { id: 'uuid-mv', short_code: 'MV' }
+const bb = { id: 'uuid-bb', short_code: 'BB' }
+eq('no pin matches everything', centerMatchesPin(mv, null), true)
+eq('code pin matches its center', centerMatchesPin(mv, { id: null, code: 'MV' }), true)
+eq('code pin rejects the other',  centerMatchesPin(bb, { id: null, code: 'MV' }), false)
+eq('id pin matches its center',   centerMatchesPin(bb, { id: 'uuid-bb', code: null }), true)
+eq('id pin rejects the other',    centerMatchesPin(mv, { id: 'uuid-bb', code: null }), false)
+// An id pin must not be satisfied by a code coincidence.
+eq('id pin ignores short_code',   centerMatchesPin({ id: 'x', short_code: 'BB' }, { id: 'uuid-bb', code: null }), false)
 
 // ---- dates: always America/New_York, never toISOString
 // 9pm ET on Aug 9 is already Aug 10 in UTC. v1 showed tomorrow after 8pm.

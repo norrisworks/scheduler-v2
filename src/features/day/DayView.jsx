@@ -4,10 +4,14 @@ import { centerNowTime, timeToMinutes, todayISO } from '../../lib/dates'
 import Spinner from '../../components/Spinner'
 import { useDaySchedule } from './useDaySchedule'
 import { buildTimeAxis } from './timeGrid'
-import { buildSlotStats } from './load'
+import { buildSlotStats, occupiesFloor } from './load'
 import DayHeader from './DayHeader'
 import ScheduleGrid from './ScheduleGrid'
+import TransposedGrid from './TransposedGrid'
+import CancelledList from './CancelledList'
 import InstructorSidebar from './InstructorSidebar'
+
+const ORIENTATION_KEY = 'scheduler.dayOrientation'
 
 export default function DayView() {
   const { centerId } = useCenter()
@@ -16,6 +20,9 @@ export default function DayView() {
   const [selectedId, setSelectedId] = useState(null)
   const [dragActive, setDragActive] = useState(false)
   const [nowTick, setNowTick] = useState(() => centerNowTime())
+  const [orientation, setOrientation] = useState(
+    () => localStorage.getItem(ORIENTATION_KEY) ?? 'vertical',
+  )
 
   const {
     sessions,
@@ -32,19 +39,26 @@ export default function DayView() {
     dismissError,
   } = useDaySchedule(centerId, date)
 
+  useEffect(() => {
+    localStorage.setItem(ORIENTATION_KEY, orientation)
+  }, [orientation])
+
   const instructorsById = useMemo(() => new Map(instructors.map((i) => [i.id, i])), [instructors])
   const armedInstructor = instructorsById.get(armedInstructorId) ?? null
 
+  // Cancelled and no-show sessions come off the grid entirely and out of every
+  // count. They're still reachable in the strip under the grid.
+  const gridSessions = useMemo(() => sessions.filter(occupiesFloor), [sessions])
+  const offGrid = useMemo(() => sessions.filter((s) => !occupiesFloor(s)), [sessions])
+
   // The axis lives here so the grid and the sidebar gauges are measured
   // against exactly the same list of 30-minute slots.
-  const axis = useMemo(() => buildTimeAxis(date, sessions), [date, sessions])
+  const axis = useMemo(() => buildTimeAxis(date, gridSessions), [date, gridSessions])
   const slotStats = useMemo(
-    () => buildSlotStats(axis.slots, sessions, shifts),
-    [axis.slots, sessions, shifts],
+    () => buildSlotStats(axis.slots, gridSessions, shifts),
+    [axis.slots, gridSessions, shifts],
   )
 
-  // Drives the "session running now" ring and the current-time line. Only
-  // meaningful on today; other days have no now.
   useEffect(() => {
     const timer = setInterval(() => setNowTick(centerNowTime()), 60_000)
     return () => clearInterval(timer)
@@ -61,14 +75,33 @@ export default function DayView() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  const gridProps = {
+    axis,
+    slotStats,
+    sessions: gridSessions,
+    instructorsById,
+    shiftByInstructor,
+    notesByStudent,
+    nowMinutes,
+    selectedId,
+    dragActive,
+    armedInstructor,
+    onSelect: setSelectedId,
+    onAssign: assign,
+    onUnassign: unassign,
+    onStatusChange: setStatus,
+  }
+
   return (
     <div className="flex h-full flex-col">
       <DayHeader
         date={date}
         onDateChange={setDate}
-        sessionCount={sessions.length}
+        sessionCount={gridSessions.length}
         busy={loading}
         onRefresh={refetch}
+        orientation={orientation}
+        onOrientationChange={setOrientation}
       />
 
       {error && (
@@ -97,33 +130,23 @@ export default function DayView() {
       )}
 
       <div className="flex min-h-0 flex-1">
-        <div className="min-w-0 flex-1 overflow-auto">
-          {loading && sessions.length === 0 ? (
-            <Spinner label="Loading day…" />
-          ) : (
-            <ScheduleGrid
-              axis={axis}
-              slotStats={slotStats}
-              sessions={sessions}
-              instructorsById={instructorsById}
-              shiftByInstructor={shiftByInstructor}
-              notesByStudent={notesByStudent}
-              nowMinutes={nowMinutes}
-              selectedId={selectedId}
-              dragActive={dragActive}
-              armedInstructor={armedInstructor}
-              onSelect={setSelectedId}
-              onAssign={assign}
-              onUnassign={unassign}
-              onStatusChange={setStatus}
-            />
-          )}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-auto">
+            {loading && gridSessions.length === 0 ? (
+              <Spinner label="Loading day…" />
+            ) : orientation === 'transposed' ? (
+              <TransposedGrid {...gridProps} />
+            ) : (
+              <ScheduleGrid {...gridProps} />
+            )}
+          </div>
+          <CancelledList sessions={offGrid} onStatusChange={setStatus} />
         </div>
 
         <InstructorSidebar
           instructors={instructors}
           shiftByInstructor={shiftByInstructor}
-          sessions={sessions}
+          sessions={gridSessions}
           axis={axis}
           nowMinutes={nowMinutes}
           armedInstructorId={armedInstructorId}

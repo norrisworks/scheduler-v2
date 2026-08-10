@@ -8,6 +8,8 @@ const SESSION_SELECT = `
   assignments ( id, instructor_id )
 `
 
+const EMPTY = []
+
 // PostgREST returns an embedded row as an object or an array depending on how
 // it reads the constraint; assignments.session_id is unique, so either way
 // there is at most one.
@@ -26,18 +28,32 @@ function normalizeSession(row) {
   }
 }
 
+const scopeKey = (centerId, date) => `${centerId ?? ''}|${date ?? ''}`
+
 /**
  * Everything the day view needs for one center on one date, plus the
  * mutations that view performs. Assignment writes are optimistic so a drop
  * lands instantly; the server result reconciles on the next refetch.
+ *
+ * Data is stored together with the (center, date) it was loaded for and is
+ * withheld during render whenever that no longer matches what the caller is
+ * asking for. That makes it impossible for one center's sessions to paint
+ * under another's header even for a frame, without needing the whole view to
+ * be remounted — which is what used to throw away the selected date.
  */
 export function useDaySchedule(centerId, date) {
-  const [sessions, setSessions] = useState([])
-  const [instructors, setInstructors] = useState([])
-  const [shifts, setShifts] = useState([])
-  const [pinnedNotes, setPinnedNotes] = useState([])
+  const [snapshot, setSnapshot] = useState({
+    key: null,
+    sessions: EMPTY,
+    instructors: EMPTY,
+    shifts: EMPTY,
+    pinnedNotes: EMPTY,
+  })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+
+  const key = scopeKey(centerId, date)
+  const isCurrent = snapshot.key === key
 
   // Guards against a slow response for a previous date/center overwriting the
   // current one when the user clicks through days quickly.
@@ -47,6 +63,7 @@ export function useDaySchedule(centerId, date) {
     async ({ quiet = false } = {}) => {
       if (!centerId || !date) return
       const token = ++requestRef.current
+      const requestKey = scopeKey(centerId, date)
       if (!quiet) setLoading(true)
 
       const [sessionRes, instructorRes, shiftRes] = await Promise.all([
@@ -75,11 +92,9 @@ export function useDaySchedule(centerId, date) {
       }
 
       const daySessions = (sessionRes.data ?? []).map(normalizeSession)
-      setSessions(daySessions)
-      setInstructors(instructorRes.data ?? [])
-      setShifts(shiftRes.data ?? [])
-
       const studentIds = [...new Set(daySessions.map((s) => s.student_id).filter(Boolean))]
+
+      let pinnedNotes = EMPTY
       if (studentIds.length) {
         const { data, error } = await supabase
           .from('student_notes')
@@ -89,11 +104,16 @@ export function useDaySchedule(centerId, date) {
           .in('student_id', studentIds)
         if (token !== requestRef.current) return
         if (error) setError(error.message)
-        setPinnedNotes(data ?? [])
-      } else {
-        setPinnedNotes([])
+        pinnedNotes = data ?? EMPTY
       }
 
+      setSnapshot({
+        key: requestKey,
+        sessions: daySessions,
+        instructors: instructorRes.data ?? EMPTY,
+        shifts: shiftRes.data ?? EMPTY,
+        pinnedNotes,
+      })
       setError(null)
       setLoading(false)
     },
@@ -140,46 +160,55 @@ export function useDaySchedule(centerId, date) {
     }
   }, [centerId, date, load])
 
-  const patchSession = useCallback((sessionId, patch) => {
-    setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, ...patch } : s)))
+  // Optimistic edits only ever touch the snapshot they were issued against.
+  const patchSession = useCallback((requestKey, sessionId, patch) => {
+    setSnapshot((prev) => {
+      if (prev.key !== requestKey) return prev
+      return {
+        ...prev,
+        sessions: prev.sessions.map((s) => (s.id === sessionId ? { ...s, ...patch } : s)),
+      }
+    })
   }, [])
+
+  const sessions = isCurrent ? snapshot.sessions : EMPTY
 
   const assign = useCallback(
     async (sessionId, instructorId) => {
       const previous = sessions.find((s) => s.id === sessionId)?.instructor_id ?? null
       if (previous === instructorId) return
-      patchSession(sessionId, { instructor_id: instructorId })
+      patchSession(key, sessionId, { instructor_id: instructorId })
 
       const { error } = await supabase
         .from('assignments')
         .upsert({ session_id: sessionId, instructor_id: instructorId }, { onConflict: 'session_id' })
 
       if (error) {
-        patchSession(sessionId, { instructor_id: previous })
+        patchSession(key, sessionId, { instructor_id: previous })
         setError(error.message)
       }
     },
-    [sessions, patchSession],
+    [sessions, key, patchSession],
   )
 
   const unassign = useCallback(
     async (sessionId) => {
       const previous = sessions.find((s) => s.id === sessionId)?.instructor_id ?? null
-      patchSession(sessionId, { instructor_id: null })
+      patchSession(key, sessionId, { instructor_id: null })
 
       const { error } = await supabase.from('assignments').delete().eq('session_id', sessionId)
       if (error) {
-        patchSession(sessionId, { instructor_id: previous })
+        patchSession(key, sessionId, { instructor_id: previous })
         setError(error.message)
       }
     },
-    [sessions, patchSession],
+    [sessions, key, patchSession],
   )
 
   const setStatus = useCallback(
     async (sessionId, status) => {
       const previous = sessions.find((s) => s.id === sessionId)?.status
-      patchSession(sessionId, { status, is_modified: true })
+      patchSession(key, sessionId, { status, is_modified: true })
 
       // is_modified marks this row as hand-edited so re-materializing the
       // recurring slot leaves it alone (Google Calendar semantics).
@@ -189,12 +218,14 @@ export function useDaySchedule(centerId, date) {
         .eq('id', sessionId)
 
       if (error) {
-        patchSession(sessionId, { status: previous })
+        patchSession(key, sessionId, { status: previous })
         setError(error.message)
       }
     },
-    [sessions, patchSession],
+    [sessions, key, patchSession],
   )
+
+  const shifts = isCurrent ? snapshot.shifts : EMPTY
 
   const shiftByInstructor = useMemo(() => {
     const map = new Map()
@@ -204,21 +235,24 @@ export function useDaySchedule(centerId, date) {
 
   const notesByStudent = useMemo(() => {
     const map = new Map()
-    for (const note of pinnedNotes) {
+    if (!isCurrent) return map
+    for (const note of snapshot.pinnedNotes) {
       const list = map.get(note.student_id)
       if (list) list.push(note)
       else map.set(note.student_id, [note])
     }
     return map
-  }, [pinnedNotes])
+  }, [snapshot.pinnedNotes, isCurrent])
 
   return {
     sessions,
-    instructors,
+    instructors: isCurrent ? snapshot.instructors : EMPTY,
     shifts,
     shiftByInstructor,
     notesByStudent,
-    loading,
+    // A stale scope reads as loading — the caller never sees another
+    // center's data, and never sees an empty day it might mistake for real.
+    loading: loading || !isCurrent,
     error,
     refetch: load,
     assign,

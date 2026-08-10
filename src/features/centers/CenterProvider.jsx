@@ -1,5 +1,7 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../auth/AuthProvider'
+import { centerMatchesPin } from '../auth/roles'
 
 const CenterContext = createContext(null)
 const STORAGE_KEY = 'scheduler.activeCenterId'
@@ -10,7 +12,8 @@ const STORAGE_KEY = 'scheduler.activeCenterId'
  * provider sits above the router and below auth.
  */
 export function CenterProvider({ children }) {
-  const [centers, setCenters] = useState([])
+  const { pinnedCenter } = useAuth()
+  const [allCenters, setAllCenters] = useState([])
   const [activeId, setActiveId] = useState(() => localStorage.getItem(STORAGE_KEY))
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -24,16 +27,8 @@ export function CenterProvider({ children }) {
       .order('short_code')
       .then(({ data, error }) => {
         if (cancelled) return
-        if (error) {
-          setError(error.message)
-        } else {
-          setCenters(data ?? [])
-          // Fall back to the first center if nothing is stored, or if the
-          // stored id no longer exists (center removed, different account).
-          setActiveId((current) =>
-            data?.some((c) => c.id === current) ? current : (data?.[0]?.id ?? null),
-          )
-        }
+        if (error) setError(error.message)
+        else setAllCenters(data ?? [])
         setLoading(false)
       })
 
@@ -42,15 +37,35 @@ export function CenterProvider({ children }) {
     }
   }, [])
 
+  // A floor account only ever sees the center in its app_metadata.
+  const centers = useMemo(
+    () => allCenters.filter((c) => centerMatchesPin(c, pinnedCenter)),
+    [allCenters, pinnedCenter],
+  )
+
+  // Resolve the active center during render so a pinned user can never be
+  // pointed at a center they aren't allowed to see, not even for a frame.
+  const center = centers.find((c) => c.id === activeId) ?? centers[0] ?? null
+
   useEffect(() => {
-    if (activeId) localStorage.setItem(STORAGE_KEY, activeId)
-  }, [activeId])
+    if (center && center.id !== activeId) setActiveId(center.id)
+  }, [center, activeId])
+
+  useEffect(() => {
+    // Remembering the choice is only meaningful when there is a choice.
+    if (center && !pinnedCenter) localStorage.setItem(STORAGE_KEY, center.id)
+  }, [center, pinnedCenter])
 
   const value = {
     centers,
-    center: centers.find((c) => c.id === activeId) ?? null,
-    centerId: activeId,
+    center,
+    centerId: center?.id ?? null,
     setCenterId: setActiveId,
+    canSwitch: !pinnedCenter && centers.length > 1,
+    pinned: Boolean(pinnedCenter),
+    // A pinned account whose app_metadata names a center that doesn't exist
+    // must not silently fall through to somebody else's center.
+    misconfigured: Boolean(pinnedCenter) && !loading && centers.length === 0,
     loading,
     error,
   }
