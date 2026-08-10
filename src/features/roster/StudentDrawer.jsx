@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import Spinner from '../../components/Spinner'
+import { useCenter } from '../centers/CenterProvider'
+import { describeMaterialize, materializeSessions } from '../materializer/materialize'
 import { useStudent } from './useStudent'
 import StudentAttributes from './StudentAttributes'
 import RecurringSlots from './RecurringSlots'
@@ -13,6 +15,8 @@ const TABS = [
 
 export default function StudentDrawer({ studentId, onClose, onChanged }) {
   const [tab, setTab] = useState('attributes')
+  const { centerId } = useCenter()
+  const [slotEffect, setSlotEffect] = useState(null)
   const {
     student,
     slots,
@@ -41,6 +45,19 @@ export default function StudentDrawer({ studentId, onClose, onChanged }) {
     const ok = await fn(...args)
     if (ok) onChanged()
     return ok
+  }
+
+  /**
+   * Editing a template has to reach the sessions it already produced, or the
+   * change silently doesn't apply until someone opens the day view. Future
+   * unmodified sessions are reconciled; hand-edited ones are left alone.
+   */
+  async function saveSlot(fn, ...args) {
+    const ok = await save(fn, ...args)
+    if (!ok) return false
+    const { result, error } = await materializeSessions(centerId)
+    setSlotEffect(error ? { error } : { text: describeMaterialize(result) })
+    return true
   }
 
   const openNotes = notes.filter((n) => !n.resolved).length
@@ -111,13 +128,31 @@ export default function StudentDrawer({ studentId, onClose, onChanged }) {
             onSave={(patch) => save(updateStudent, patch)}
           />
         ) : tab === 'slots' ? (
-          <RecurringSlots
-            slots={slots}
-            saving={saving}
-            onAdd={(slot) => save(addSlot, slot)}
-            onUpdate={(id, patch) => save(updateSlot, id, patch)}
-            onDelete={(id) => save(deleteSlot, id)}
-          />
+          <div className="space-y-3">
+            <RecurringSlots
+              slots={slots}
+              saving={saving}
+              onAdd={(slot) => saveSlot(addSlot, slot)}
+              onUpdate={(id, patch) => saveSlot(updateSlot, id, patch)}
+              onDelete={(id) => saveSlot(deleteSlot, id)}
+            />
+            {slotEffect && (
+              <p
+                className={
+                  'rounded-lg px-2.5 py-2 text-xs ' +
+                  (slotEffect.error
+                    ? 'bg-red-50 text-red-700'
+                    : 'bg-emerald-50 text-emerald-800')
+                }
+              >
+                {slotEffect.error
+                  ? `Could not update sessions: ${slotEffect.error}`
+                  : slotEffect.text
+                    ? `Upcoming sessions updated — ${slotEffect.text}. Hand-edited sessions were left alone.`
+                    : 'No upcoming sessions needed changing.'}
+              </p>
+            )}
+          </div>
         ) : (
           <StudentNotes
             notes={notes}

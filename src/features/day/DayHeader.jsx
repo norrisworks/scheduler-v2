@@ -8,6 +8,8 @@ export default function DayHeader({
   onRefresh,
   orientation,
   onOrientationChange,
+  onMaterialize,
+  materializing,
 }) {
   const today = todayISO()
 
@@ -68,6 +70,15 @@ export default function DayHeader({
           aria-label="Jump to date"
           className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-700"
         />
+        <button
+          type="button"
+          onClick={() => onMaterialize()}
+          disabled={materializing}
+          title="Generate sessions from standing slots for the next two weeks. Safe to run any time — it never touches past or hand-edited sessions."
+          className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-40"
+        >
+          {materializing ? 'Generating…' : 'Generate'}
+        </button>
         <button
           type="button"
           onClick={() => onRefresh()}

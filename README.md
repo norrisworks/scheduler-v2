@@ -30,6 +30,24 @@ wrong and expensive to get wrong on the floor: center-timezone date handling,
 shift coverage, concurrent load, and the day-view grid geometry. No test
 runner — it bundles with the esbuild that Vite already ships and runs on node.
 
+## Materializer
+
+`recurring_slots` are templates; `sessions` are the real rows. The
+`materialize_sessions(center_id, days_ahead, slot_id)` Postgres function turns
+one into the other for a rolling two-week window.
+
+It **reconciles rather than rebuilds**: rows the templates still produce are
+left in place so their assignments survive, rows that moved or stopped are
+removed, missing rows are inserted. It only ever touches sessions that are in
+the future *and* have `is_modified = false` — anything hand-edited, and
+anything in the past, is left exactly alone (Google Calendar semantics).
+"Today" is derived in America/New_York, not UTC.
+
+It runs automatically once per center when the day view loads, and on demand
+from the **Generate** button. Editing a standing slot in the roster re-runs it
+so the change reaches sessions that were already generated. It is idempotent —
+a second run reports `0 created, 0 updated, 0 removed`.
+
 ## v1 reference
 
 The `v1_reference` table in Supabase holds verbatim excerpts of the v1 app
@@ -83,7 +101,7 @@ Views ship in the order listed in BRIEF.md, each verified before the next:
 1. ✅ Auth + app shell + center switcher
 2. ✅ Day view (both orientations)
 3. ✅ Roster + student detail
-4. Materializer + recurring slot semantics
+4. ✅ Materializer + recurring slot semantics
 5. Shifts week editor
 6. Auto-assign
 7. Radius import

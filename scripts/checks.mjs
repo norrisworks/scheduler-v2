@@ -4,6 +4,7 @@ import { readableTextOn, tint } from '../src/lib/colors.js'
 import { centerHours, buildTimeAxis, sessionGeometry, packSubColumns, columnWidth, subColumnLeft, SLOT_HEIGHT, SLOT_WIDTH, sessionSpan, axisWidth, groupByStudent } from '../src/features/day/timeGrid.js'
 import { getRole, getPinnedCenter, centerMatchesPin, resolveCenterAccess } from '../src/features/auth/roles.js'
 import { emptyToNull, missingAttributes } from '../src/features/roster/studentFields.js'
+import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime } from '../src/lib/dates.js'
 import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, loadCellColor } from '../src/features/day/load.js'
 
@@ -261,6 +262,17 @@ eq('complete student has nothing missing', missingAttributes(complete), [])
 eq('bare student is missing all four', missingAttributes({}),
    ['level', 'grade', 'performance', 'slot certainty'])
 eq('one gap is reported', missingAttributes({ ...complete, performance: null }), ['performance'])
+
+// ---- materializer result reporting
+eq('no change reads as null', describeMaterialize({ created: 0, updated: 0, removed: 0 }), null)
+eq('null result reads as null', describeMaterialize(null), null)
+eq('created only', describeMaterialize({ created: 12, updated: 0, removed: 0 }), '12 created')
+eq('all three', describeMaterialize({ created: 2, updated: 1, removed: 3 }),
+   '2 created, 1 updated, 3 removed')
+eq('removal alone still reports', describeMaterialize({ created: 0, updated: 0, removed: 1 }),
+   '1 removed')
+eq('nothing changed', materializeChanged({ created: 0, updated: 0, removed: 0 }), false)
+eq('something changed', materializeChanged({ created: 0, updated: 0, removed: 1 }), true)
 
 // ---- dates: always America/New_York, never toISOString
 // 9pm ET on Aug 9 is already Aug 10 in UTC. v1 showed tomorrow after 8pm.

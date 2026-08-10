@@ -10,6 +10,8 @@ import ScheduleGrid from './ScheduleGrid'
 import TransposedGrid from './TransposedGrid'
 import CancelledList from './CancelledList'
 import InstructorSidebar from './InstructorSidebar'
+import { useMaterializer } from '../materializer/useMaterializer'
+import { describeMaterialize, MATERIALIZE_DAYS } from '../materializer/materialize'
 
 const ORIENTATION_KEY = 'scheduler.dayOrientation'
 
@@ -42,6 +44,14 @@ export default function DayView() {
   useEffect(() => {
     localStorage.setItem(ORIENTATION_KEY, orientation)
   }, [orientation])
+
+  const {
+    running: materializing,
+    result: materializeResult,
+    error: materializeError,
+    run: materialize,
+    dismiss: dismissMaterialize,
+  } = useMaterializer(centerId, refetch)
 
   const instructorsById = useMemo(() => new Map(instructors.map((i) => [i.id, i])), [instructors])
   const armedInstructor = instructorsById.get(armedInstructorId) ?? null
@@ -102,7 +112,27 @@ export default function DayView() {
         onRefresh={refetch}
         orientation={orientation}
         onOrientationChange={setOrientation}
+        onMaterialize={materialize}
+        materializing={materializing}
       />
+
+      {materializeError && (
+        <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+          Could not generate sessions: {materializeError}
+        </div>
+      )}
+
+      {describeMaterialize(materializeResult) && (
+        <div className="flex items-center gap-3 border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
+          <span className="flex-1">
+            Sessions generated from standing slots for the next {MATERIALIZE_DAYS} days —{' '}
+            {describeMaterialize(materializeResult)}.
+          </span>
+          <button type="button" onClick={dismissMaterialize} className="font-medium underline">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="flex items-center gap-3 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
