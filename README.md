@@ -43,6 +43,25 @@ Supabase Auth, email + password. There is no public signup — staff accounts ar
 created by hand in the Supabase dashboard (Authentication → Users). RLS
 restricts every table to authenticated users.
 
+Roles live in each user's `app_metadata`, which only the service role can
+write, so a user cannot grant themselves one:
+
+```json
+{ "role": "admin" }
+{ "role": "floor", "center_code": "MV" }
+{ "role": "floor", "center_id": "<centers.id uuid>" }
+```
+
+Admins get the MV/BB switcher. Floor accounts are pinned to one center and see
+no switcher. An account with no `role` is treated as admin so existing logins
+keep working. This is a **UI restriction only** — RLS still lets any
+authenticated user read any center. The `center_id` form is what an RLS policy
+will read straight from the JWT when that lands:
+
+```sql
+center_id = (auth.jwt() -> 'app_metadata' ->> 'center_id')::uuid
+```
+
 ## Layout
 
 ```
@@ -58,8 +77,8 @@ src/
 Views ship in the order listed in BRIEF.md, each verified before the next:
 
 1. ✅ Auth + app shell + center switcher
-2. ✅ Day view
-3. Roster + student detail
+2. ✅ Day view (both orientations)
+3. ✅ Roster + student detail
 4. Materializer + recurring slot semantics
 5. Shifts week editor
 6. Auto-assign

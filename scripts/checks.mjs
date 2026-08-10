@@ -3,6 +3,7 @@ import { levelOf, UNSET_LEVEL } from '../src/features/day/levels.js'
 import { readableTextOn, tint } from '../src/lib/colors.js'
 import { centerHours, buildTimeAxis, sessionGeometry, packSubColumns, columnWidth, subColumnLeft, SLOT_HEIGHT, SLOT_WIDTH, sessionSpan, axisWidth, groupByStudent } from '../src/features/day/timeGrid.js'
 import { getRole, getPinnedCenter, centerMatchesPin } from '../src/features/auth/roles.js'
+import { emptyToNull, missingAttributes } from '../src/features/roster/studentFields.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime } from '../src/lib/dates.js'
 import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, loadCellColor } from '../src/features/day/load.js'
 
@@ -205,6 +206,21 @@ eq('id pin matches its center',   centerMatchesPin(bb, { id: 'uuid-bb', code: nu
 eq('id pin rejects the other',    centerMatchesPin(mv, { id: 'uuid-bb', code: null }), false)
 // An id pin must not be satisfied by a code coincidence.
 eq('id pin ignores short_code',   centerMatchesPin({ id: 'x', short_code: 'BB' }, { id: 'uuid-bb', code: null }), false)
+
+// ---- roster fields
+// level and performance carry check constraints that reject '' — a cleared
+// <select> has to become NULL or the update fails.
+eq('empty string becomes null', emptyToNull(''), null)
+eq('undefined becomes null',    emptyToNull(undefined), null)
+eq('value passes through',      emptyToNull('middle'), 'middle')
+eq('zero is not emptied',       emptyToNull(0), 0)
+eq('false is not emptied',      emptyToNull(false), false)
+
+const complete = { level: 'middle', grade: '7', performance: 'behind', slot_certainty: 'fixed' }
+eq('complete student has nothing missing', missingAttributes(complete), [])
+eq('bare student is missing all four', missingAttributes({}),
+   ['level', 'grade', 'performance', 'slot certainty'])
+eq('one gap is reported', missingAttributes({ ...complete, performance: null }), ['performance'])
 
 // ---- dates: always America/New_York, never toISOString
 // 9pm ET on Aug 9 is already Aug 10 in UTC. v1 showed tomorrow after 8pm.
