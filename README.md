@@ -48,13 +48,17 @@ write, so a user cannot grant themselves one:
 
 ```json
 { "role": "admin" }
-{ "role": "floor", "center_code": "MV" }
-{ "role": "floor", "center_id": "<centers.id uuid>" }
+{ "role": "instructor", "center_code": "MV" }
+{ "role": "instructor", "center_id": "<centers.id uuid>" }
 ```
 
-Admins get the MV/BB switcher. Floor accounts are pinned to one center and see
-no switcher. An account with no `role` is treated as admin so existing logins
-keep working. This is a **UI restriction only** — RLS still lets any
+Admins get the MV/BB switcher. `instructor` accounts — the shared per-center
+logins `instructor-mv@` and `instructor-bb@` — are pinned to one center and see
+no switcher, just their center's code. An account with no `role` is treated as
+admin so existing logins keep working.
+
+This role governs which centers a *login* may see. It is unrelated to the
+`instructors` table, which holds staff records used for assignment. This is a **UI restriction only** — RLS still lets any
 authenticated user read any center. The `center_id` form is what an RLS policy
 will read straight from the JWT when that lands:
 

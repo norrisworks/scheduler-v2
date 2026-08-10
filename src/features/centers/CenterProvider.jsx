@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../auth/AuthProvider'
-import { centerMatchesPin } from '../auth/roles'
+import { resolveCenterAccess } from '../auth/roles'
 
 const CenterContext = createContext(null)
 const STORAGE_KEY = 'scheduler.activeCenterId'
@@ -12,7 +12,7 @@ const STORAGE_KEY = 'scheduler.activeCenterId'
  * provider sits above the router and below auth.
  */
 export function CenterProvider({ children }) {
-  const { pinnedCenter } = useAuth()
+  const { user } = useAuth()
   const [allCenters, setAllCenters] = useState([])
   const [activeId, setActiveId] = useState(() => localStorage.getItem(STORAGE_KEY))
   const [loading, setLoading] = useState(true)
@@ -37,10 +37,10 @@ export function CenterProvider({ children }) {
     }
   }, [])
 
-  // A floor account only ever sees the center in its app_metadata.
-  const centers = useMemo(
-    () => allCenters.filter((c) => centerMatchesPin(c, pinnedCenter)),
-    [allCenters, pinnedCenter],
+  // An instructor account only ever sees the center in its app_metadata.
+  const { centers, canSwitch, pinned } = useMemo(
+    () => resolveCenterAccess(user, allCenters),
+    [user, allCenters],
   )
 
   // Resolve the active center during render so a pinned user can never be
@@ -53,19 +53,19 @@ export function CenterProvider({ children }) {
 
   useEffect(() => {
     // Remembering the choice is only meaningful when there is a choice.
-    if (center && !pinnedCenter) localStorage.setItem(STORAGE_KEY, center.id)
-  }, [center, pinnedCenter])
+    if (center && !pinned) localStorage.setItem(STORAGE_KEY, center.id)
+  }, [center, pinned])
 
   const value = {
     centers,
     center,
     centerId: center?.id ?? null,
     setCenterId: setActiveId,
-    canSwitch: !pinnedCenter && centers.length > 1,
-    pinned: Boolean(pinnedCenter),
+    canSwitch,
+    pinned,
     // A pinned account whose app_metadata names a center that doesn't exist
     // must not silently fall through to somebody else's center.
-    misconfigured: Boolean(pinnedCenter) && !loading && centers.length === 0,
+    misconfigured: pinned && !loading && centers.length === 0,
     loading,
     error,
   }

@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { ROLE_ADMIN, getPinnedCenter, getRole } from './roles'
 
+
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {

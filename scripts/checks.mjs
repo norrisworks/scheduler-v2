@@ -2,7 +2,7 @@
 import { levelOf, UNSET_LEVEL } from '../src/features/day/levels.js'
 import { readableTextOn, tint } from '../src/lib/colors.js'
 import { centerHours, buildTimeAxis, sessionGeometry, packSubColumns, columnWidth, subColumnLeft, SLOT_HEIGHT, SLOT_WIDTH, sessionSpan, axisWidth, groupByStudent } from '../src/features/day/timeGrid.js'
-import { getRole, getPinnedCenter, centerMatchesPin } from '../src/features/auth/roles.js'
+import { getRole, getPinnedCenter, centerMatchesPin, resolveCenterAccess } from '../src/features/auth/roles.js'
 import { emptyToNull, missingAttributes } from '../src/features/roster/studentFields.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime } from '../src/lib/dates.js'
 import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, loadCellColor } from '../src/features/day/load.js'
@@ -182,20 +182,24 @@ eq('no sessions, no rows', groupByStudent([]).length, 0)
 
 // ---- role pinning (app_metadata is service-role-only, so it is trustworthy)
 const admin = { app_metadata: { role: 'admin' } }
-const floorMv = { app_metadata: { role: 'floor', center_code: 'mv' } }
-const floorById = { app_metadata: { role: 'floor', center_id: 'uuid-bb' } }
+const instrMv = { app_metadata: { role: 'instructor', center_code: 'mv' } }
+const instrById = { app_metadata: { role: 'instructor', center_id: 'uuid-bb' } }
 const legacy = { app_metadata: {} }
 
 eq('explicit admin', getRole(admin), 'admin')
-eq('floor role', getRole(floorMv), 'floor')
+eq('instructor role', getRole(instrMv), 'instructor')
 eq('absent role stays unrestricted', getRole(legacy), 'admin')
 eq('no user at all', getRole(undefined), 'admin')
-eq('unknown role is not floor', getRole({ app_metadata: { role: 'wat' } }), 'admin')
+eq('unknown role is not instructor', getRole({ app_metadata: { role: 'wat' } }), 'admin')
+// The old value must no longer grant a pin, or a stale account would silently
+// become an unrestricted admin after the rename.
+eq('retired "floor" value is not a role', getRole({ app_metadata: { role: 'floor' } }), 'admin')
 
 eq('admins are not pinned', getPinnedCenter(admin), null)
-eq('floor pin by code is upper-cased', getPinnedCenter(floorMv), { id: null, code: 'MV' })
-eq('floor pin by id', getPinnedCenter(floorById), { id: 'uuid-bb', code: null })
-eq('floor with no center is not pinned', getPinnedCenter({ app_metadata: { role: 'floor' } }), null)
+eq('pin by code is upper-cased', getPinnedCenter(instrMv), { id: null, code: 'MV' })
+eq('pin by id', getPinnedCenter(instrById), { id: 'uuid-bb', code: null })
+eq('instructor with no center is not pinned',
+   getPinnedCenter({ app_metadata: { role: 'instructor' } }), null)
 
 const mv = { id: 'uuid-mv', short_code: 'MV' }
 const bb = { id: 'uuid-bb', short_code: 'BB' }
@@ -206,6 +210,42 @@ eq('id pin matches its center',   centerMatchesPin(bb, { id: 'uuid-bb', code: nu
 eq('id pin rejects the other',    centerMatchesPin(mv, { id: 'uuid-bb', code: null }), false)
 // An id pin must not be satisfied by a code coincidence.
 eq('id pin ignores short_code',   centerMatchesPin({ id: 'x', short_code: 'BB' }, { id: 'uuid-bb', code: null }), false)
+
+// The access decision, run against the app_metadata actually stored on the
+// three live accounts and the two real centers. This is what decides whether
+// the switcher renders.
+const REAL_CENTERS = [
+  { id: 'd0d702a3-3e8a-4913-a54d-167d4cdb0f8c', name: 'Blue Bell', short_code: 'BB' },
+  { id: 'e620f538-01b1-4963-8342-41d43ad2c3fd', name: 'Montgomeryville', short_code: 'MV' },
+]
+const LIVE = {
+  owner: { app_metadata: { provider: 'email', providers: ['email'] } },
+  mv: { app_metadata: { role: 'instructor', provider: 'email', providers: ['email'],
+        center_id: 'e620f538-01b1-4963-8342-41d43ad2c3fd', center_code: 'MV' } },
+  bb: { app_metadata: { role: 'instructor', provider: 'email', providers: ['email'],
+        center_id: 'd0d702a3-3e8a-4913-a54d-167d4cdb0f8c', center_code: 'BB' } },
+}
+
+const ownerAccess = resolveCenterAccess(LIVE.owner, REAL_CENTERS)
+eq('owner sees both centers', ownerAccess.centers.map(c => c.short_code), ['BB', 'MV'])
+eq('owner gets the switcher', ownerAccess.canSwitch, true)
+eq('owner is not pinned', ownerAccess.pinned, false)
+
+const mvAccess = resolveCenterAccess(LIVE.mv, REAL_CENTERS)
+eq('instructor-mv sees only MV', mvAccess.centers.map(c => c.short_code), ['MV'])
+eq('instructor-mv gets NO switcher', mvAccess.canSwitch, false)
+eq('instructor-mv is pinned', mvAccess.pinned, true)
+
+const bbAccess = resolveCenterAccess(LIVE.bb, REAL_CENTERS)
+eq('instructor-bb sees only BB', bbAccess.centers.map(c => c.short_code), ['BB'])
+eq('instructor-bb gets NO switcher', bbAccess.canSwitch, false)
+
+// A pin naming a center that does not exist must yield nothing, never a
+// fallback to somebody else's center.
+const orphan = resolveCenterAccess(
+  { app_metadata: { role: 'instructor', center_code: 'ZZ' } }, REAL_CENTERS)
+eq('orphaned pin sees no centers', orphan.centers.length, 0)
+eq('orphaned pin still cannot switch', orphan.canSwitch, false)
 
 // ---- roster fields
 // level and performance carry check constraints that reject '' — a cleared

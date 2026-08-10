@@ -5,7 +5,7 @@ export default function CenterSwitcher() {
 
   if (centers.length === 0) return null
 
-  // Floor accounts are pinned to one center — no switcher, but they still
+  // Instructor accounts are pinned to one center — no switcher, but they still
   // need to see at a glance which center they're looking at.
   if (!canSwitch) {
     return (
