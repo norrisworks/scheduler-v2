@@ -19,6 +19,8 @@ body,
   height: 100%;
 }
 
+/* v1's grid backdrop was white/neutral (capacity_colors) so that unassigned
+   cards, which fill #f3f4f6, stay clearly visible against it. */
 body {
-  @apply bg-slate-100 text-slate-900 antialiased;
+  @apply bg-zinc-50 text-zinc-900 antialiased;
 }

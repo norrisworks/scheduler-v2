@@ -1,5 +1,4 @@
 import { timeToMinutes } from '../../lib/dates'
-import { hexToRgb } from '../../lib/colors'
 import { sessionEndMinutes } from './shiftCoverage'
 
 /** Working ratios from the auto-assign phases: 3 normal, 4 stretch cap. */
@@ -79,21 +78,30 @@ export function slotPressure(students, instructorsOnShift) {
   return 'ok'
 }
 
-const GAUGE_AT_CAP = '#DC2626'
-const GAUGE_EMPTY = '#E2E8F0'
+/**
+ * v1's fixed thresholds (capacity_colors, verbatim) for the instructor gauge
+ * cells. Cells show the NUMBER, tinted by these bands — not alpha fills.
+ */
+export function gaugeCellClass(load) {
+  if (load <= 0) return 'bg-zinc-200 text-zinc-400'
+  if (load <= 2) return 'bg-green-100 text-green-700'
+  if (load === 3) return 'bg-yellow-100 text-yellow-700'
+  if (load === 4) return 'bg-orange-100 text-orange-700'
+  return 'bg-red-100 text-red-700'
+}
 
 /**
- * Gauge cell intensity: 0 empty, 1–2 light, 3 solid at the normal working
- * ratio, 4+ red because that is the stretch cap. At-cap slots have to be
- * obvious — this is how the floor decides who can take a walk-in.
+ * v1's fixed thresholds for the per-slot student count chip on the time
+ * axis. One addition v1 could not detect: students present with ZERO
+ * instructors on shift is a real error state and stays solid red.
  */
-export function loadCellColor(load, instructorColor) {
-  if (load <= 0) return GAUGE_EMPTY
-  if (load >= STRETCH_RATIO) return GAUGE_AT_CAP
-  const rgb = hexToRgb(instructorColor)
-  if (!rgb) return GAUGE_EMPTY
-  const alpha = load >= NORMAL_RATIO ? 1 : load === 2 ? 0.55 : 0.3
-  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`
+export function slotChipClass(students, onShift) {
+  if (students > 0 && onShift === 0) return 'bg-red-500 text-white'
+  if (students === 0) return 'text-zinc-300'
+  if (students <= 5) return 'bg-green-100 text-green-700'
+  if (students <= 8) return 'bg-yellow-100 text-yellow-700'
+  if (students <= 10) return 'bg-orange-100 text-orange-700'
+  return 'bg-red-100 text-red-700'
 }
 
 /** Everything the time axis needs, one entry per 30-min slot. */

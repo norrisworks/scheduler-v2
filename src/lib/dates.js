@@ -93,15 +93,17 @@ export function formatDateLong(iso) {
 }
 
 /**
- * Format a naive DB time ('HH:MM:SS' or 'HH:MM') for display: '3:30', '11:00'.
- * DB times are center-local wall clock — no conversion, just presentation.
+ * Format a naive DB time ('HH:MM:SS' or 'HH:MM') for display: '3:30', '5:00'.
+ * 12-hour, no leading zero, minutes always shown (v1 formatTime behavior —
+ * capacity_colors: never 24-hour in the UI). DB times are center-local wall
+ * clock — no conversion, just presentation.
  */
 export function formatTime(time) {
   if (!time) return ''
   const [hStr, mStr] = time.split(':')
   const h = Number(hStr)
   const hour12 = h % 12 === 0 ? 12 : h % 12
-  return mStr === '00' ? `${hour12}` : `${hour12}:${mStr}`
+  return `${hour12}:${mStr}`
 }
 
 /** Format with meridiem: '3:30pm'. */

@@ -6,14 +6,13 @@ import { coverageWarning } from './shiftCoverage'
 import { INSTRUCTOR_DRAG_TYPE } from './dnd'
 
 /**
- * One card component for both orientations, as the spec requires. Layout,
- * sizing and row order in the vertical form follow the v1 card verbatim
- * (v1_reference session_card). The horizontal form is the same information
- * on two lines, because a 30-minute bar is only ~76px wide.
+ * One card component for both orientations. Layout, sizing and row order in
+ * the vertical form follow the v1 card verbatim (v1_reference session_card).
+ * The horizontal form is the same information on two lines, because a
+ * 30-minute bar is only ~76px wide.
  *
- * Two deliberate departures from v1, both required by BRIEF.md: notes are
- * pinned student_notes at readable size rather than 8px student.notes, and
- * session status is shown at all, which v1 had no concept of.
+ * Clicking opens the student drawer, as it did in v1. Status changes live
+ * behind the ⋯ menu rather than an always-present dropdown.
  */
 export default function SessionCard({
   session,
@@ -26,10 +25,10 @@ export default function SessionCard({
   active,
   dragActive,
   armedInstructor,
-  onSelect,
+  onOpenStudent,
   onAssign,
   onUnassign,
-  onStatusChange,
+  onStatusMenu,
 }) {
   const [dragOver, setDragOver] = useState(false)
 
@@ -56,23 +55,36 @@ export default function SessionCard({
   }
 
   // Armed instructor turns clicks into assignments (tablet path, where HTML5
-  // drag never fires). Otherwise a click selects, as it did in v1.
+  // drag never fires). Otherwise a click opens the student, as in v1.
   function handleClick() {
     if (armedInstructor) onAssign(session.id, armedInstructor.id)
-    else onSelect(selected ? null : session.id)
+    else onOpenStudent(session.student_id, session.id)
   }
 
-  const ring = dragOver || selected ? `2px solid ${BRAND_RED}` : active
-    ? '2px solid #22C55E'
-    : dragActive
-      ? `2px solid ${BRAND_RED}80`
-      : null
+  function openMenu(e) {
+    e.stopPropagation()
+    const rect = e.currentTarget.getBoundingClientRect()
+    onStatusMenu({ session, x: rect.right, y: rect.bottom })
+  }
+
+  const ring =
+    dragOver || selected
+      ? `2px solid ${BRAND_RED}`
+      : active
+        ? '2px solid #22C55E'
+        : dragActive
+          ? `2px solid ${BRAND_RED}80`
+          : null
 
   const wrapperProps = {
     onDragOver: handleDragOver,
     onDragLeave: () => setDragOver(false),
     onDrop: handleDrop,
     onClick: handleClick,
+    onContextMenu: (e) => {
+      e.preventDefault()
+      onStatusMenu({ session, x: e.clientX, y: e.clientY })
+    },
     title: student?.name,
     style: {
       ...style,
@@ -84,6 +96,17 @@ export default function SessionCard({
       ...(ring ? { outline: ring, outlineOffset: '-2px' } : null),
     },
   }
+
+  const menuButton = (
+    <button
+      type="button"
+      onClick={openMenu}
+      aria-label={`Change status for ${student?.name ?? 'session'}`}
+      className="shrink-0 rounded px-0.5 text-[10px] leading-none text-zinc-400 opacity-0 transition group-hover:opacity-100 hover:bg-black/5 hover:text-zinc-700"
+    >
+      ⋯
+    </button>
+  )
 
   const unassignButton = instructor && (
     <button
@@ -97,22 +120,6 @@ export default function SessionCard({
     >
       ✕
     </button>
-  )
-
-  const statusSelect = selected && (
-    <select
-      value={session.status}
-      onClick={(e) => e.stopPropagation()}
-      onChange={(e) => onStatusChange(session.id, e.target.value)}
-      aria-label={`Status for ${student?.name ?? 'session'}`}
-      className="w-full rounded border border-zinc-300 bg-white px-1 py-0.5 text-[10px] text-zinc-700"
-    >
-      {Object.entries(STATUSES).map(([value, meta]) => (
-        <option key={value} value={value}>
-          {meta.label}
-        </option>
-      ))}
-    </select>
   )
 
   if (layout === 'horizontal') {
@@ -175,10 +182,9 @@ export default function SessionCard({
               <span className="rounded bg-[#FFEB3B] px-1 text-[8px] font-bold text-black">Supp</span>
             )}
             {unassignButton}
+            {menuButton}
           </span>
         </div>
-
-        {statusSelect}
       </div>
     )
   }
@@ -214,6 +220,7 @@ export default function SessionCard({
             {student.grade}
           </span>
         )}
+        <span className="ml-auto">{menuButton}</span>
       </div>
 
       {/* Row 2: time and duration */}
@@ -285,8 +292,6 @@ export default function SessionCard({
           </span>
         )}
       </div>
-
-      {statusSelect && <div className="mt-1">{statusSelect}</div>}
     </div>
   )
 }

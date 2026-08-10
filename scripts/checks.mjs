@@ -6,7 +6,7 @@ import { getRole, getPinnedCenter, centerMatchesPin, resolveCenterAccess } from 
 import { emptyToNull, missingAttributes } from '../src/features/roster/studentFields.js'
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime } from '../src/lib/dates.js'
-import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, loadCellColor } from '../src/features/day/load.js'
+import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, gaugeCellClass, slotChipClass } from '../src/features/day/load.js'
 
 const checks = []
 const eq = (label, got, want) => checks.push([label, got, want, JSON.stringify(got) === JSON.stringify(want)])
@@ -148,13 +148,30 @@ eq('slot stats shape', stats[0], {
   minutes: 960, students: 2, onShift: 1, capacity: 3, stretchCapacity: 4, pressure: 'ok',
 })
 
-// Gauge intensity: 0 empty, 1-2 light, 3 solid, 4+ red at cap.
-eq('load 0 cell is empty',   loadCellColor(0, '#1E88E5'), '#E2E8F0')
-eq('load 1 cell is light',   loadCellColor(1, '#1E88E5'), 'rgba(30, 136, 229, 0.3)')
-eq('load 2 cell is mid',     loadCellColor(2, '#1E88E5'), 'rgba(30, 136, 229, 0.55)')
-eq('load 3 cell is solid',   loadCellColor(3, '#1E88E5'), 'rgba(30, 136, 229, 1)')
-eq('load 4 cell is red',     loadCellColor(4, '#1E88E5'), '#DC2626')
-eq('load 9 cell is red',     loadCellColor(9, '#1E88E5'), '#DC2626')
+// v1's fixed gauge bands (capacity_colors), verbatim.
+eq('gauge 0', gaugeCellClass(0), 'bg-zinc-200 text-zinc-400')
+eq('gauge 1', gaugeCellClass(1), 'bg-green-100 text-green-700')
+eq('gauge 2', gaugeCellClass(2), 'bg-green-100 text-green-700')
+eq('gauge 3', gaugeCellClass(3), 'bg-yellow-100 text-yellow-700')
+eq('gauge 4', gaugeCellClass(4), 'bg-orange-100 text-orange-700')
+eq('gauge 5', gaugeCellClass(5), 'bg-red-100 text-red-700')
+eq('gauge 9', gaugeCellClass(9), 'bg-red-100 text-red-700')
+
+// v1's fixed axis-chip bands, plus the one addition: students with zero
+// instructors on shift is solid red, a case v1 could not detect.
+eq('chip 0',   slotChipClass(0, 5), 'text-zinc-300')
+eq('chip 1',   slotChipClass(1, 5), 'bg-green-100 text-green-700')
+eq('chip 5',   slotChipClass(5, 5), 'bg-green-100 text-green-700')
+eq('chip 6',   slotChipClass(6, 5), 'bg-yellow-100 text-yellow-700')
+eq('chip 8',   slotChipClass(8, 5), 'bg-yellow-100 text-yellow-700')
+eq('chip 9',   slotChipClass(9, 5), 'bg-orange-100 text-orange-700')
+eq('chip 10',  slotChipClass(10, 5), 'bg-orange-100 text-orange-700')
+eq('chip 11',  slotChipClass(11, 5), 'bg-red-100 text-red-700')
+eq('chip 23',  slotChipClass(23, 6), 'bg-red-100 text-red-700')
+// Thresholds are absolute now — staffing level must not shift the band.
+eq('chip band ignores headcount', slotChipClass(5, 1), 'bg-green-100 text-green-700')
+eq('students with nobody on shift is solid red', slotChipClass(1, 0), 'bg-red-500 text-white')
+eq('empty slot with nobody on shift is not an error', slotChipClass(0, 0), 'text-zinc-300')
 
 // ---- transposed orientation geometry and student grouping
 const tAxis = buildTimeAxis('2026-08-10', [])
@@ -291,9 +308,12 @@ eq('startOfWeek from Wed',   startOfWeek('2026-08-12'), '2026-08-09')
 eq('startOfWeek idempotent', startOfWeek('2026-08-09'), '2026-08-09')
 
 eq('formatDateLong',         formatDateLong('2026-08-09'), 'Sunday, August 9, 2026')
-eq('formatTime on the hour', formatTime('15:00:00'), '3')
+// 12-hour, no leading zero, minutes always shown. Never 24-hour in the UI.
+eq('formatTime on the hour', formatTime('15:00:00'), '3:00')
 eq('formatTime half past',   formatTime('15:30:00'), '3:30')
-eq('formatTime noon',        formatTime('12:00:00'), '12')
+eq('formatTime noon',        formatTime('12:00:00'), '12:00')
+eq('formatTime midnight',    formatTime('00:30:00'), '12:30')
+eq('formatTime morning',     formatTime('09:15:00'), '9:15')
 eq('formatTimeMeridiem am',  formatTimeMeridiem('09:30:00'), '9:30am')
 eq('formatTimeMeridiem pm',  formatTimeMeridiem('18:30:00'), '6:30pm')
 eq('timeToMinutes',          timeToMinutes('18:30:00'), 1110)

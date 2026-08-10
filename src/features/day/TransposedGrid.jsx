@@ -32,10 +32,10 @@ export default function TransposedGrid({
   selectedId,
   dragActive,
   armedInstructor,
-  onSelect,
+  onOpenStudent,
   onAssign,
   onUnassign,
-  onStatusChange,
+  onStatusMenu,
 }) {
   const [collapsed, setCollapsed] = useState(() => new Set())
 
@@ -74,7 +74,7 @@ export default function TransposedGrid({
   return (
     <div className="min-w-fit p-4">
       {/* Time axis header: labels and the per-half-hour student counts */}
-      <div className="sticky top-0 z-20 -mx-4 -mt-4 mb-2 bg-slate-100 px-4 pt-4 pb-2">
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 mb-2 bg-zinc-50 px-4 pt-4 pb-2">
         <div className="flex">
           <div style={{ width: NAME_COLUMN }} className="shrink-0" />
           <div style={{ width }} className="relative h-9 shrink-0">
@@ -84,7 +84,7 @@ export default function TransposedGrid({
                 className="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-0.5"
                 style={{ left: i * SLOT_WIDTH }}
               >
-                <span className="text-[10px] whitespace-nowrap text-slate-500 tabular-nums">
+                <span className="text-xs whitespace-nowrap text-zinc-500 tabular-nums">
                   {formatTime(minutesToTime(minutes))}
                 </span>
                 <SlotCount stat={slotStats[i]} />
@@ -130,13 +130,13 @@ export default function TransposedGrid({
                     )}
                   </div>
 
-                  <div style={{ width }} className="relative shrink-0">
+                  <div style={{ width }} className="relative shrink-0 rounded bg-white">
                     {axis.slots.map((minutes, i) => (
                       <div
                         key={minutes}
                         className={
                           'absolute inset-y-0 border-l ' +
-                          (minutes % 60 === 0 ? 'border-slate-300' : 'border-slate-200')
+                          (minutes % 60 === 0 ? 'border-zinc-200' : 'border-zinc-100')
                         }
                         style={{ left: i * SLOT_WIDTH }}
                       />
@@ -174,10 +174,10 @@ export default function TransposedGrid({
                           active={active}
                           dragActive={dragActive}
                           armedInstructor={armedInstructor}
-                          onSelect={onSelect}
+                          onOpenStudent={onOpenStudent}
                           onAssign={onAssign}
                           onUnassign={onUnassign}
-                          onStatusChange={onStatusChange}
+                          onStatusMenu={onStatusMenu}
                         />
                       )
                     })}

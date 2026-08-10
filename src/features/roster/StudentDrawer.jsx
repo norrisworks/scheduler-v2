@@ -8,8 +8,7 @@ import RecurringSlots from './RecurringSlots'
 import StudentNotes from './StudentNotes'
 
 const TABS = [
-  { key: 'attributes', label: 'Attributes' },
-  { key: 'slots', label: 'Standing slots' },
+  { key: 'attributes', label: 'Details' },
   { key: 'notes', label: 'Notes' },
 ]
 
@@ -122,36 +121,39 @@ export default function StudentDrawer({ studentId, onClose, onChanged }) {
         {loading || !student ? (
           <Spinner label="Loading student…" />
         ) : tab === 'attributes' ? (
-          <StudentAttributes
-            student={student}
-            saving={saving}
-            onSave={(patch) => save(updateStudent, patch)}
-          />
-        ) : tab === 'slots' ? (
-          <div className="space-y-3">
-            <RecurringSlots
-              slots={slots}
+          <div className="space-y-5">
+            <StudentAttributes
+              student={student}
               saving={saving}
-              onAdd={(slot) => saveSlot(addSlot, slot)}
-              onUpdate={(id, patch) => saveSlot(updateSlot, id, patch)}
-              onDelete={(id) => saveSlot(deleteSlot, id)}
+              onSave={(patch) => save(updateStudent, patch)}
             />
-            {slotEffect && (
-              <p
-                className={
-                  'rounded-lg px-2.5 py-2 text-xs ' +
-                  (slotEffect.error
-                    ? 'bg-red-50 text-red-700'
-                    : 'bg-emerald-50 text-emerald-800')
-                }
-              >
-                {slotEffect.error
-                  ? `Could not update sessions: ${slotEffect.error}`
-                  : slotEffect.text
-                    ? `Upcoming sessions updated — ${slotEffect.text}. Hand-edited sessions were left alone.`
-                    : 'No upcoming sessions needed changing.'}
-              </p>
-            )}
+
+            <section className="border-t border-zinc-200 pt-4">
+              <h3 className="mb-2 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+                Standing slots
+              </h3>
+              <RecurringSlots
+                slots={slots}
+                saving={saving}
+                onAdd={(slot) => saveSlot(addSlot, slot)}
+                onUpdate={(id, patch) => saveSlot(updateSlot, id, patch)}
+                onDelete={(id) => saveSlot(deleteSlot, id)}
+              />
+              {slotEffect && (
+                <p
+                  className={
+                    'mt-3 rounded-lg px-2.5 py-2 text-xs ' +
+                    (slotEffect.error ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-800')
+                  }
+                >
+                  {slotEffect.error
+                    ? `Could not update sessions: ${slotEffect.error}`
+                    : slotEffect.text
+                      ? `Upcoming sessions updated — ${slotEffect.text}. Hand-edited sessions were left alone.`
+                      : 'No upcoming sessions needed changing.'}
+                </p>
+              )}
+            </section>
           </div>
         ) : (
           <StudentNotes

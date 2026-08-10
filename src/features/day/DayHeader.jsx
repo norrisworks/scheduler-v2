@@ -10,6 +10,7 @@ export default function DayHeader({
   onOrientationChange,
   onMaterialize,
   materializing,
+  onAddSession,
 }) {
   const today = todayISO()
 
@@ -70,6 +71,13 @@ export default function DayHeader({
           aria-label="Jump to date"
           className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-700"
         />
+        <button
+          type="button"
+          onClick={onAddSession}
+          className="rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-600"
+        >
+          + Session
+        </button>
         <button
           type="button"
           onClick={() => onMaterialize()}

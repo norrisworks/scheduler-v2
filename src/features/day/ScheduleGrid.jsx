@@ -14,7 +14,7 @@ import {
 import SessionCard from './SessionCard'
 import SlotCount from './SlotCount'
 
-const GUTTER = 74 // px — time label plus the slot's student count
+const GUTTER = 78 // px — time label plus the slot's student count
 
 export default function ScheduleGrid({
   axis,
@@ -27,10 +27,10 @@ export default function ScheduleGrid({
   selectedId,
   dragActive,
   armedInstructor,
-  onSelect,
+  onOpenStudent,
   onAssign,
   onUnassign,
-  onStatusChange,
+  onStatusMenu,
 }) {
   const columns = useMemo(() => {
     const hasUnset = sessions.some((s) => levelOf(s) === UNSET_LEVEL.key)
@@ -44,15 +44,15 @@ export default function ScheduleGrid({
 
   return (
     <div className="min-w-fit p-4">
-      <div className="sticky top-0 z-20 -mx-4 -mt-4 bg-slate-100 px-4 pt-4 pb-2">
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 bg-zinc-50 px-4 pt-4 pb-2">
         <div className="flex gap-3">
           <div style={{ width: GUTTER }} className="shrink-0" />
           {columns.map(({ def, sessions: mine, pack }) => (
             <div key={def.key} style={{ width: columnWidth(pack.count) }} className="shrink-0">
-              <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5">
+              <div className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-2 py-1.5">
                 <span className={`h-2 w-2 shrink-0 rounded-full ${def.accent}`} />
-                <span className="truncate text-xs font-semibold text-slate-800">{def.label}</span>
-                <span className="ml-auto text-xs text-slate-400">{mine.length}</span>
+                <span className="truncate text-xs font-semibold text-zinc-800">{def.label}</span>
+                <span className="ml-auto text-xs text-zinc-400">{mine.length}</span>
               </div>
             </div>
           ))}
@@ -64,10 +64,10 @@ export default function ScheduleGrid({
           {axis.slots.map((minutes, i) => (
             <span
               key={minutes}
-              className="absolute right-0 flex -translate-y-1/2 items-center gap-1"
+              className="absolute right-0 flex -translate-y-1/2 items-center justify-end gap-1"
               style={{ top: i * SLOT_HEIGHT }}
             >
-              <span className="text-[10px] text-slate-500 tabular-nums">
+              <span className="text-xs text-zinc-500 tabular-nums">
                 {formatTime(minutesToTime(minutes))}
               </span>
               <SlotCount stat={slotStats[i]} />
@@ -79,27 +79,25 @@ export default function ScheduleGrid({
           <div
             key={def.key}
             style={{ width: columnWidth(pack.count), height: axis.height }}
-            className="relative shrink-0"
+            className="relative shrink-0 rounded-lg bg-white"
           >
             {axis.slots.map((minutes, i) => (
               <div
                 key={minutes}
                 className={
                   'absolute inset-x-0 border-t ' +
-                  (minutes % 60 === 0 ? 'border-slate-300' : 'border-slate-200')
+                  (minutes % 60 === 0 ? 'border-zinc-200' : 'border-zinc-100')
                 }
                 style={{ top: i * SLOT_HEIGHT }}
               />
             ))}
 
-            {nowMinutes !== null &&
-              nowMinutes >= axis.start &&
-              nowMinutes <= axis.end && (
-                <div
-                  className="absolute inset-x-0 z-10 border-t-2 border-emerald-500/70"
-                  style={{ top: ((nowMinutes - axis.start) / SLOT_MINUTES) * SLOT_HEIGHT }}
-                />
-              )}
+            {nowMinutes !== null && nowMinutes >= axis.start && nowMinutes <= axis.end && (
+              <div
+                className="absolute inset-x-0 z-10 border-t-2 border-emerald-500/70"
+                style={{ top: ((nowMinutes - axis.start) / SLOT_MINUTES) * SLOT_HEIGHT }}
+              />
+            )}
 
             {pack.sorted.map((session) => {
               const { top, height } = sessionGeometry(session, axis)
@@ -126,10 +124,10 @@ export default function ScheduleGrid({
                   active={active}
                   dragActive={dragActive}
                   armedInstructor={armedInstructor}
-                  onSelect={onSelect}
+                  onOpenStudent={onOpenStudent}
                   onAssign={onAssign}
                   onUnassign={onUnassign}
-                  onStatusChange={onStatusChange}
+                  onStatusMenu={onStatusMenu}
                 />
               )
             })}
@@ -138,7 +136,7 @@ export default function ScheduleGrid({
       </div>
 
       {sessions.length === 0 && (
-        <p className="mt-6 text-center text-xs text-slate-400">
+        <p className="mt-6 text-center text-xs text-zinc-400">
           No sessions on this day. Sessions arrive from the materializer, the Radius import, or
           manual entry.
         </p>

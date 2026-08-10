@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useCenter } from '../centers/CenterProvider'
 import { centerNowTime, timeToMinutes, todayISO } from '../../lib/dates'
 import Spinner from '../../components/Spinner'
@@ -10,6 +10,9 @@ import ScheduleGrid from './ScheduleGrid'
 import TransposedGrid from './TransposedGrid'
 import CancelledList from './CancelledList'
 import InstructorSidebar from './InstructorSidebar'
+import StatusMenu from './StatusMenu'
+import AddSessionDialog from './AddSessionDialog'
+import StudentDrawer from '../roster/StudentDrawer'
 import { useMaterializer } from '../materializer/useMaterializer'
 import { describeMaterialize, MATERIALIZE_DAYS } from '../materializer/materialize'
 
@@ -19,7 +22,9 @@ export default function DayView() {
   const { centerId } = useCenter()
   const [date, setDate] = useState(todayISO)
   const [armedInstructorId, setArmedInstructorId] = useState(null)
-  const [selectedId, setSelectedId] = useState(null)
+  const [openStudent, setOpenStudent] = useState(null) // { studentId, sessionId }
+  const [statusMenu, setStatusMenu] = useState(null)
+  const [addingSession, setAddingSession] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const [nowTick, setNowTick] = useState(() => centerNowTime())
   const [orientation, setOrientation] = useState(
@@ -79,11 +84,24 @@ export default function DayView() {
     const onKey = (e) => {
       if (e.key !== 'Escape') return
       setArmedInstructorId(null)
-      setSelectedId(null)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
+
+  const handleOpenStudent = useCallback(
+    (studentId, sessionId) => setOpenStudent({ studentId, sessionId }),
+    [],
+  )
+
+  // A manual add can land on a different day than the one on screen.
+  const handleCreated = useCallback(
+    async (createdDate) => {
+      if (createdDate !== date) setDate(createdDate)
+      else await refetch()
+    },
+    [date, refetch],
+  )
 
   const gridProps = {
     axis,
@@ -93,13 +111,13 @@ export default function DayView() {
     shiftByInstructor,
     notesByStudent,
     nowMinutes,
-    selectedId,
+    selectedId: openStudent?.sessionId ?? null,
     dragActive,
     armedInstructor,
-    onSelect: setSelectedId,
+    onOpenStudent: handleOpenStudent,
     onAssign: assign,
     onUnassign: unassign,
-    onStatusChange: setStatus,
+    onStatusMenu: setStatusMenu,
   }
 
   return (
@@ -114,6 +132,7 @@ export default function DayView() {
         onOrientationChange={setOrientation}
         onMaterialize={materialize}
         materializing={materializing}
+        onAddSession={() => setAddingSession(true)}
       />
 
       {materializeError && (
@@ -173,6 +192,15 @@ export default function DayView() {
           <CancelledList sessions={offGrid} onStatusChange={setStatus} />
         </div>
 
+        {openStudent && (
+          <StudentDrawer
+            key={openStudent.studentId}
+            studentId={openStudent.studentId}
+            onClose={() => setOpenStudent(null)}
+            onChanged={refetch}
+          />
+        )}
+
         <InstructorSidebar
           instructors={instructors}
           shiftByInstructor={shiftByInstructor}
@@ -184,6 +212,21 @@ export default function DayView() {
           onDragStateChange={setDragActive}
         />
       </div>
+
+      <StatusMenu
+        menu={statusMenu}
+        onStatusChange={setStatus}
+        onClose={() => setStatusMenu(null)}
+      />
+
+      {addingSession && (
+        <AddSessionDialog
+          centerId={centerId}
+          date={date}
+          onClose={() => setAddingSession(false)}
+          onCreated={handleCreated}
+        />
+      )}
     </div>
   )
 }

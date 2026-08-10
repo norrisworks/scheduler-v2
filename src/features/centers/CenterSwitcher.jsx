@@ -10,7 +10,7 @@ export default function CenterSwitcher() {
   if (!canSwitch) {
     return (
       <span
-        className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-600"
+        className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white"
         title={center?.name}
       >
         {center?.short_code}
@@ -20,7 +20,7 @@ export default function CenterSwitcher() {
 
   return (
     <div
-      className="flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5"
+      className="flex items-center gap-0.5 rounded-lg bg-brand-600 p-0.5"
       role="group"
       aria-label="Active center"
     >
@@ -35,9 +35,7 @@ export default function CenterSwitcher() {
             title={c.name}
             className={
               'rounded-md px-3 py-1.5 text-sm font-semibold transition ' +
-              (active
-                ? 'bg-white text-brand-600 shadow-sm'
-                : 'text-slate-500 hover:text-slate-800')
+              (active ? 'bg-white text-brand-600 shadow-sm' : 'text-red-100 hover:text-white')
             }
           >
             {c.short_code}

@@ -8,7 +8,7 @@ import {
   instructorCurrentCount,
   instructorLoadBySlot,
   instructorTotalCount,
-  loadCellColor,
+  gaugeCellClass,
   occupiesFloor,
 } from './load'
 import LoadGauge from './LoadGauge'
@@ -106,9 +106,10 @@ export default function InstructorSidebar({
         <div className="flex items-center gap-2 text-[10px] text-slate-500">
           <span>Load</span>
           <Swatch load={0} label="0" />
-          <Swatch load={1} label="1–2" />
+          <Swatch load={2} label="1–2" />
           <Swatch load={NORMAL_RATIO} label="3" />
-          <Swatch load={STRETCH_RATIO} label="4+ cap" />
+          <Swatch load={STRETCH_RATIO} label="4" />
+          <Swatch load={5} label="5+" />
         </div>
         <p className="mt-1.5 text-[11px] leading-snug text-slate-400">
           Drag onto a session to assign, or tap to select then tap sessions.
@@ -121,10 +122,7 @@ export default function InstructorSidebar({
 function Swatch({ load, label }) {
   return (
     <span className="flex items-center gap-1">
-      <span
-        className="h-2 w-3 rounded-[1px]"
-        style={{ backgroundColor: loadCellColor(load, '#475569') }}
-      />
+      <span className={'h-2.5 w-3 rounded-[1px] ' + gaugeCellClass(load)} />
       {label}
     </span>
   )
@@ -212,7 +210,6 @@ function InstructorRow({ instructor, shift, stats, slots, armed, onArm, onDragSt
         <LoadGauge
           slots={slots}
           load={stats?.load ?? []}
-          color={instructor.color}
           label={`${instructor.name} load by half hour`}
         />
       </div>
