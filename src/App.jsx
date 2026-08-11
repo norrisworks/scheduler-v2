@@ -7,6 +7,7 @@ import Spinner from './components/Spinner'
 import DayViewPage from './pages/DayViewPage'
 import RosterPage from './pages/RosterPage'
 import ShiftsPage from './pages/ShiftsPage'
+import InstructorsPage from './pages/InstructorsPage'
 import ImportsPage from './pages/ImportsPage'
 import DataHealthPage from './pages/DataHealthPage'
 
@@ -24,6 +25,7 @@ function AuthedApp() {
           <Route path="day" element={<DayViewPage />} />
           <Route path="roster" element={<RosterPage />} />
           <Route path="shifts" element={<ShiftsPage />} />
+          <Route path="instructors" element={<InstructorsPage />} />
           <Route path="imports" element={<ImportsPage />} />
           <Route path="health" element={<DataHealthPage />} />
           <Route path="*" element={<Navigate to="/day" replace />} />

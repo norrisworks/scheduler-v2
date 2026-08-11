@@ -4,6 +4,7 @@ import { readableTextOn, tint } from '../src/lib/colors.js'
 import { centerHours, buildTimeAxis, sessionGeometry, packSubColumns, columnWidth, subColumnLeft, SLOT_HEIGHT, SLOT_WIDTH, sessionSpan, axisWidth, groupByStudent } from '../src/features/day/timeGrid.js'
 import { getRole, getPinnedCenter, centerMatchesPin, resolveCenterAccess } from '../src/features/auth/roles.js'
 import { emptyToNull, missingAttributes } from '../src/features/roster/studentFields.js'
+import { capabilityString, instructorWarnings, nextColor, INSTRUCTOR_PALETTE } from '../src/features/instructors/instructorFields.js'
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime } from '../src/lib/dates.js'
 import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, gaugeCellClass, slotChipClass } from '../src/features/day/load.js'
@@ -293,6 +294,34 @@ eq('removal alone still reports', describeMaterialize({ created: 0, updated: 0, 
    '1 removed')
 eq('nothing changed', materializeChanged({ created: 0, updated: 0, removed: 0 }), false)
 eq('something changed', materializeChanged({ created: 0, updated: 0, removed: 1 }), true)
+
+// ---- instructor configuration
+const teacher = (over = {}) => ({
+  name: 'Test', color: '#1E88E5', priority: 'primary', last_resort: false,
+  can_teach_elementary: true, can_teach_middle: true, can_teach_high: true, ...over,
+})
+eq('all three levels', capabilityString(teacher()), 'EMH')
+eq('elementary only', capabilityString(teacher({ can_teach_middle: false, can_teach_high: false })), 'E')
+eq('middle and high', capabilityString(teacher({ can_teach_elementary: false })), 'MH')
+eq('no levels', capabilityString(teacher({
+  can_teach_elementary: false, can_teach_middle: false, can_teach_high: false })), '')
+
+// Config that would quietly make someone unassignable in step 6.
+eq('healthy instructor has no warnings', instructorWarnings(teacher()), [])
+eq('no levels warns', instructorWarnings(teacher({
+  can_teach_elementary: false, can_teach_middle: false, can_teach_high: false })),
+  ['cannot teach any level, so will never be auto-assigned'])
+eq('last-resort primary warns', instructorWarnings(teacher({ last_resort: true })),
+  ['is last-resort but marked primary'])
+eq('last-resort backup is fine',
+  instructorWarnings(teacher({ last_resort: true, priority: 'backup' })), [])
+
+// New instructors take the first unused palette colour so they stay distinct.
+eq('first colour when none taken', nextColor([]), '#E53935')
+eq('skips taken colours', nextColor([{ color: '#E53935' }, { color: '#1E88E5' }]), '#43A047')
+eq('matching is case-insensitive', nextColor([{ color: '#e53935' }]), '#1E88E5')
+eq('falls back when palette exhausted',
+  nextColor(INSTRUCTOR_PALETTE.map((c) => ({ color: c }))), '#E53935')
 
 // ---- dates: always America/New_York, never toISOString
 // 9pm ET on Aug 9 is already Aug 10 in UTC. v1 showed tomorrow after 8pm.

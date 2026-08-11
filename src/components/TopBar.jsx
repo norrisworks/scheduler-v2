@@ -6,13 +6,15 @@ const NAV = [
   { to: '/day', label: 'Day' },
   { to: '/roster', label: 'Roster' },
   { to: '/shifts', label: 'Shifts' },
+  { to: '/instructors', label: 'Instructors', adminOnly: true },
   { to: '/imports', label: 'Imports' },
   { to: '/health', label: 'Data health' },
 ]
 
 /** v1 header style: Mathnasium brand red, white text (capacity_colors). */
 export default function TopBar() {
-  const { user, signOut } = useAuth()
+  const { user, signOut, isAdmin } = useAuth()
+  const nav = NAV.filter((item) => isAdmin || !item.adminOnly)
 
   return (
     <header className="sticky top-0 z-30 bg-brand-500">
@@ -25,7 +27,7 @@ export default function TopBar() {
         </div>
 
         <nav className="flex items-center gap-1 overflow-x-auto">
-          {NAV.map((item) => (
+          {nav.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
