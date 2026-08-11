@@ -148,14 +148,17 @@ eq('slot stats shape', stats[0], {
   minutes: 960, students: 2, onShift: 1, capacity: 3, stretchCapacity: 4, pressure: 'ok',
 })
 
-// v1's fixed gauge bands (capacity_colors), verbatim.
-eq('gauge 0', gaugeCellClass(0), 'bg-zinc-200 text-zinc-400')
-eq('gauge 1', gaugeCellClass(1), 'bg-green-100 text-green-700')
-eq('gauge 2', gaugeCellClass(2), 'bg-green-100 text-green-700')
-eq('gauge 3', gaugeCellClass(3), 'bg-yellow-100 text-yellow-700')
-eq('gauge 4', gaugeCellClass(4), 'bg-orange-100 text-orange-700')
-eq('gauge 5', gaugeCellClass(5), 'bg-red-100 text-red-700')
-eq('gauge 9', gaugeCellClass(9), 'bg-red-100 text-red-700')
+// Gauge bands per the owner override: 3:1 is the working TARGET, so 3 is the
+// good state (full green), 4 is the stretch cap, 5+ is over.
+eq('gauge 0 is gray',        gaugeCellClass(0), 'bg-zinc-200 text-zinc-400')
+eq('gauge 1 has room',       gaugeCellClass(1), 'bg-green-50 text-green-600')
+eq('gauge 2 has room',       gaugeCellClass(2), 'bg-green-50 text-green-600')
+eq('gauge 3 is AT TARGET',   gaugeCellClass(3), 'bg-green-200 text-green-800')
+eq('gauge 4 is stretch cap', gaugeCellClass(4), 'bg-yellow-100 text-yellow-700')
+eq('gauge 5 is over cap',    gaugeCellClass(5), 'bg-red-100 text-red-700')
+eq('gauge 9 is over cap',    gaugeCellClass(9), 'bg-red-100 text-red-700')
+// 3 must never read as a warning colour again.
+eq('gauge 3 is not yellow',  gaugeCellClass(3).includes('yellow'), false)
 
 // v1's fixed axis-chip bands, plus the one addition: students with zero
 // instructors on shift is solid red, a case v1 could not detect.

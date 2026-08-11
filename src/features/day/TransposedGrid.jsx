@@ -13,8 +13,9 @@ import {
 } from './timeGrid'
 import SessionCard from './SessionCard'
 import SlotCount from './SlotCount'
+import { SLOT_CERTAINTY } from './studentOptions'
 
-const NAME_COLUMN = 150 // px
+const NAME_COLUMN = 180 // px — name, certainty dot, grade and Supp live here
 
 /**
  * Transposed orientation: time runs left-to-right, one row per student,
@@ -102,13 +103,13 @@ export default function TransposedGrid({
               type="button"
               onClick={() => toggle(def.key)}
               aria-expanded={!isCollapsed}
-              className="mb-1 flex w-full items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-left hover:bg-slate-50"
+              className="mb-1 flex w-full items-center gap-2 rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-left hover:bg-zinc-50"
               style={{ width: NAME_COLUMN + width }}
             >
-              <span className="text-[10px] text-slate-400">{isCollapsed ? '▸' : '▾'}</span>
+              <span className="text-[10px] text-zinc-400">{isCollapsed ? '▸' : '▾'}</span>
               <span className={`h-2 w-2 shrink-0 rounded-full ${def.accent}`} />
-              <span className="text-xs font-semibold text-slate-800">{def.label}</span>
-              <span className="ml-auto text-xs text-slate-400">
+              <span className="text-xs font-semibold text-zinc-800">{def.label}</span>
+              <span className="ml-auto text-xs text-zinc-400">
                 {rows.length} student{rows.length === 1 ? '' : 's'}
               </span>
             </button>
@@ -116,16 +117,35 @@ export default function TransposedGrid({
             {!isCollapsed &&
               rows.map((row) => (
                 <div key={row.studentId} className="flex" style={{ height: ROW_HEIGHT }}>
+                  {/* The row label is the only place the student is named,
+                      so the bars can stay slim. */}
                   <div
                     style={{ width: NAME_COLUMN }}
-                    className="flex shrink-0 items-center pr-2 text-xs text-slate-700"
+                    className="flex shrink-0 items-center gap-1 pr-2 text-xs text-zinc-700"
                   >
-                    <span className="truncate" title={row.student?.name}>
+                    {SLOT_CERTAINTY[row.student?.slot_certainty] && (
+                      <span
+                        className="h-1.5 w-1.5 shrink-0 rounded-full"
+                        style={{
+                          backgroundColor: SLOT_CERTAINTY[row.student.slot_certainty].color,
+                        }}
+                        title={SLOT_CERTAINTY[row.student.slot_certainty].label}
+                      />
+                    )}
+                    <span className="min-w-0 flex-1 truncate" title={row.student?.name}>
                       {row.student?.name ?? 'Unknown'}
                     </span>
                     {row.student?.grade && (
-                      <span className="ml-1 shrink-0 rounded bg-zinc-200 px-1 text-[9px] text-zinc-600">
+                      <span className="shrink-0 rounded bg-zinc-200 px-1 text-[9px] text-zinc-600">
                         {row.student.grade}
+                      </span>
+                    )}
+                    {row.student?.needs_schoolwork && (
+                      <span
+                        className="shrink-0 rounded bg-[#FFEB3B] px-1 text-[8px] font-bold text-black"
+                        title="Needs schoolwork"
+                      >
+                        Supp
                       </span>
                     )}
                   </div>

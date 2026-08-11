@@ -122,47 +122,27 @@ export default function SessionCard({
     </button>
   )
 
+  // Rows view: the row label already carries the student's name, certainty
+  // dot and grade, so the bar never repeats them. It stays slim and shows
+  // only what varies per session.
   if (layout === 'horizontal') {
     return (
       <div
         {...wrapperProps}
         className={
-          'group absolute flex cursor-pointer flex-col justify-center gap-0.5 overflow-hidden rounded-lg px-1.5 shadow-sm transition-all ' +
+          'group absolute flex cursor-pointer flex-col justify-center gap-px overflow-hidden rounded-lg px-1.5 shadow-sm transition-all ' +
           (status.muted ? 'opacity-60' : '')
         }
       >
         <div className="flex items-center gap-1">
-          {certainty && (
-            <span
-              className="h-1.5 w-1.5 shrink-0 rounded-full"
-              style={{ backgroundColor: certainty.color }}
-              title={certainty.label}
-            />
-          )}
           <span
-            className="truncate text-[11px] font-medium"
-            style={{ color: instructor?.color || '#374151' }}
+            className={
+              'shrink-0 text-[9px] text-zinc-600 ' +
+              (session.status === 'cancelled' ? 'line-through' : '')
+            }
           >
-            {student?.name || 'Unknown'}
-          </span>
-          {student?.grade && (
-            <span className="shrink-0 rounded bg-zinc-200 px-1 text-[9px] text-zinc-600">
-              {student.grade}
-            </span>
-          )}
-          <span className="ml-auto shrink-0 text-[9px] text-zinc-500">
             {formatTime(session.start_time)} • {session.duration}m
           </span>
-        </div>
-
-        <div className="flex items-center gap-1">
-          {instructor ? (
-            <span className="truncate text-[9px]" style={{ color: instructor.color }}>
-              → {instructor.name}
-            </span>
-          ) : (
-            <span className="truncate text-[9px] text-zinc-400">Unassigned</span>
-          )}
           {warning && (
             <span className="shrink-0 text-[9px] text-amber-600" title={warning} aria-label={warning}>
               ⚠
@@ -177,13 +157,26 @@ export default function SessionCard({
               ●
             </span>
           )}
-          <span className="ml-auto flex shrink-0 items-center gap-1">
-            {student?.needs_schoolwork && (
-              <span className="rounded bg-[#FFEB3B] px-1 text-[8px] font-bold text-black">Supp</span>
-            )}
+          <span className="ml-auto flex shrink-0 items-center">
             {unassignButton}
             {menuButton}
           </span>
+        </div>
+
+        <div className="flex items-center gap-1">
+          {instructor ? (
+            <span className="min-w-0 truncate text-[9px]" style={{ color: instructor.color }}>
+              → {instructor.name}
+            </span>
+          ) : (
+            <span className="truncate text-[9px] text-zinc-400">Unassigned</span>
+          )}
+          {session.status !== 'scheduled' && (
+            <span className="ml-auto flex shrink-0 items-center gap-0.5 rounded bg-white/70 px-1 text-[8px] font-semibold text-zinc-700">
+              <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
+              {status.label}
+            </span>
+          )}
         </div>
       </div>
     )
@@ -197,7 +190,8 @@ export default function SessionCard({
         (status.muted ? 'opacity-60' : '')
       }
     >
-      {/* Row 1: certainty dot, name, grade */}
+      {/* Row 1: certainty dot and name. The grade chip used to sit inline
+          here and cost the name most of the card's width. */}
       <div className="flex items-center gap-1">
         {certainty && (
           <span
@@ -208,24 +202,31 @@ export default function SessionCard({
         )}
         <div
           className={
-            'truncate text-[11px] font-medium ' +
+            'min-w-0 flex-1 truncate text-[11px] font-medium ' +
             (session.status === 'cancelled' ? 'line-through' : '')
           }
           style={{ color: instructor?.color || '#374151' }}
         >
           {student?.name || 'Unknown'}
         </div>
+      </div>
+
+      {/* Floated rather than inline: as a flex sibling it permanently reserved
+          ~13px of a 95px card and truncated names that would otherwise fit. */}
+      <div className="absolute top-0.5 right-0.5 rounded bg-white/80 backdrop-blur-[1px]">
+        {menuButton}
+      </div>
+
+      {/* Row 2: time, duration and grade */}
+      <div className="mt-0.5 flex items-center gap-1 text-[9px] text-zinc-500">
+        <span>
+          {formatTime(session.start_time)} • {session.duration}m
+        </span>
         {student?.grade && (
-          <span className="shrink-0 rounded bg-zinc-200 px-1 py-0.5 text-[9px] text-zinc-600">
+          <span className="shrink-0 rounded bg-zinc-200 px-1 text-[9px] text-zinc-600">
             {student.grade}
           </span>
         )}
-        <span className="ml-auto">{menuButton}</span>
-      </div>
-
-      {/* Row 2: time and duration */}
-      <div className="mt-0.5 text-[9px] text-zinc-500">
-        {formatTime(session.start_time)} • {session.duration}m
       </div>
 
       {/* Row 3: academic status, and session status when it isn't the norm */}

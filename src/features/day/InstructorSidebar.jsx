@@ -23,6 +23,8 @@ export default function InstructorSidebar({
   armedInstructorId,
   onArm,
   onDragStateChange,
+  open,
+  onToggleOpen,
 }) {
   // v1_reference: only instructors on shift are listed. Off-shift staff stay
   // reachable behind a disclosure — Workstream coverage is partial, and
@@ -47,13 +49,61 @@ export default function InstructorSidebar({
   const offShift = instructors.filter((i) => !shiftByInstructor.has(i.id))
   const unassigned = sessions.filter((s) => !s.instructor_id && occupiesFloor(s)).length
 
+  // Collapsed: a thin rail the grid can have the width back from, still
+  // showing the numbers worth glancing at.
+  if (!open) {
+    return (
+      <aside className="flex w-10 shrink-0 flex-col items-center gap-3 border-l border-zinc-200 bg-white py-2">
+        <button
+          type="button"
+          onClick={onToggleOpen}
+          aria-label="Show instructor sidebar"
+          aria-expanded={false}
+          title="Show instructors"
+          className="rounded px-1.5 py-1 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800"
+        >
+          ‹
+        </button>
+        <span
+          className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase"
+          style={{ writingMode: 'vertical-rl' }}
+        >
+          Instructors
+        </span>
+        <span className="rounded bg-zinc-100 px-1 text-[10px] font-semibold text-zinc-600 tabular-nums">
+          {onShift.length}
+        </span>
+        {unassigned > 0 && (
+          <span
+            className="rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800 tabular-nums"
+            title={`${unassigned} unassigned`}
+          >
+            {unassigned}
+          </span>
+        )}
+      </aside>
+    )
+  }
+
   return (
-    <aside className="flex w-72 shrink-0 flex-col border-l border-slate-200 bg-white">
-      <div className="border-b border-slate-200 px-4 py-3">
-        <h2 className="text-sm font-semibold text-slate-900">Instructors</h2>
-        <p className="mt-0.5 text-xs text-slate-500">
-          {onShift.length} on shift · {unassigned} unassigned
-        </p>
+    <aside className="flex w-72 shrink-0 flex-col border-l border-zinc-200 bg-white">
+      <div className="flex items-start gap-2 border-b border-zinc-200 px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold text-zinc-900">Instructors</h2>
+          <p className="mt-0.5 text-xs text-zinc-500">
+            {onShift.length} on shift · {unassigned} unassigned
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onToggleOpen}
+          aria-label="Hide instructor sidebar"
+          aria-expanded
+          title="Hide instructors"
+          className="rounded px-1.5 py-0.5 text-sm text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+        >
+          ›
+        </button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto p-2">

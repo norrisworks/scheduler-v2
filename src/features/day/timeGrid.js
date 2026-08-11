@@ -10,7 +10,8 @@ export const SUBCOL_GAP = 4
 
 // Transposed orientation: time runs left-to-right, one row per student.
 export const SLOT_WIDTH = 76 // px per 30-min slot
-export const ROW_HEIGHT = 52 // px per student row
+// Bars carry only time/duration and instructor, so the rows can be slim.
+export const ROW_HEIGHT = 44 // px per student row
 export const ROW_GAP = 4
 
 /** v1 getTimeSlots: weekdays 14:30–19:30, weekends 09:30–13:00. */

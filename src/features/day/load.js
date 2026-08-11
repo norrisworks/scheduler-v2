@@ -79,14 +79,15 @@ export function slotPressure(students, instructorsOnShift) {
 }
 
 /**
- * v1's fixed thresholds (capacity_colors, verbatim) for the instructor gauge
- * cells. Cells show the NUMBER, tinted by these bands — not alpha fills.
+ * Instructor gauge cells, per the owner override in capacity_colors: 3:1 is
+ * the working TARGET ratio, so 3 is the good state (full green) rather than a
+ * warning. 4 is the stretch cap, 5+ is over.
  */
 export function gaugeCellClass(load) {
   if (load <= 0) return 'bg-zinc-200 text-zinc-400'
-  if (load <= 2) return 'bg-green-100 text-green-700'
-  if (load === 3) return 'bg-yellow-100 text-yellow-700'
-  if (load === 4) return 'bg-orange-100 text-orange-700'
+  if (load <= 2) return 'bg-green-50 text-green-600'
+  if (load === 3) return 'bg-green-200 text-green-800'
+  if (load === 4) return 'bg-yellow-100 text-yellow-700'
   return 'bg-red-100 text-red-700'
 }
 

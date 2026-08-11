@@ -42,28 +42,31 @@ export default function DayHeader({
         </p>
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
-        <div
-          className="flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5"
-          role="group"
-          aria-label="Day view orientation"
+      {/* View orientation sits with the date controls, not among the action
+          buttons — as a pale pill on the right it read as decoration. */}
+      <div
+        className="ml-4 flex items-center overflow-hidden rounded-lg border border-zinc-300"
+        role="group"
+        aria-label="Day view orientation"
+      >
+        <OrientationButton
+          active={orientation === 'vertical'}
+          onClick={() => onOrientationChange('vertical')}
+          label="Grid: time down the page, level columns across"
         >
-          <OrientationButton
-            active={orientation === 'vertical'}
-            onClick={() => onOrientationChange('vertical')}
-            label="Time down, levels across"
-          >
-            Levels
-          </OrientationButton>
-          <OrientationButton
-            active={orientation === 'transposed'}
-            onClick={() => onOrientationChange('transposed')}
-            label="Time across, one row per student"
-          >
-            Students
-          </OrientationButton>
-        </div>
+          <span aria-hidden>▦</span> Grid
+        </OrientationButton>
+        <span className="h-6 w-px bg-zinc-300" aria-hidden />
+        <OrientationButton
+          active={orientation === 'transposed'}
+          onClick={() => onOrientationChange('transposed')}
+          label="Rows: time across the page, one row per student"
+        >
+          <span aria-hidden>▤</span> Rows
+        </OrientationButton>
+      </div>
 
+      <div className="ml-auto flex items-center gap-2">
         <input
           type="date"
           value={date}
@@ -108,8 +111,8 @@ function OrientationButton({ active, onClick, label, children }) {
       aria-pressed={active}
       title={label}
       className={
-        'rounded-md px-2.5 py-1 text-xs font-semibold transition ' +
-        (active ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-500 hover:text-slate-800')
+        'flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold transition ' +
+        (active ? 'bg-brand-500 text-white' : 'bg-white text-zinc-600 hover:bg-zinc-100')
       }
     >
       {children}

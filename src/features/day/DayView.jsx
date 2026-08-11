@@ -17,6 +17,7 @@ import { useMaterializer } from '../materializer/useMaterializer'
 import { describeMaterialize, MATERIALIZE_DAYS } from '../materializer/materialize'
 
 const ORIENTATION_KEY = 'scheduler.dayOrientation'
+const SIDEBAR_KEY = 'scheduler.instructorSidebar'
 
 export default function DayView() {
   const { centerId } = useCenter()
@@ -29,6 +30,9 @@ export default function DayView() {
   const [nowTick, setNowTick] = useState(() => centerNowTime())
   const [orientation, setOrientation] = useState(
     () => localStorage.getItem(ORIENTATION_KEY) ?? 'vertical',
+  )
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => localStorage.getItem(SIDEBAR_KEY) !== 'closed',
   )
 
   const {
@@ -49,6 +53,10 @@ export default function DayView() {
   useEffect(() => {
     localStorage.setItem(ORIENTATION_KEY, orientation)
   }, [orientation])
+
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_KEY, sidebarOpen ? 'open' : 'closed')
+  }, [sidebarOpen])
 
   const {
     running: materializing,
@@ -210,6 +218,8 @@ export default function DayView() {
           armedInstructorId={armedInstructorId}
           onArm={setArmedInstructorId}
           onDragStateChange={setDragActive}
+          open={sidebarOpen}
+          onToggleOpen={() => setSidebarOpen((v) => !v)}
         />
       </div>
 
