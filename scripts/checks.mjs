@@ -6,7 +6,7 @@ import { getRole, getPinnedCenter, centerMatchesPin, resolveCenterAccess } from 
 import { emptyToNull, missingAttributes } from '../src/features/roster/studentFields.js'
 import { capabilityString, instructorWarnings, nextColor, INSTRUCTOR_PALETTE } from '../src/features/instructors/instructorFields.js'
 import { weekDays, validateShift, shiftHours, totalHours, planCopyWeek, indexShifts, suggestTimes } from '../src/features/shifts/weekShifts.js'
-import { computeScore, ineligibleReason, buildCandidates, buildHistory } from '../src/features/assign/scoring.js'
+import { ineligibleReason, buildCandidates, isFallbackOnly, unrankedStudents } from '../src/features/assign/rankings.js'
 import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessage } from '../src/features/assign/algorithms.js'
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
 import { generateDisplayName, violatesNamingConvention, staleGradeInName } from '../src/features/imports/namingConvention.js'
@@ -387,92 +387,72 @@ eq('new shift defaults', suggestTimes([]), { start: '15:00', end: '19:00' })
 eq('new shift reuses the week', suggestTimes([{ start_time: '14:30:00', end_time: '18:30:00' }]),
    { start: '14:30', end: '18:30' })
 
-// ---- auto-assign scoring
+// ---- auto-assign: rankings are the SOLE input
 const inst = (over = {}) => ({
-  id: 'i1', name: 'I', active: true, last_resort: false, priority: 'primary',
-  preferred: false, prefers_behind: false, gender: null,
+  id: 'i1', name: 'I', active: true, assignability: 'normal', tier: 'solid',
   can_teach_elementary: true, can_teach_middle: true, can_teach_high: true, ...over,
 })
-const stu = (over = {}) => ({ level: 'middle', performance: 'at-level', gender: null, ...over })
+const stu = (over = {}) => ({ level: 'middle', academic_status: 'at_level', ...over })
 const aSess = (over = {}) => ({
   id: 's1', student_id: 'st1', start_time: '16:00:00', duration: 60,
   status: 'scheduled', student: stu(), ...over,
 })
 const cover = shift('15:00:00', '19:00:00')
+const ranks = (pairs) => new Map(pairs)
 
-eq('plain primary scores 15', computeScore(stu(), inst()), 15)
-eq('backup scores 0', computeScore(stu(), inst({ priority: 'backup' })), 0)
-eq('preferred adds 30', computeScore(stu(), inst({ preferred: true })), 45)
-eq('prefers-behind only counts for behind students',
-   computeScore(stu(), inst({ prefers_behind: true })), 15)
-eq('prefers-behind matched adds 20',
-   computeScore(stu({ performance: 'behind' }), inst({ prefers_behind: true })), 35)
-eq('gender match adds 10', computeScore(stu({ gender: 'F' }), inst({ gender: 'f' })), 25)
-eq('gender mismatch adds nothing', computeScore(stu({ gender: 'F' }), inst({ gender: 'm' })), 15)
-eq('history adds 8 each', computeScore(stu(), inst(), 3), 39)
-eq('history is capped', computeScore(stu(), inst(), 99), 55)
-
-// Hard filters.
-eq('eligible when covered', ineligibleReason(aSess(), inst(), cover, undefined), null)
-eq('blocked pin excludes', ineligibleReason(aSess(), inst(), cover, 0), 'blocked')
-eq('negative pin also blocks', ineligibleReason(aSess(), inst(), cover, -1), 'blocked')
-eq('inactive excludes', ineligibleReason(aSess(), inst({ active: false }), cover, undefined), 'inactive')
-eq('capability gate', ineligibleReason(aSess(), inst({ can_teach_middle: false }), cover, undefined),
+// Hard filters sit above the ranking: physical facts, not preferences.
+eq('eligible when covered', ineligibleReason(aSess(), inst(), cover), null)
+eq('inactive excludes', ineligibleReason(aSess(), inst({ active: false }), cover), 'inactive')
+eq('capability gate', ineligibleReason(aSess(), inst({ can_teach_middle: false }), cover),
    'cannot teach level')
 eq('no level set is not gated',
-   ineligibleReason(aSess({ student: stu({ level: null }) }), inst({ can_teach_middle: false }), cover, undefined), null)
-eq('no shift excludes', ineligibleReason(aSess(), inst(), null, undefined), 'not on shift')
+   ineligibleReason(aSess({ student: stu({ level: null }) }), inst({ can_teach_middle: false }), cover), null)
+eq('no shift excludes', ineligibleReason(aSess(), inst(), null), 'not on shift')
 // The v1 bug: shift ends 19:00, session 18:30-19:30.
 eq('partial coverage excludes',
-   ineligibleReason(aSess({ start_time: '18:30:00' }), inst(), cover, undefined),
+   ineligibleReason(aSess({ start_time: '18:30:00' }), inst(), cover),
    'shift does not cover the session')
-eq('last resort needs a pin',
-   ineligibleReason(aSess(), inst({ last_resort: true }), cover, undefined), 'last resort, not pinned')
-eq('pinned last resort is allowed',
-   ineligibleReason(aSess(), inst({ last_resort: true }), cover, 1), null)
 
-// Ranking: pins first in pin order, then computed score.
-const three = [
-  inst({ id: 'a', name: 'A' }),
-  inst({ id: 'b', name: 'B', preferred: true }),
-  inst({ id: 'c', name: 'C', priority: 'backup' }),
-]
+const three = [inst({ id: 'a', name: 'A' }), inst({ id: 'b', name: 'B' }), inst({ id: 'c', name: 'C' })]
 const shifts3 = new Map([['a', cover], ['b', cover], ['c', cover]])
-const noPins = buildCandidates(aSess(), three, shifts3, undefined, () => 0)
-eq('score order without pins', noPins.map(c => c.instructorId), ['b', 'a', 'c'])
-eq('ranks are 1-based', noPins.map(c => c.rank), [1, 2, 3])
 
-// Dense ranking: equal scores share a rank, which is what gives the load and
-// day-total tie-breaks anything to resolve. A strict ordering made them dead.
-const tiedPair = buildCandidates(aSess(),
-  [inst({ id: 'x' }), inst({ id: 'y' }), inst({ id: 'z', preferred: true })],
-  new Map([['x', cover], ['y', cover], ['z', cover]]), undefined, () => 0)
-eq('equal scores share a rank', tiedPair.map(c => `${c.instructorId}:${c.rank}`),
-   ['z:1', 'x:2', 'y:2'])
-eq('a pin keeps its own rank and pushes the rest down',
-   buildCandidates(aSess(), [inst({ id: 'x' }), inst({ id: 'y' })],
-     new Map([['x', cover], ['y', cover]]), new Map([['y', 2]]), () => 0)
-     .map(c => `${c.instructorId}:${c.rank}`),
-   ['y:2', 'x:3'])
+// Candidates are ranked instructors in rank order. Nothing else.
+eq('rank order is followed exactly',
+   buildCandidates(aSess(), three, shifts3, ranks([['c', 1], ['a', 2], ['b', 3]]))
+     .map(c => c.instructorId), ['c', 'a', 'b'])
+eq('ranks are carried through, not renumbered',
+   buildCandidates(aSess(), three, shifts3, ranks([['b', 4], ['a', 9]]))
+     .map(c => c.rank), [4, 9])
 
-const pinnedC = buildCandidates(aSess(), three, shifts3, new Map([['c', 1]]), () => 0)
-eq('a pin outranks a better score', pinnedC.map(c => c.instructorId), ['c', 'b', 'a'])
-const blockedB = buildCandidates(aSess(), three, shifts3, new Map([['b', 0]]), () => 0)
-eq('a block removes the candidate', blockedB.map(c => c.instructorId), ['a', 'c'])
-// Continuity reorders candidates, but does not outrank an explicit
-// `preferred` flag: c is backup(0) + capped history(40) = 40, b is
-// preferred(30) + primary(15) = 45.
-const withHistory = buildCandidates(aSess(), three, shifts3, undefined,
-  (_s, i) => (i === 'c' ? 5 : 0))
-eq('history lifts a backup above a plain primary',
-   withHistory.map(c => c.instructorId), ['b', 'c', 'a'])
-eq('history does not outrank the preferred flag', withHistory[0].instructorId, 'b')
+// Unranked is NOT "ranked last" — it is not a candidate.
+eq('unranked instructors are excluded',
+   buildCandidates(aSess(), three, shifts3, ranks([['a', 1]])).map(c => c.instructorId), ['a'])
+eq('no rankings means no candidates', buildCandidates(aSess(), three, shifts3, ranks([])).length, 0)
+eq('missing rankings map means no candidates',
+   buildCandidates(aSess(), three, shifts3, undefined).length, 0)
+eq('rank 0 is not a ranking',
+   buildCandidates(aSess(), three, shifts3, ranks([['a', 0], ['b', 1]])).map(c => c.instructorId), ['b'])
 
-eq('history counts within the window',
-   buildHistory([{ student_id: 's', instructor_id: 'x' }, { student_id: 's', instructor_id: 'x' }])('s', 'x'), 2)
-eq('history ignores beyond the window',
-   buildHistory(Array.from({ length: 12 }, () => ({ student_id: 's', instructor_id: 'x' })), 10)('s', 'x'), 10)
-eq('unknown pair has no history', buildHistory([])('s', 'x'), 0)
+// Hard filters still veto a ranked instructor.
+eq('a ranked instructor off shift is still excluded',
+   buildCandidates(aSess(), three, new Map([['a', cover]]), ranks([['a', 1], ['b', 2]]))
+     .map(c => c.instructorId), ['a'])
+eq('a ranked instructor who cannot teach the level is excluded',
+   buildCandidates(aSess(), [inst({ id: 'a', can_teach_middle: false }), inst({ id: 'b' })],
+     shifts3, ranks([['a', 1], ['b', 2]])).map(c => c.instructorId), ['b'])
+
+// Equal ranks are allowed and keep their tie for the load tie-break.
+eq('tied ranks are preserved',
+   buildCandidates(aSess(), three, shifts3, ranks([['a', 1], ['b', 1], ['c', 2]]))
+     .map(c => `${c.instructorId}:${c.rank}`), ['a:1', 'b:1', 'c:2'])
+
+eq('fallback_only is recognised', isFallbackOnly(inst({ assignability: 'fallback_only' })), true)
+eq('normal is not fallback', isFallbackOnly(inst()), false)
+
+eq('students with no rankings are reported',
+   unrankedStudents([aSess()], new Map()).map(u => u.studentId), ['st1'])
+eq('ranked students are not reported',
+   unrankedStudents([aSess()], new Map([['st1', ranks([['a', 1]])]])).length, 0)
 
 // ---- ported algorithms
 eq('60-min session covers two slots', sessionTimeSlots(aSess()), ['16:00', '16:30'])

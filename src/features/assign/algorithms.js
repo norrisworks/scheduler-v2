@@ -1,4 +1,5 @@
 import { timeToMinutes } from '../../lib/dates'
+import { isFallbackOnly } from './rankings'
 
 /**
  * Ported verbatim from v1 (v1_reference algo_helpers / algo_balanced /
@@ -58,8 +59,8 @@ function buildHelpers(sessions, assignmentOf) {
 
 function splitByLastResort(instructors) {
   return {
-    regular: instructors.filter((i) => !i.last_resort),
-    lastResort: instructors.filter((i) => i.last_resort),
+    regular: instructors.filter((i) => !isFallbackOnly(i)),
+    lastResort: instructors.filter((i) => isFallbackOnly(i)),
   }
 }
 

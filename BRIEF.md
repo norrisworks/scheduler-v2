@@ -111,7 +111,18 @@ Auto-assign MUST respect shift windows: an instructor is only assignable to
 a session if their shift covers the ENTIRE session duration. (v1 assigned
 6:30 students to instructors leaving at 6.)
 
-## Assignment scoring (replaces exhaustive manual rankings)
+## Assignment scoring — SUPERSEDED (owner decision, see below)
+
+> This section is no longer how v2 works. Computed scoring was built, used,
+> and then removed at the owner's direction: `instructor_rankings` is now the
+> SOLE input to auto-assign. Ranked instructors are tried in rank order;
+> unranked is not "ranked last", it is not a candidate. Hard filters (level
+> capability, shift coverage) still sit above the ranking, and fallback-only
+> instructors are still held to the final phase. Rankings are maintained by
+> hand in the roster, the rankings matrix, and the seeding actions.
+> The original text is kept below for context only.
+
+## Assignment scoring (original plan, no longer implemented)
 
 v1 required hand-ranking every instructor for every student; new students
 and new instructors started unassignable. v2 computes a default score for

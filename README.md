@@ -103,7 +103,7 @@ Views ship in the order listed in BRIEF.md, each verified before the next:
 3. ✅ Roster + student detail
 4. ✅ Materializer + recurring slot semantics
 5. ✅ Instructor management + shifts week editor
-6. ✅ Auto-assign (scoring + phased algorithms)
+6. ✅ Auto-assign (rankings + phased algorithms)
 7. Radius import
 8. Workstream import
 9. Data health panel
