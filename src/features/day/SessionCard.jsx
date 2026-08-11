@@ -217,13 +217,13 @@ export default function SessionCard({
         {menuButton}
       </div>
 
-      {/* Row 2: time, duration and grade */}
+      {/* Row 2: time, duration and grade (session_card spec styling) */}
       <div className="mt-0.5 flex items-center gap-1 text-[9px] text-zinc-500">
         <span>
           {formatTime(session.start_time)} • {session.duration}m
         </span>
         {student?.grade && (
-          <span className="shrink-0 rounded bg-zinc-200 px-1 text-[9px] text-zinc-600">
+          <span className="shrink-0 rounded bg-zinc-200 px-1 py-0.5 text-[9px] text-zinc-600">
             {student.grade}
           </span>
         )}

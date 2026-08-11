@@ -136,7 +136,7 @@ export default function TransposedGrid({
                       {row.student?.name ?? 'Unknown'}
                     </span>
                     {row.student?.grade && (
-                      <span className="shrink-0 rounded bg-zinc-200 px-1 text-[9px] text-zinc-600">
+                      <span className="shrink-0 rounded bg-zinc-200 px-1 py-0.5 text-[9px] text-zinc-600">
                         {row.student.grade}
                       </span>
                     )}
