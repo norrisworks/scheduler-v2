@@ -5,6 +5,7 @@ import { centerHours, buildTimeAxis, sessionGeometry, packSubColumns, columnWidt
 import { getRole, getPinnedCenter, centerMatchesPin, resolveCenterAccess } from '../src/features/auth/roles.js'
 import { emptyToNull, missingAttributes } from '../src/features/roster/studentFields.js'
 import { capabilityString, instructorWarnings, nextColor, INSTRUCTOR_PALETTE } from '../src/features/instructors/instructorFields.js'
+import { weekDays, validateShift, shiftHours, totalHours, planCopyWeek, indexShifts, suggestTimes } from '../src/features/shifts/weekShifts.js'
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime } from '../src/lib/dates.js'
 import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, gaugeCellClass, slotChipClass } from '../src/features/day/load.js'
@@ -322,6 +323,65 @@ eq('skips taken colours', nextColor([{ color: '#E53935' }, { color: '#1E88E5' }]
 eq('matching is case-insensitive', nextColor([{ color: '#e53935' }]), '#1E88E5')
 eq('falls back when palette exhausted',
   nextColor(INSTRUCTOR_PALETTE.map((c) => ({ color: c }))), '#E53935')
+
+// ---- shifts week editor
+eq('week is seven days', weekDays('2026-08-16').length, 7)
+eq('week runs Sunday to Saturday', [weekDays('2026-08-16')[0], weekDays('2026-08-16')[6]],
+   ['2026-08-16', '2026-08-22'])
+// The real test week the owner will enter.
+eq('week of 8/17 starts Sunday 8/16', startOfWeek('2026-08-17'), '2026-08-16')
+
+eq('end after start is valid', validateShift('15:00', '19:00'), null)
+eq('end equal to start is not', validateShift('15:00', '15:00'), 'The end time must be after the start.')
+eq('end before start is not', validateShift('19:00', '15:00'), 'The end time must be after the start.')
+eq('missing end is not', validateShift('15:00', ''), 'Both a start and an end time are needed.')
+
+eq('four hour shift', shiftHours({ start_time: '15:00:00', end_time: '19:00:00' }), 4)
+eq('half hour counts', shiftHours({ start_time: '15:00:00', end_time: '15:30:00' }), 0.5)
+eq('missing times are zero', shiftHours({}), 0)
+eq('week hours sum', totalHours([
+  { start_time: '15:00:00', end_time: '19:00:00' },
+  { start_time: '14:00:00', end_time: '19:00:00' },
+]), 9)
+
+// Copy-last-week shifts dates forward by 7 and must never overwrite.
+const src = [
+  { center_id: 'c', instructor_id: 'i1', date: '2026-08-10', start_time: '15:00:00', end_time: '19:00:00', role: 'Instructor', source: 'workstream' },
+  { center_id: 'c', instructor_id: 'i2', date: '2026-08-11', start_time: '14:00:00', end_time: '19:00:00', role: null, source: 'workstream' },
+]
+const fresh = planCopyWeek(src, [])
+eq('copies both shifts', fresh.rows.length, 2)
+eq('nothing skipped on an empty week', fresh.skipped, 0)
+eq('dates move forward a week', fresh.rows.map(r => r.date), ['2026-08-17', '2026-08-18'])
+eq('times are preserved', fresh.rows[0].start_time, '15:00:00')
+eq('copies are hand-entered, not imported', fresh.rows[0].source, 'manual')
+
+// A shift already entered on the target week wins.
+const partial = planCopyWeek(src, [
+  { instructor_id: 'i1', date: '2026-08-17', start_time: '15:00:00' },
+])
+eq('existing shift is not overwritten', partial.rows.length, 1)
+eq('the collision is reported', partial.skipped, 1)
+eq('only the free slot is copied', partial.rows[0].instructor_id, 'i2')
+// A different start time on the same day is a split shift, not a collision.
+const split = planCopyWeek(src, [
+  { instructor_id: 'i1', date: '2026-08-17', start_time: '09:00:00' },
+])
+eq('a different start time is not a collision', split.rows.length, 2)
+
+// Cells group by instructor and date, time-ordered within a day.
+const idx = indexShifts([
+  { instructor_id: 'i1', date: '2026-08-17', start_time: '18:00:00' },
+  { instructor_id: 'i1', date: '2026-08-17', start_time: '09:00:00' },
+  { instructor_id: 'i2', date: '2026-08-17', start_time: '15:00:00' },
+])
+eq('split shifts share a cell', idx.get('i1|2026-08-17').length, 2)
+eq('cell is time-ordered', idx.get('i1|2026-08-17').map(s => s.start_time), ['09:00:00', '18:00:00'])
+eq('other instructor is separate', idx.get('i2|2026-08-17').length, 1)
+
+eq('new shift defaults', suggestTimes([]), { start: '15:00', end: '19:00' })
+eq('new shift reuses the week', suggestTimes([{ start_time: '14:30:00', end_time: '18:30:00' }]),
+   { start: '14:30', end: '18:30' })
 
 // ---- dates: always America/New_York, never toISOString
 // 9pm ET on Aug 9 is already Aug 10 in UTC. v1 showed tomorrow after 8pm.

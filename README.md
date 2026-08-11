@@ -102,7 +102,7 @@ Views ship in the order listed in BRIEF.md, each verified before the next:
 2. ✅ Day view (both orientations)
 3. ✅ Roster + student detail
 4. ✅ Materializer + recurring slot semantics
-5. Shifts week editor
+5. ✅ Instructor management + shifts week editor
 6. Auto-assign
 7. Radius import
 8. Workstream import
