@@ -440,6 +440,19 @@ const noPins = buildCandidates(aSess(), three, shifts3, undefined, () => 0)
 eq('score order without pins', noPins.map(c => c.instructorId), ['b', 'a', 'c'])
 eq('ranks are 1-based', noPins.map(c => c.rank), [1, 2, 3])
 
+// Dense ranking: equal scores share a rank, which is what gives the load and
+// day-total tie-breaks anything to resolve. A strict ordering made them dead.
+const tiedPair = buildCandidates(aSess(),
+  [inst({ id: 'x' }), inst({ id: 'y' }), inst({ id: 'z', preferred: true })],
+  new Map([['x', cover], ['y', cover], ['z', cover]]), undefined, () => 0)
+eq('equal scores share a rank', tiedPair.map(c => `${c.instructorId}:${c.rank}`),
+   ['z:1', 'x:2', 'y:2'])
+eq('a pin keeps its own rank and pushes the rest down',
+   buildCandidates(aSess(), [inst({ id: 'x' }), inst({ id: 'y' })],
+     new Map([['x', cover], ['y', cover]]), new Map([['y', 2]]), () => 0)
+     .map(c => `${c.instructorId}:${c.rank}`),
+   ['y:2', 'x:3'])
+
 const pinnedC = buildCandidates(aSess(), three, shifts3, new Map([['c', 1]]), () => 0)
 eq('a pin outranks a better score', pinnedC.map(c => c.instructorId), ['c', 'b', 'a'])
 const blockedB = buildCandidates(aSess(), three, shifts3, new Map([['b', 0]]), () => 0)

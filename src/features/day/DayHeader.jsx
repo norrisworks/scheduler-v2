@@ -12,9 +12,6 @@ export default function DayHeader({
   onMaterialize,
   materializing,
   onAddSession,
-  algorithms = [],
-  onAutoAssign,
-  assigning,
 }) {
   const today = todayISO()
   const pickerRef = useRef(null)
@@ -109,23 +106,6 @@ export default function DayHeader({
       </div>
 
       <div className="flex items-center gap-2">
-        <div className="flex items-center overflow-hidden rounded-lg border border-zinc-300">
-          {algorithms.map((a, i) => (
-            <span key={a.key} className="flex items-center">
-              {i > 0 && <span className="h-6 w-px bg-zinc-300" aria-hidden />}
-              <button
-                type="button"
-                onClick={() => onAutoAssign(a.key)}
-                disabled={assigning}
-                title={a.hint}
-                className="px-2.5 py-1.5 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-100 disabled:opacity-40"
-              >
-                {assigning ? '…' : a.label}
-              </button>
-            </span>
-          ))}
-        </div>
-
         <button
           type="button"
           onClick={onAddSession}

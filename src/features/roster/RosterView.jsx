@@ -194,10 +194,13 @@ function StudentRow({ student, selected, onSelect }) {
 
         {missing.length > 0 && (
           <span
-            className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800"
+            className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] whitespace-nowrap text-amber-800"
             title={`Missing: ${missing.join(', ')}`}
           >
-            {missing.length} missing
+            {/* Naming the field beats a bare count — "1 missing" tells you
+                there is a chore, not which one, and at roster scale the
+                answer is usually the same field for everyone. */}
+            no {missing.join(', no ')}
           </span>
         )}
         {pinned > 0 && (

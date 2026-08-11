@@ -151,9 +151,6 @@ export default function DayView() {
         onMaterialize={materialize}
         materializing={materializing}
         onAddSession={() => setAddingSession(true)}
-        algorithms={ALGORITHMS}
-        onAutoAssign={runAutoAssign}
-        assigning={assigning}
       />
 
       {assignError && (
@@ -222,6 +219,22 @@ export default function DayView() {
       )}
 
       <div className="flex min-h-0 flex-1">
+        <InstructorSidebar
+          instructors={instructors}
+          shiftByInstructor={shiftByInstructor}
+          sessions={gridSessions}
+          axis={axis}
+          nowMinutes={nowMinutes}
+          armedInstructorId={armedInstructorId}
+          onArm={setArmedInstructorId}
+          onDragStateChange={setDragActive}
+          open={sidebarOpen}
+          onToggleOpen={() => setSidebarOpen((v) => !v)}
+          algorithms={ALGORITHMS}
+          onAutoAssign={runAutoAssign}
+          assigning={assigning}
+        />
+
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 overflow-auto">
             {loading && gridSessions.length === 0 ? (
@@ -243,19 +256,6 @@ export default function DayView() {
             onChanged={refetch}
           />
         )}
-
-        <InstructorSidebar
-          instructors={instructors}
-          shiftByInstructor={shiftByInstructor}
-          sessions={gridSessions}
-          axis={axis}
-          nowMinutes={nowMinutes}
-          armedInstructorId={armedInstructorId}
-          onArm={setArmedInstructorId}
-          onDragStateChange={setDragActive}
-          open={sidebarOpen}
-          onToggleOpen={() => setSidebarOpen((v) => !v)}
-        />
       </div>
 
       <StatusMenu

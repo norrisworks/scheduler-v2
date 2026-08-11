@@ -76,19 +76,34 @@ export function autoAssignBalanced({ sessions, unassigned, instructors, rankInde
 
   const rankOf = (session, instructorId) => rankIndex.get(session.id)?.get(instructorId) ?? null
 
+  // v1 tie-broke on concurrent load alone, which equalises how busy someone is
+  // at a moment but says nothing about their day. Over a full afternoon that
+  // let the longest-shift instructor accumulate three times another's total.
+  // Day total is a third-level tie-break: rank still wins, then peak load.
+  const dayTotal = (instructorId) => {
+    let n = 0
+    for (const [, iid] of assignmentOf) if (iid === instructorId) n++
+    return n
+  }
+
   const findOptions = (session, instList, cap) => {
     const out = []
     for (const inst of instList) {
       const r = rankOf(session, inst.id)
       if (r === null) continue
       if (!canAssign(inst.id, session, cap)) continue
-      out.push({ rank: r, load: maxLoadDuringSession(inst.id, session), iid: inst.id })
+      out.push({
+        rank: r,
+        load: maxLoadDuringSession(inst.id, session),
+        total: dayTotal(inst.id),
+        iid: inst.id,
+      })
     }
     return out
   }
 
   const pickBest = (opts) => {
-    opts.sort((a, b) => a.rank - b.rank || a.load - b.load)
+    opts.sort((a, b) => a.rank - b.rank || a.load - b.load || a.total - b.total)
     return opts[0]
   }
 

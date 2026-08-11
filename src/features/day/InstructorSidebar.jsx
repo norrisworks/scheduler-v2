@@ -25,6 +25,9 @@ export default function InstructorSidebar({
   onDragStateChange,
   open,
   onToggleOpen,
+  algorithms = [],
+  onAutoAssign,
+  assigning,
 }) {
   // v1_reference: only instructors on shift are listed. Off-shift staff stay
   // reachable behind a disclosure — Workstream coverage is partial, and
@@ -53,7 +56,7 @@ export default function InstructorSidebar({
   // showing the numbers worth glancing at.
   if (!open) {
     return (
-      <aside className="flex w-10 shrink-0 flex-col items-center gap-3 border-l border-zinc-200 bg-white py-2">
+      <aside className="flex w-10 shrink-0 flex-col items-center gap-3 border-r border-zinc-200 bg-white py-2">
         <button
           type="button"
           onClick={onToggleOpen}
@@ -62,7 +65,7 @@ export default function InstructorSidebar({
           title="Show instructors"
           className="rounded px-1.5 py-1 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800"
         >
-          ‹
+          ›
         </button>
         <span
           className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase"
@@ -86,7 +89,7 @@ export default function InstructorSidebar({
   }
 
   return (
-    <aside className="flex w-72 shrink-0 flex-col border-l border-zinc-200 bg-white">
+    <aside className="flex w-72 shrink-0 flex-col border-r border-zinc-200 bg-white">
       <div className="flex items-start gap-2 border-b border-zinc-200 px-4 py-3">
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold text-zinc-900">Instructors</h2>
@@ -102,9 +105,35 @@ export default function InstructorSidebar({
           title="Hide instructors"
           className="rounded px-1.5 py-0.5 text-sm text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
         >
-          ›
+          ‹
         </button>
       </div>
+
+      {/* v1 put auto-assign here, next to the load gauges it rebalances. */}
+      {algorithms.length > 0 && (
+        <div className="border-b border-zinc-200 px-3 py-2.5">
+          <div className="flex gap-2">
+            {algorithms.map((a) => (
+              <button
+                key={a.key}
+                type="button"
+                onClick={() => onAutoAssign(a.key)}
+                disabled={assigning || unassigned === 0}
+                title={a.hint}
+                className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-brand-500 px-2 py-2 text-xs font-semibold text-white transition hover:bg-brand-600 disabled:opacity-40"
+              >
+                <span aria-hidden>⚡</span>
+                {assigning ? '…' : a.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[11px] text-zinc-400">
+            {unassigned === 0
+              ? 'Everyone on the grid is assigned.'
+              : `Assigns the ${unassigned} unassigned session${unassigned === 1 ? '' : 's'}.`}
+          </p>
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 overflow-auto p-2">
         {onShift.length === 0 && (

@@ -93,7 +93,24 @@ export function buildCandidates(session, instructors, shiftByInstructor, pins, h
   pinned.sort((a, b) => a.pinRank - b.pinRank || a.instructorId.localeCompare(b.instructorId))
   scored.sort((a, b) => b.score - a.score || a.instructorId.localeCompare(b.instructorId))
 
-  return [...pinned, ...scored].map((entry, i) => ({ ...entry, rank: i + 1 }))
+  // DENSE ranking: equally-scored instructors share a rank. v1's ranks were
+  // coarse tiers that genuinely tied, which is what gave its load tie-break
+  // anything to do. A strict 1..N ordering would make every comparison
+  // resolve on rank alone and the load / day-total tie-breaks would never
+  // fire — which is exactly how one instructor ended up with three times
+  // another's day total.
+  const base = pinned.reduce((max, p) => Math.max(max, p.pinRank), 0)
+  let rank = base
+  let previousScore = null
+  const ranked = scored.map((entry) => {
+    if (entry.score !== previousScore) {
+      rank++
+      previousScore = entry.score
+    }
+    return { ...entry, rank }
+  })
+
+  return [...pinned.map((p) => ({ ...p, rank: p.pinRank })), ...ranked]
 }
 
 /** sessionId -> (instructorId -> rank), the shape the algorithms read. */

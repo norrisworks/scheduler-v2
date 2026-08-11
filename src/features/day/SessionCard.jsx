@@ -97,12 +97,14 @@ export default function SessionCard({
     },
   }
 
+  // No wrapper and no background of its own: anything permanently painted in
+  // the corner reads as a dead white patch where the grade chip used to be.
   const menuButton = (
     <button
       type="button"
       onClick={openMenu}
       aria-label={`Change status for ${student?.name ?? 'session'}`}
-      className="shrink-0 rounded px-0.5 text-[10px] leading-none text-zinc-400 opacity-0 transition group-hover:opacity-100 hover:bg-black/5 hover:text-zinc-700"
+      className="shrink-0 rounded px-0.5 text-[10px] leading-none text-zinc-500 opacity-0 transition focus-visible:opacity-100 group-hover:bg-white/80 group-hover:opacity-100 hover:text-zinc-800"
     >
       ⋯
     </button>
@@ -212,10 +214,9 @@ export default function SessionCard({
       </div>
 
       {/* Floated rather than inline: as a flex sibling it permanently reserved
-          ~13px of a 95px card and truncated names that would otherwise fit. */}
-      <div className="absolute top-0.5 right-0.5 rounded bg-white/80 backdrop-blur-[1px]">
-        {menuButton}
-      </div>
+          ~13px of a 95px card and truncated names that would otherwise fit.
+          It paints nothing until hover, so the corner is not dead space. */}
+      <div className="absolute top-0.5 right-0.5">{menuButton}</div>
 
       {/* Row 2: time, duration and grade (session_card spec styling) */}
       <div className="mt-0.5 flex items-center gap-1 text-[9px] text-zinc-500">
