@@ -15,6 +15,8 @@ import AddSessionDialog from './AddSessionDialog'
 import StudentDrawer from '../roster/StudentDrawer'
 import { useMaterializer } from '../materializer/useMaterializer'
 import { describeMaterialize, MATERIALIZE_DAYS } from '../materializer/materialize'
+import { useAutoAssign } from '../assign/useAutoAssign'
+import { ALGORITHMS, summaryMessage } from '../assign/algorithms'
 
 const ORIENTATION_KEY = 'scheduler.dayOrientation'
 const SIDEBAR_KEY = 'scheduler.instructorSidebar'
@@ -68,6 +70,14 @@ export default function DayView() {
 
   const instructorsById = useMemo(() => new Map(instructors.map((i) => [i.id, i])), [instructors])
   const armedInstructor = instructorsById.get(armedInstructorId) ?? null
+
+  const {
+    running: assigning,
+    result: assignResult,
+    error: assignError,
+    run: runAutoAssign,
+    dismiss: dismissAssign,
+  } = useAutoAssign({ date, sessions, instructors, shiftByInstructor, onDone: refetch })
 
   // Cancelled and no-show sessions come off the grid entirely and out of every
   // count. They're still reachable in the strip under the grid.
@@ -141,7 +151,32 @@ export default function DayView() {
         onMaterialize={materialize}
         materializing={materializing}
         onAddSession={() => setAddingSession(true)}
+        algorithms={ALGORITHMS}
+        onAutoAssign={runAutoAssign}
+        assigning={assigning}
       />
+
+      {assignError && (
+        <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+          Auto-assign failed: {assignError}
+        </div>
+      )}
+
+      {assignResult && (
+        <div
+          className={
+            'flex items-center gap-3 border-b px-4 py-2 text-sm ' +
+            (assignResult.couldNotAssign > 0
+              ? 'border-amber-200 bg-amber-50 text-amber-900'
+              : 'border-emerald-200 bg-emerald-50 text-emerald-800')
+          }
+        >
+          <span className="flex-1 font-medium">{summaryMessage(assignResult)}</span>
+          <button type="button" onClick={dismissAssign} className="font-medium underline">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {materializeError && (
         <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">

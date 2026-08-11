@@ -6,9 +6,11 @@ import { useStudent } from './useStudent'
 import StudentAttributes from './StudentAttributes'
 import RecurringSlots from './RecurringSlots'
 import StudentNotes from './StudentNotes'
+import InstructorPins from './InstructorPins'
 
 const TABS = [
   { key: 'attributes', label: 'Details' },
+  { key: 'pins', label: 'Pins' },
   { key: 'notes', label: 'Notes' },
 ]
 
@@ -155,6 +157,8 @@ export default function StudentDrawer({ studentId, onClose, onChanged }) {
               )}
             </section>
           </div>
+        ) : tab === 'pins' ? (
+          <InstructorPins studentId={studentId} />
         ) : (
           <StudentNotes
             notes={notes}

@@ -6,6 +6,8 @@ import { getRole, getPinnedCenter, centerMatchesPin, resolveCenterAccess } from 
 import { emptyToNull, missingAttributes } from '../src/features/roster/studentFields.js'
 import { capabilityString, instructorWarnings, nextColor, INSTRUCTOR_PALETTE } from '../src/features/instructors/instructorFields.js'
 import { weekDays, validateShift, shiftHours, totalHours, planCopyWeek, indexShifts, suggestTimes } from '../src/features/shifts/weekShifts.js'
+import { computeScore, ineligibleReason, buildCandidates, buildHistory } from '../src/features/assign/scoring.js'
+import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessage } from '../src/features/assign/algorithms.js'
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime } from '../src/lib/dates.js'
 import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, gaugeCellClass, slotChipClass } from '../src/features/day/load.js'
@@ -383,6 +385,144 @@ eq('new shift defaults', suggestTimes([]), { start: '15:00', end: '19:00' })
 eq('new shift reuses the week', suggestTimes([{ start_time: '14:30:00', end_time: '18:30:00' }]),
    { start: '14:30', end: '18:30' })
 
+// ---- auto-assign scoring
+const inst = (over = {}) => ({
+  id: 'i1', name: 'I', active: true, last_resort: false, priority: 'primary',
+  preferred: false, prefers_behind: false, gender: null,
+  can_teach_elementary: true, can_teach_middle: true, can_teach_high: true, ...over,
+})
+const stu = (over = {}) => ({ level: 'middle', performance: 'at-level', gender: null, ...over })
+const aSess = (over = {}) => ({
+  id: 's1', student_id: 'st1', start_time: '16:00:00', duration: 60,
+  status: 'scheduled', student: stu(), ...over,
+})
+const cover = shift('15:00:00', '19:00:00')
+
+eq('plain primary scores 15', computeScore(stu(), inst()), 15)
+eq('backup scores 0', computeScore(stu(), inst({ priority: 'backup' })), 0)
+eq('preferred adds 30', computeScore(stu(), inst({ preferred: true })), 45)
+eq('prefers-behind only counts for behind students',
+   computeScore(stu(), inst({ prefers_behind: true })), 15)
+eq('prefers-behind matched adds 20',
+   computeScore(stu({ performance: 'behind' }), inst({ prefers_behind: true })), 35)
+eq('gender match adds 10', computeScore(stu({ gender: 'F' }), inst({ gender: 'f' })), 25)
+eq('gender mismatch adds nothing', computeScore(stu({ gender: 'F' }), inst({ gender: 'm' })), 15)
+eq('history adds 8 each', computeScore(stu(), inst(), 3), 39)
+eq('history is capped', computeScore(stu(), inst(), 99), 55)
+
+// Hard filters.
+eq('eligible when covered', ineligibleReason(aSess(), inst(), cover, undefined), null)
+eq('blocked pin excludes', ineligibleReason(aSess(), inst(), cover, 0), 'blocked')
+eq('negative pin also blocks', ineligibleReason(aSess(), inst(), cover, -1), 'blocked')
+eq('inactive excludes', ineligibleReason(aSess(), inst({ active: false }), cover, undefined), 'inactive')
+eq('capability gate', ineligibleReason(aSess(), inst({ can_teach_middle: false }), cover, undefined),
+   'cannot teach level')
+eq('no level set is not gated',
+   ineligibleReason(aSess({ student: stu({ level: null }) }), inst({ can_teach_middle: false }), cover, undefined), null)
+eq('no shift excludes', ineligibleReason(aSess(), inst(), null, undefined), 'not on shift')
+// The v1 bug: shift ends 19:00, session 18:30-19:30.
+eq('partial coverage excludes',
+   ineligibleReason(aSess({ start_time: '18:30:00' }), inst(), cover, undefined),
+   'shift does not cover the session')
+eq('last resort needs a pin',
+   ineligibleReason(aSess(), inst({ last_resort: true }), cover, undefined), 'last resort, not pinned')
+eq('pinned last resort is allowed',
+   ineligibleReason(aSess(), inst({ last_resort: true }), cover, 1), null)
+
+// Ranking: pins first in pin order, then computed score.
+const three = [
+  inst({ id: 'a', name: 'A' }),
+  inst({ id: 'b', name: 'B', preferred: true }),
+  inst({ id: 'c', name: 'C', priority: 'backup' }),
+]
+const shifts3 = new Map([['a', cover], ['b', cover], ['c', cover]])
+const noPins = buildCandidates(aSess(), three, shifts3, undefined, () => 0)
+eq('score order without pins', noPins.map(c => c.instructorId), ['b', 'a', 'c'])
+eq('ranks are 1-based', noPins.map(c => c.rank), [1, 2, 3])
+
+const pinnedC = buildCandidates(aSess(), three, shifts3, new Map([['c', 1]]), () => 0)
+eq('a pin outranks a better score', pinnedC.map(c => c.instructorId), ['c', 'b', 'a'])
+const blockedB = buildCandidates(aSess(), three, shifts3, new Map([['b', 0]]), () => 0)
+eq('a block removes the candidate', blockedB.map(c => c.instructorId), ['a', 'c'])
+// Continuity reorders candidates, but does not outrank an explicit
+// `preferred` flag: c is backup(0) + capped history(40) = 40, b is
+// preferred(30) + primary(15) = 45.
+const withHistory = buildCandidates(aSess(), three, shifts3, undefined,
+  (_s, i) => (i === 'c' ? 5 : 0))
+eq('history lifts a backup above a plain primary',
+   withHistory.map(c => c.instructorId), ['b', 'c', 'a'])
+eq('history does not outrank the preferred flag', withHistory[0].instructorId, 'b')
+
+eq('history counts within the window',
+   buildHistory([{ student_id: 's', instructor_id: 'x' }, { student_id: 's', instructor_id: 'x' }])('s', 'x'), 2)
+eq('history ignores beyond the window',
+   buildHistory(Array.from({ length: 12 }, () => ({ student_id: 's', instructor_id: 'x' })), 10)('s', 'x'), 10)
+eq('unknown pair has no history', buildHistory([])('s', 'x'), 0)
+
+// ---- ported algorithms
+eq('60-min session covers two slots', sessionTimeSlots(aSess()), ['16:00', '16:30'])
+eq('90-min session covers three', sessionTimeSlots(aSess({ duration: 90 })), ['16:00', '16:30', '17:00'])
+
+// Cap 3 is respected: a fourth concurrent student cannot go to the same person.
+const four = Array.from({ length: 4 }, (_, i) =>
+  aSess({ id: `s${i}`, student_id: `st${i}` }))
+const onlyOne = [inst({ id: 'a' })]
+const rank1 = new Map(four.map(s => [s.id, new Map([['a', 1]])]))
+const capped = autoAssignBalanced({
+  sessions: four, unassigned: four, instructors: onlyOne, rankIndex: rank1, existing: new Map() })
+// Phase 1 fills to 3, phase 2 relaxes to 4, so all four land.
+eq('two phases fill to the stretch cap', capped.assigned, 4)
+
+const five = Array.from({ length: 5 }, (_, i) => aSess({ id: `s${i}`, student_id: `st${i}` }))
+const rank1of5 = new Map(five.map(s => [s.id, new Map([['a', 1]])]))
+const overCap = autoAssignBalanced({
+  sessions: five, unassigned: five, instructors: onlyOne, rankIndex: rank1of5, existing: new Map() })
+eq('the fifth exceeds the stretch cap', overCap.assigned, 4)
+eq('and is reported unassignable', overCap.couldNotAssign, 1)
+
+// No unranked fallback: an empty rank index assigns nobody.
+const noRanks = autoAssignBalanced({
+  sessions: four, unassigned: four, instructors: onlyOne,
+  rankIndex: new Map(four.map(s => [s.id, new Map()])), existing: new Map() })
+eq('unranked pairs are never used', noRanks.assigned, 0)
+
+// Last-resort instructors are held to the final phase.
+const lastResortOnly = [inst({ id: 'lr', last_resort: true })]
+const oneSession = [aSess()]
+const lrRank = new Map([['s1', new Map([['lr', 1]])]])
+eq('a pinned last-resort still gets used in phase 3',
+   autoAssignBalanced({ sessions: oneSession, unassigned: oneSession, instructors: lastResortOnly,
+     rankIndex: lrRank, existing: new Map() }).assigned, 1)
+
+// Best match works tier-by-tier, so it differs from balanced here.
+const twoSessions = [aSess({ id: 'x', student_id: 'sx' }), aSess({ id: 'y', student_id: 'sy' })]
+const twoInst = [inst({ id: 'a' }), inst({ id: 'b' })]
+const tiered = new Map([
+  ['x', new Map([['a', 1], ['b', 2]])],
+  ['y', new Map([['a', 2], ['b', 1]])],
+])
+const bm = autoAssignBestMatch({
+  sessions: twoSessions, unassigned: twoSessions, instructors: twoInst, rankIndex: tiered, existing: new Map() })
+eq('best match places both at rank 1', bm.assigned, 2)
+eq('best match worst rank is 1', bm.worstRank, 1)
+eq('each takes their own first choice',
+   bm.made.map(m => `${m.sessionId}->${m.instructorId}`).sort(), ['x->a', 'y->b'])
+
+// Existing assignments count toward load rather than being overwritten.
+const withExisting = autoAssignBalanced({
+  sessions: five, unassigned: five.slice(1), instructors: onlyOne, rankIndex: rank1of5,
+  existing: new Map([['s0', 'a']]) })
+eq('existing assignment is not re-made', withExisting.made.some(m => m.sessionId === 's0'), false)
+eq('existing load still counts against the cap', withExisting.assigned, 3)
+
+// v1's post-run alert, verbatim.
+eq('summary with leftovers',
+   summaryMessage({ assigned: 12, worstRank: 3, couldNotAssign: 2 }),
+   'Assigned 12 students! Worst match rank: 3 (2 could not be assigned)')
+eq('summary with none left over',
+   summaryMessage({ assigned: 5, worstRank: 1, couldNotAssign: 0 }),
+   'Assigned 5 students! Worst match rank: 1')
+
 // ---- dates: always America/New_York, never toISOString
 // 9pm ET on Aug 9 is already Aug 10 in UTC. v1 showed tomorrow after 8pm.
 eq('9pm ET stays same day',  toCenterISODate(new Date('2026-08-10T01:30:00Z')), '2026-08-09')
@@ -417,4 +557,5 @@ for (const [label, got, want, ok] of checks) {
 }
 console.log(failed === 0 ? `all ${checks.length} checks passed` : `${failed}/${checks.length} FAILED`)
 process.exit(failed === 0 ? 0 : 1)
+
 
