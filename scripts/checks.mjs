@@ -9,6 +9,8 @@ import { weekDays, validateShift, shiftHours, totalHours, planCopyWeek, indexShi
 import { computeScore, ineligibleReason, buildCandidates, buildHistory } from '../src/features/assign/scoring.js'
 import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessage } from '../src/features/assign/algorithms.js'
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
+import { generateDisplayName, violatesNamingConvention, staleGradeInName } from '../src/features/imports/namingConvention.js'
+import { planStudentImport } from '../src/features/imports/studentImport.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime } from '../src/lib/dates.js'
 import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, gaugeCellClass, slotChipClass } from '../src/features/day/load.js'
 
@@ -535,6 +537,76 @@ eq('summary with leftovers',
 eq('summary with none left over',
    summaryMessage({ assigned: 5, worstRank: 1, couldNotAssign: 0 }),
    'Assigned 5 students! Worst match rank: 1')
+
+// ---- student display names (v1_reference naming_convention)
+eq('default is first name plus last initial',
+   generateDisplayName('Keira Donnelly', '5', []).name, 'Keira D')
+eq('shared first name escalates to two letters',
+   generateDisplayName('Micah Howard', '4', ['Micah C']).name, 'Micah Ho')
+eq('first two letters keep their case',
+   generateDisplayName('Micah chen', '4', ['Micah C']).name, 'Micah Ch')
+eq('same first and last adds the grade',
+   generateDisplayName('Aryan Patel', '2', ['Aryan P', 'Aryan Pa']).name, 'Aryan P (2)')
+eq('same first, last AND grade is never invented',
+   generateDisplayName('Aryan Patel', '2', ['Aryan P', 'Aryan Pa', 'Aryan P (2)']).needsReview, true)
+eq('a single-word name passes through', generateDisplayName('Cher', '', []).name, 'Cher')
+eq('collision detection ignores case',
+   generateDisplayName('Micah Howard', '4', ['micah c']).name, 'Micah Ho')
+
+// Full last names must never reach students.name.
+eq('full last name is a violation', violatesNamingConvention('Keira Donnelly'), true)
+eq('last initial is fine', violatesNamingConvention('Keira D'), false)
+eq('two letters is fine', violatesNamingConvention('Micah Ho'), false)
+eq('grade parenthetical is fine', violatesNamingConvention('Aryan P (2)'), false)
+
+// Rule-3 names embed a grade and go stale each August.
+eq('matching grade is not stale', staleGradeInName('Aryan P (2)', '2'), null)
+eq('bumped grade is stale', staleGradeInName('Aryan P (2)', '3'), '2')
+eq('plain names are never stale', staleGradeInName('Keira D', '5'), null)
+
+// ---- student roster import planning
+const existing = [
+  { id: 'e1', name: 'Keira D', radius_account: 'ACC-1', grade: '5', level: 'middle',
+    performance: null, needs_schoolwork: false, active: true },
+  { id: 'e2', name: 'Noah C', radius_account: null, grade: '3', level: 'elementary',
+    performance: 'behind', needs_schoolwork: false, active: true },
+]
+const plan = planStudentImport([
+  // matched on radius account, one real change
+  { __row: 2, name: 'Keira Donnelly', radius_account: 'ACC-1', grade: '5', performance: 'Behind' },
+  // matched on display name, nothing to change
+  { __row: 3, name: 'Noah C', grade: '3', level: 'Elementary', performance: 'behind' },
+  // brand new
+  { __row: 4, name: 'Priya Raman', grade: '7', level: 'Middle', supp: 'yes' },
+], existing)
+
+eq('one new student', plan.created.length, 1)
+eq('new student gets a convention name', plan.created[0].name, 'Priya R')
+eq('unknown columns are ignored, known ones normalised',
+   plan.created[0].values, { grade: '7', level: 'middle', needs_schoolwork: true })
+eq('one changed student', plan.updated.map(u => u.name), ['Keira D'])
+eq('only the differing field is patched', plan.updated[0].patch, { performance: 'behind' })
+eq('one already correct', plan.unchanged.map(u => u.name), ['Noah C'])
+eq('nothing absent when every student appears', plan.absent.length, 0)
+
+// A matched student is never renamed, however the file spells them.
+eq('matched student keeps its display name',
+   Object.keys(plan.updated[0].patch).includes('name'), false)
+
+// A partial file must not look like deletions.
+const partialRoster = planStudentImport(
+  [{ __row: 2, name: 'Keira Donnelly', radius_account: 'ACC-1' }], existing)
+eq('students absent from the file are reported, not removed',
+   partialRoster.absent.map(s => s.name), ['Noah C'])
+
+// Two new students sharing a first name cannot collide with each other.
+const collide = planStudentImport([
+  { __row: 2, name: 'Micah Chen', grade: '4' },
+  { __row: 3, name: 'Micah Howard', grade: '6' },
+], [])
+// Both get two letters — the convention says each does, and neither exists
+// yet, so neither is being renamed.
+eq('within-file collisions escalate', collide.created.map(c => c.name), ['Micah Ch', 'Micah Ho'])
 
 // ---- dates: always America/New_York, never toISOString
 // 9pm ET on Aug 9 is already Aug 10 in UTC. v1 showed tomorrow after 8pm.
