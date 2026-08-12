@@ -5,6 +5,7 @@ import { readableTextOn } from '../../lib/colors'
 import Spinner from '../../components/Spinner'
 import { useInstructors } from './useInstructors'
 import { capabilityString, instructorWarnings, nextColor } from './instructorFields'
+import { isFallbackOnly } from '../assign/rankings'
 import InstructorForm from './InstructorForm'
 
 export default function InstructorsView() {
@@ -180,14 +181,21 @@ function InstructorRow({ instructor, selected, onSelect }) {
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
             <span className="truncate text-sm font-medium text-zinc-900">{instructor.name}</span>
-            {instructor.preferred && (
-              <span className="shrink-0 rounded bg-emerald-100 px-1 text-[10px] text-emerald-800">
-                Preferred
-              </span>
-            )}
-            {instructor.last_resort && (
+            <span
+              className={
+                'shrink-0 rounded px-1 text-[10px] ' +
+                (instructor.tier === 'strong'
+                  ? 'bg-emerald-100 text-emerald-800'
+                  : instructor.tier === 'developing'
+                    ? 'bg-amber-100 text-amber-800'
+                    : 'bg-zinc-200 text-zinc-700')
+              }
+            >
+              {instructor.tier ?? 'solid'}
+            </span>
+            {isFallbackOnly(instructor) && (
               <span className="shrink-0 rounded bg-zinc-200 px-1 text-[10px] text-zinc-700">
-                Last resort
+                Fallback only
               </span>
             )}
             {!instructor.active && (
@@ -197,8 +205,8 @@ function InstructorRow({ instructor, selected, onSelect }) {
             )}
           </span>
           <span className="mt-0.5 block truncate text-xs text-zinc-500">
-            {capabilities || 'no levels'} · {instructor.priority ?? 'primary'}
-            {instructor.prefers_behind ? ' · prefers behind' : ''}
+            {capabilities || 'no levels'}
+            {instructor.gender ? ` · ${instructor.gender.toUpperCase()}` : ''}
             {instructor.email ? ` · ${instructor.email}` : ''}
           </span>
         </span>

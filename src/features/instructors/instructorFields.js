@@ -2,16 +2,36 @@ import { INSTRUCTOR_PALETTE } from '../day/studentOptions'
 
 export { INSTRUCTOR_PALETTE }
 
-export const PRIORITY_OPTIONS = [
-  { value: 'primary', label: 'Primary' },
-  { value: 'backup', label: 'Backup' },
+/**
+ * Three clean axes replace the overlapping flags v1 accumulated:
+ *   can_teach_*   — hard capability filter (unchanged)
+ *   assignability — replaces priority + last_resort
+ *   tier          — strength judgment, the default sort when seeding rankings
+ * `priority`, `last_resort`, `prefers_behind` and `preferred` are no longer
+ * read or written; their columns are left dormant in the database.
+ */
+export const ASSIGNABILITY_OPTIONS = [
+  { value: 'normal', label: 'Normal', hint: 'Considered in the usual phases' },
+  {
+    value: 'fallback_only',
+    label: 'Fallback only',
+    hint: 'Held to the final phase, and only if ranked for that student',
+  },
 ]
+
+export const TIER_OPTIONS = [
+  { value: 'strong', label: 'Strong' },
+  { value: 'solid', label: 'Solid' },
+  { value: 'developing', label: 'Developing' },
+]
+
+/** Seeding order: strong first. */
+export const TIER_ORDER = { strong: 0, solid: 1, developing: 2 }
 
 export const GENDER_OPTIONS = [
   { value: '', label: 'Not set' },
   { value: 'f', label: 'F' },
   { value: 'm', label: 'M' },
-  { value: 'other', label: 'Other' },
 ]
 
 export const LEVEL_FLAGS = [
@@ -28,17 +48,13 @@ export function capabilityString(instructor) {
 }
 
 /**
- * Configuration that would quietly break auto-assign (step 6) if left as-is.
- * An instructor who can teach nothing is never assignable, and last_resort
- * only ever applies through an explicit pin.
+ * Configuration that would quietly stop this instructor from ever being
+ * auto-assigned. Surfaced in the list and the form, and in Data health.
  */
 export function instructorWarnings(instructor) {
   const warnings = []
   if (!LEVEL_FLAGS.some((f) => instructor[f.key])) {
     warnings.push('cannot teach any level, so will never be auto-assigned')
-  }
-  if (instructor.last_resort && instructor.priority === 'primary') {
-    warnings.push('is last-resort but marked primary')
   }
   return warnings
 }

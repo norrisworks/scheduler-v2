@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react'
 import { readableTextOn } from '../../lib/colors'
 import { emptyToNull } from '../roster/studentFields'
 import {
+  ASSIGNABILITY_OPTIONS,
   GENDER_OPTIONS,
   INSTRUCTOR_PALETTE,
   LEVEL_FLAGS,
-  PRIORITY_OPTIONS,
+  TIER_OPTIONS,
   instructorWarnings,
 } from './instructorFields'
 
@@ -18,13 +19,13 @@ const BLANK = {
   email: '',
   workstream_id: '',
   gender: '',
-  priority: 'primary',
-  can_teach_elementary: true,
-  can_teach_middle: true,
-  can_teach_high: true,
-  prefers_behind: false,
-  preferred: false,
-  last_resort: false,
+  assignability: 'normal',
+  tier: 'solid',
+  // Capability is deliberately opt-in for a new instructor: guessing it would
+  // silently make them assignable to levels nobody has vouched for.
+  can_teach_elementary: false,
+  can_teach_middle: false,
+  can_teach_high: false,
   active: true,
 }
 
@@ -36,7 +37,8 @@ function toForm(instructor) {
     email: instructor.email ?? '',
     workstream_id: instructor.workstream_id ?? '',
     gender: instructor.gender ?? '',
-    priority: instructor.priority ?? 'primary',
+    assignability: instructor.assignability ?? 'normal',
+    tier: instructor.tier ?? 'solid',
   }
 }
 
@@ -69,13 +71,11 @@ export default function InstructorForm({ instructor, defaultColor, saving, onSub
       email: emptyToNull(form.email.trim()),
       workstream_id: emptyToNull(form.workstream_id.trim()),
       gender: emptyToNull(form.gender),
-      priority: form.priority,
+      assignability: form.assignability,
+      tier: form.tier,
       can_teach_elementary: form.can_teach_elementary,
       can_teach_middle: form.can_teach_middle,
       can_teach_high: form.can_teach_high,
-      prefers_behind: form.prefers_behind,
-      preferred: form.preferred,
-      last_resort: form.last_resort,
       active: form.active,
     })
     if (ok) setDirty(false)
@@ -136,13 +136,13 @@ export default function InstructorForm({ instructor, defaultColor, saving, onSub
 
       <div className="grid grid-cols-2 gap-3">
         <label>
-          <span className="mb-1 block text-xs font-medium text-zinc-600">Priority</span>
+          <span className="mb-1 block text-xs font-medium text-zinc-600">Tier</span>
           <select
-            value={form.priority}
-            onChange={(e) => set('priority', e.target.value)}
+            value={form.tier}
+            onChange={(e) => set('tier', e.target.value)}
             className={inputClass}
           >
-            {PRIORITY_OPTIONS.map((o) => (
+            {TIER_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>
@@ -183,29 +183,31 @@ export default function InstructorForm({ instructor, defaultColor, saving, onSub
       </div>
 
       <div className="space-y-2 border-t border-zinc-200 pt-3">
-        <Check
-          label="Preferred"
-          hint="Scores higher for every student"
-          checked={form.preferred}
-          onChange={(v) => set('preferred', v)}
-        />
-        <Check
-          label="Prefers students who are behind"
-          checked={form.prefers_behind}
-          onChange={(v) => set('prefers_behind', v)}
-        />
-        <Check
-          label="Last resort"
-          hint="Only assigned through an explicit pin"
-          checked={form.last_resort}
-          onChange={(v) => set('last_resort', v)}
-        />
-        <Check
-          label="Active"
-          hint="Inactive staff keep their history but leave the day view"
-          checked={form.active}
-          onChange={(v) => set('active', v)}
-        />
+        <span className="block text-xs font-medium text-zinc-600">Assignability</span>
+        {ASSIGNABILITY_OPTIONS.map((o) => (
+          <label key={o.value} className="flex items-start gap-2 text-sm text-zinc-700">
+            <input
+              type="radio"
+              name="assignability"
+              checked={form.assignability === o.value}
+              onChange={() => set('assignability', o.value)}
+              className="mt-0.5 h-4 w-4 border-zinc-300 accent-brand-500"
+            />
+            <span>
+              {o.label}
+              <span className="block text-[11px] text-zinc-400">{o.hint}</span>
+            </span>
+          </label>
+        ))}
+
+        <div className="border-t border-zinc-200 pt-2">
+          <Check
+            label="Active"
+            hint="Inactive staff keep their history but leave the day view"
+            checked={form.active}
+            onChange={(v) => set('active', v)}
+          />
+        </div>
       </div>
 
       {warnings.length > 0 && (

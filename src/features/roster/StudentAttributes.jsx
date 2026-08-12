@@ -4,12 +4,11 @@ import {
   CERTAINTY_OPTIONS,
   GENDER_OPTIONS,
   LEVEL_OPTIONS,
-  PERFORMANCE_OPTIONS,
   emptyToNull,
 } from './studentFields'
 
 const FIELDS = [
-  'name', 'grade', 'level', 'school', 'gender', 'radius_account', 'performance',
+  'name', 'grade', 'level', 'school', 'gender', 'radius_account',
   'academic_status', 'slot_certainty', 'default_duration', 'needs_schoolwork',
   'first_day', 'active',
 ]
@@ -47,7 +46,6 @@ export default function StudentAttributes({ student, saving, onSave }) {
       school: emptyToNull(form.school),
       gender: emptyToNull(form.gender),
       radius_account: emptyToNull(form.radius_account),
-      performance: emptyToNull(form.performance),
       academic_status: emptyToNull(form.academic_status),
       slot_certainty: emptyToNull(form.slot_certainty),
       default_duration: form.default_duration === '' ? null : Number(form.default_duration),
@@ -75,13 +73,6 @@ export default function StudentAttributes({ student, saving, onSave }) {
         </Field>
         <Field label="Level">
           <Select value={form.level} onChange={(v) => set('level', v)} options={LEVEL_OPTIONS} />
-        </Field>
-        <Field label="Performance">
-          <Select
-            value={form.performance}
-            onChange={(v) => set('performance', v)}
-            options={PERFORMANCE_OPTIONS}
-          />
         </Field>
         <Field label="Academic status">
           <Select

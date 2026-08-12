@@ -12,6 +12,7 @@ import {
   occupiesFloor,
 } from './load'
 import LoadGauge from './LoadGauge'
+import { isFallbackOnly } from '../assign/rankings'
 import { INSTRUCTOR_DRAG_TYPE } from './dnd'
 
 export default function InstructorSidebar({
@@ -261,7 +262,7 @@ function InstructorRow({ instructor, shift, stats, slots, armed, onArm, onDragSt
               : 'No shift'}
             {' · '}
             {capabilities.join('') || 'no levels'}
-            {instructor.last_resort ? ' · last resort' : ''}
+            {isFallbackOnly(instructor) ? ' · fallback only' : ''}
           </span>
         </span>
 

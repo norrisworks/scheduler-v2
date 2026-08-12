@@ -7,13 +7,6 @@ export const LEVEL_OPTIONS = [
   { value: 'high', label: 'High' },
 ]
 
-export const PERFORMANCE_OPTIONS = [
-  { value: '', label: 'Not set' },
-  { value: 'behind', label: 'Behind' },
-  { value: 'at-level', label: 'At level' },
-  { value: 'ahead', label: 'Ahead' },
-]
-
 export const CERTAINTY_OPTIONS = [
   { value: '', label: 'Not set' },
   { value: 'fixed', label: 'Fixed slot' },
@@ -21,7 +14,9 @@ export const CERTAINTY_OPTIONS = [
   { value: 'dropin', label: 'Drop-in' },
 ]
 
-// academic_status is free text in the schema; these are v1's values.
+// The single measure of where a student is working. `students.performance`
+// was a duplicate of this and is no longer read or written anywhere; the
+// column is left dormant in the database.
 export const ACADEMIC_OPTIONS = [
   { value: '', label: 'Not set' },
   { value: 'behind', label: 'Behind' },
@@ -29,11 +24,11 @@ export const ACADEMIC_OPTIONS = [
   { value: 'ahead', label: 'Ahead' },
 ]
 
+// M/F only — gender is used as a visible ranking-sort input, not decoration.
 export const GENDER_OPTIONS = [
   { value: '', label: 'Not set' },
   { value: 'f', label: 'F' },
   { value: 'm', label: 'M' },
-  { value: 'other', label: 'Other' },
 ]
 
 export const NOTE_TYPES = [
@@ -76,7 +71,8 @@ export function missingAttributes(student) {
   const missing = []
   if (!student.level) missing.push('level')
   if (!student.grade) missing.push('grade')
-  if (!student.performance) missing.push('performance')
+  if (!student.academic_status) missing.push('academic status')
   if (!student.slot_certainty) missing.push('slot certainty')
+  if (!student.gender) missing.push('gender')
   return missing
 }

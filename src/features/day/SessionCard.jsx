@@ -35,7 +35,7 @@ export default function SessionCard({
   const student = session.student
   const status = STATUSES[session.status] ?? STATUSES.scheduled
   const certainty = SLOT_CERTAINTY[student?.slot_certainty]
-  const academic = ACADEMIC_STATUS[student?.academic_status ?? student?.performance]
+  const academic = ACADEMIC_STATUS[student?.academic_status]
   const warning = coverageWarning(instructor, shift, session)
   const noteText = [session.notes, ...notes.map((n) => n.body)].filter(Boolean).join(' · ')
 

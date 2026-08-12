@@ -18,9 +18,15 @@ export const STUDENT_FIELDS = [
   { key: 'grade', headers: ['grade', 'grade_level'] },
   { key: 'level', headers: ['level', 'school_level'], normalize: normalizeLevel },
   { key: 'school', headers: ['school'] },
-  { key: 'gender', headers: ['gender', 'sex'], normalize: (v) => v.trim().toLowerCase() || null },
+  { key: 'gender', headers: ['gender', 'sex'], normalize: normalizeGender },
   { key: 'slot_certainty', headers: ['slot_certainty', 'certainty'], normalize: normalizeCertainty },
-  { key: 'performance', headers: ['performance'], normalize: normalizePerformance },
+  // `performance` was a duplicate of academic status; a file column spelled
+  // either way lands in academic_status now.
+  {
+    key: 'academic_status',
+    headers: ['academic_status', 'performance', 'academic'],
+    normalize: normalizeAcademic,
+  },
   {
     key: 'needs_schoolwork',
     headers: ['needs_schoolwork', 'schoolwork', 'supp'],
@@ -49,11 +55,19 @@ function normalizeCertainty(value) {
   return null
 }
 
-function normalizePerformance(value) {
-  const v = value.trim().toLowerCase().replace(/[\s_]/g, '-')
+function normalizeAcademic(value) {
+  const v = value.trim().toLowerCase().replace(/[\s-]/g, '_')
   if (v.startsWith('behind')) return 'behind'
   if (v.startsWith('ahead')) return 'ahead'
-  if (v.startsWith('at')) return 'at-level'
+  if (v.startsWith('at')) return 'at_level'
+  return null
+}
+
+/** M/F only — anything else is left unset rather than invented. */
+function normalizeGender(value) {
+  const v = value.trim().toLowerCase()
+  if (v.startsWith('f')) return 'f'
+  if (v.startsWith('m')) return 'm'
   return null
 }
 

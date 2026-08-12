@@ -3,8 +3,8 @@ import { levelOf, UNSET_LEVEL } from '../src/features/day/levels.js'
 import { readableTextOn, tint } from '../src/lib/colors.js'
 import { centerHours, buildTimeAxis, sessionGeometry, packSubColumns, columnWidth, subColumnLeft, SLOT_HEIGHT, SLOT_WIDTH, sessionSpan, axisWidth, groupByStudent } from '../src/features/day/timeGrid.js'
 import { getRole, getPinnedCenter, centerMatchesPin, resolveCenterAccess } from '../src/features/auth/roles.js'
-import { emptyToNull, missingAttributes } from '../src/features/roster/studentFields.js'
-import { capabilityString, instructorWarnings, nextColor, INSTRUCTOR_PALETTE } from '../src/features/instructors/instructorFields.js'
+import { emptyToNull, missingAttributes, GENDER_OPTIONS } from '../src/features/roster/studentFields.js'
+import { capabilityString, instructorWarnings, nextColor, INSTRUCTOR_PALETTE, TIER_OPTIONS, TIER_ORDER, ASSIGNABILITY_OPTIONS, GENDER_OPTIONS as INSTRUCTOR_GENDER_OPTIONS } from '../src/features/instructors/instructorFields.js'
 import { weekDays, validateShift, shiftHours, totalHours, planCopyWeek, indexShifts, suggestTimes } from '../src/features/shifts/weekShifts.js'
 import { ineligibleReason, buildCandidates, isFallbackOnly, unrankedStudents } from '../src/features/assign/rankings.js'
 import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessage } from '../src/features/assign/algorithms.js'
@@ -283,11 +283,16 @@ eq('value passes through',      emptyToNull('middle'), 'middle')
 eq('zero is not emptied',       emptyToNull(0), 0)
 eq('false is not emptied',      emptyToNull(false), false)
 
-const complete = { level: 'middle', grade: '7', performance: 'behind', slot_certainty: 'fixed' }
+const complete = {
+  level: 'middle', grade: '7', academic_status: 'behind', slot_certainty: 'fixed', gender: 'f',
+}
 eq('complete student has nothing missing', missingAttributes(complete), [])
-eq('bare student is missing all four', missingAttributes({}),
-   ['level', 'grade', 'performance', 'slot certainty'])
-eq('one gap is reported', missingAttributes({ ...complete, performance: null }), ['performance'])
+eq('bare student is missing all five', missingAttributes({}),
+   ['level', 'grade', 'academic status', 'slot certainty', 'gender'])
+eq('one gap is reported', missingAttributes({ ...complete, academic_status: null }),
+   ['academic status'])
+// gender is a ranking input now, so its absence is a real gap.
+eq('missing gender is reported', missingAttributes({ ...complete, gender: null }), ['gender'])
 
 // ---- materializer result reporting
 eq('no change reads as null', describeMaterialize({ created: 0, updated: 0, removed: 0 }), null)
@@ -302,7 +307,7 @@ eq('something changed', materializeChanged({ created: 0, updated: 0, removed: 1 
 
 // ---- instructor configuration
 const teacher = (over = {}) => ({
-  name: 'Test', color: '#1E88E5', priority: 'primary', last_resort: false,
+  name: 'Test', color: '#1E88E5', assignability: 'normal', tier: 'solid',
   can_teach_elementary: true, can_teach_middle: true, can_teach_high: true, ...over,
 })
 eq('all three levels', capabilityString(teacher()), 'EMH')
@@ -316,10 +321,20 @@ eq('healthy instructor has no warnings', instructorWarnings(teacher()), [])
 eq('no levels warns', instructorWarnings(teacher({
   can_teach_elementary: false, can_teach_middle: false, can_teach_high: false })),
   ['cannot teach any level, so will never be auto-assigned'])
-eq('last-resort primary warns', instructorWarnings(teacher({ last_resort: true })),
-  ['is last-resort but marked primary'])
-eq('last-resort backup is fine',
-  instructorWarnings(teacher({ last_resort: true, priority: 'backup' })), [])
+// assignability is a clean axis now — fallback_only is a valid setting, not
+// a contradiction to warn about.
+eq('fallback_only is not a warning',
+  instructorWarnings(teacher({ assignability: 'fallback_only' })), [])
+
+// Gender is M/F only now — no 'other' option in either form.
+eq('student gender options are M/F only',
+   GENDER_OPTIONS.map(o => o.value), ['', 'f', 'm'])
+eq('instructor gender options are M/F only',
+   INSTRUCTOR_GENDER_OPTIONS.map(o => o.value), ['', 'f', 'm'])
+eq('tier options', TIER_OPTIONS.map(o => o.value), ['strong', 'solid', 'developing'])
+eq('assignability options', ASSIGNABILITY_OPTIONS.map(o => o.value), ['normal', 'fallback_only'])
+eq('tier sorts strong first', TIER_ORDER.strong < TIER_ORDER.solid, true)
+eq('tier sorts developing last', TIER_ORDER.developing > TIER_ORDER.solid, true)
 
 // New instructors take the first unused palette colour so they stay distinct.
 eq('first colour when none taken', nextColor([]), '#E53935')
@@ -547,15 +562,16 @@ eq('plain names are never stale', staleGradeInName('Keira D', '5'), null)
 // ---- student roster import planning
 const existing = [
   { id: 'e1', name: 'Keira D', radius_account: 'ACC-1', grade: '5', level: 'middle',
-    performance: null, needs_schoolwork: false, active: true },
+    academic_status: null, needs_schoolwork: false, active: true },
   { id: 'e2', name: 'Noah C', radius_account: null, grade: '3', level: 'elementary',
-    performance: 'behind', needs_schoolwork: false, active: true },
+    academic_status: 'behind', needs_schoolwork: false, active: true },
 ]
 const plan = planStudentImport([
-  // matched on radius account, one real change
+  // matched on radius account, one real change. A 'performance' column in the
+  // file lands in academic_status now.
   { __row: 2, name: 'Keira Donnelly', radius_account: 'ACC-1', grade: '5', performance: 'Behind' },
   // matched on display name, nothing to change
-  { __row: 3, name: 'Noah C', grade: '3', level: 'Elementary', performance: 'behind' },
+  { __row: 3, name: 'Noah C', grade: '3', level: 'Elementary', academic_status: 'behind' },
   // brand new
   { __row: 4, name: 'Priya Raman', grade: '7', level: 'Middle', supp: 'yes' },
 ], existing)
@@ -565,7 +581,8 @@ eq('new student gets a convention name', plan.created[0].name, 'Priya R')
 eq('unknown columns are ignored, known ones normalised',
    plan.created[0].values, { grade: '7', level: 'middle', needs_schoolwork: true })
 eq('one changed student', plan.updated.map(u => u.name), ['Keira D'])
-eq('only the differing field is patched', plan.updated[0].patch, { performance: 'behind' })
+eq('a performance column lands in academic_status',
+   plan.updated[0].patch, { academic_status: 'behind' })
 eq('one already correct', plan.unchanged.map(u => u.name), ['Noah C'])
 eq('nothing absent when every student appears', plan.absent.length, 0)
 
