@@ -8,6 +8,7 @@ import DayViewPage from './pages/DayViewPage'
 import RosterPage from './pages/RosterPage'
 import ShiftsPage from './pages/ShiftsPage'
 import InstructorsPage from './pages/InstructorsPage'
+import RankingsPage from './pages/RankingsPage'
 import ImportsPage from './pages/ImportsPage'
 import DataHealthPage from './pages/DataHealthPage'
 
@@ -26,6 +27,7 @@ function AuthedApp() {
           <Route path="roster" element={<RosterPage />} />
           <Route path="shifts" element={<ShiftsPage />} />
           <Route path="instructors" element={<InstructorsPage />} />
+          <Route path="rankings" element={<RankingsPage />} />
           <Route path="imports" element={<ImportsPage />} />
           <Route path="health" element={<DataHealthPage />} />
           <Route path="*" element={<Navigate to="/day" replace />} />

@@ -7,6 +7,7 @@ import { useInstructors } from './useInstructors'
 import { capabilityString, instructorWarnings, nextColor } from './instructorFields'
 import { isFallbackOnly } from '../assign/rankings'
 import InstructorForm from './InstructorForm'
+import BulkRankingInsert from './BulkRankingInsert'
 
 export default function InstructorsView() {
   const { centerId, center } = useCenter()
@@ -132,7 +133,7 @@ export default function InstructorsView() {
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-auto p-4">
+            <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
               <InstructorForm
                 key={adding ? 'new' : selected.id}
                 instructor={adding ? null : selected}
@@ -147,6 +148,10 @@ export default function InstructorsView() {
                     : () => setSelectedId(null)
                 }
               />
+
+              {!adding && selected && (
+                <BulkRankingInsert instructor={selected} centerId={centerId} />
+              )}
             </div>
           </aside>
         )}

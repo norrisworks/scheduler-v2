@@ -8,6 +8,7 @@ import { capabilityString, instructorWarnings, nextColor, INSTRUCTOR_PALETTE, TI
 import { weekDays, validateShift, shiftHours, totalHours, planCopyWeek, indexShifts, suggestTimes } from '../src/features/shifts/weekShifts.js'
 import { ineligibleReason, buildCandidates, isFallbackOnly, unrankedStudents } from '../src/features/assign/rankings.js'
 import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessage } from '../src/features/assign/algorithms.js'
+import { proposeRanking, proposalReasons, sameGender, eligibleForStudent, moveEntry } from '../src/features/assign/proposeRanking.js'
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
 import { generateDisplayName, violatesNamingConvention, staleGradeInName } from '../src/features/imports/namingConvention.js'
 import { planStudentImport } from '../src/features/imports/studentImport.js'
@@ -604,6 +605,71 @@ const collide = planStudentImport([
 // Both get two letters — the convention says each does, and neither exists
 // yet, so neither is being renamed.
 eq('within-file collisions escalate', collide.created.map(c => c.name), ['Micah Ch', 'Micah Ho'])
+
+// ---- ranking proposal: a visible ordering, never a hidden score
+const pInst = (over = {}) => ({
+  id: 'p1', name: 'P', active: true, assignability: 'normal', tier: 'solid', gender: null,
+  can_teach_elementary: true, can_teach_middle: true, can_teach_high: true, ...over,
+})
+const pStu = (over = {}) => ({ level: 'middle', gender: 'f', ...over })
+
+eq('same gender detected', sameGender(pStu(), pInst({ gender: 'F' })), true)
+eq('different gender', sameGender(pStu(), pInst({ gender: 'm' })), false)
+eq('unset gender never matches', sameGender(pStu({ gender: null }), pInst({ gender: 'f' })), false)
+
+// Capability is a hard filter on who can appear at all.
+eq('ineligible instructors are not proposed',
+   eligibleForStudent(pStu(), [pInst({ id: 'a' }), pInst({ id: 'b', can_teach_middle: false })])
+     .map(i => i.id), ['a'])
+eq('a student with no level is not filtered',
+   eligibleForStudent(pStu({ level: null }), [pInst({ can_teach_middle: false })]).length, 1)
+
+// Tier first, then same gender, then name.
+// Names are chosen so the male instructor sorts FIRST alphabetically. Any
+// change in order is therefore attributable to gender, not to the name
+// tie-break underneath it.
+const pool = [
+  pInst({ id: 'solidM', name: 'Aaron M', tier: 'solid', gender: 'm' }),
+  pInst({ id: 'solidF', name: 'Zoe F', tier: 'solid', gender: 'f' }),
+  pInst({ id: 'strongM', name: 'Strong M', tier: 'strong', gender: 'm' }),
+  pInst({ id: 'devF', name: 'Dev F', tier: 'developing', gender: 'f' }),
+]
+eq('tier outranks gender',
+   proposeRanking(pStu(), pool).map(e => e.instructorId),
+   ['strongM', 'solidF', 'solidM', 'devF'])
+eq('ranks are 1..N', proposeRanking(pStu(), pool).map(e => e.rank), [1, 2, 3, 4])
+eq('gender lifts the same-gender instructor over an earlier name',
+   proposeRanking(pStu(), pool).map(e => e.instructorId).slice(1, 3), ['solidF', 'solidM'])
+eq('turning gender off falls back to name',
+   proposeRanking(pStu(), pool, { useGender: false }).map(e => e.instructorId).slice(1, 3),
+   ['solidM', 'solidF'])
+
+// Fallback-only always sinks, whatever its tier.
+eq('fallback_only sorts last',
+   proposeRanking(pStu(), [
+     pInst({ id: 'fb', name: 'FB', tier: 'strong', assignability: 'fallback_only' }),
+     pInst({ id: 'ok', name: 'OK', tier: 'developing' }),
+   ]).map(e => e.instructorId), ['ok', 'fb'])
+
+// Every position explains itself.
+eq('reasons name the gender match',
+   proposalReasons(pStu(), pInst({ gender: 'f' })), ['same gender (F)'])
+eq('reasons name a non-default tier',
+   proposalReasons(pStu(), pInst({ tier: 'strong' })), ['strong'])
+eq('solid tier is not noise', proposalReasons(pStu(), pInst()), [])
+eq('fallback is stated',
+   proposalReasons(pStu(), pInst({ assignability: 'fallback_only' })), ['fallback only'])
+
+// Hand reordering renumbers cleanly.
+const order = proposeRanking(pStu(), pool)
+eq('moving to the top renumbers',
+   moveEntry(order, 3, 0).map(e => `${e.instructorId}:${e.rank}`),
+   ['devF:1', 'strongM:2', 'solidF:3', 'solidM:4'])
+eq('moving down renumbers',
+   moveEntry(order, 0, 2).map(e => e.instructorId), ['solidF', 'solidM', 'strongM', 'devF'])
+eq('a no-op move is a no-op', moveEntry(order, 1, 1).map(e => e.instructorId),
+   order.map(e => e.instructorId))
+eq('out-of-range moves are ignored', moveEntry(order, 0, 99).length, 4)
 
 // ---- dates: always America/New_York, never toISOString
 // 9pm ET on Aug 9 is already Aug 10 in UTC. v1 showed tomorrow after 8pm.

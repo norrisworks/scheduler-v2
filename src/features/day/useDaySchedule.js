@@ -3,9 +3,9 @@ import { supabase } from '../../lib/supabase'
 
 const SESSION_SELECT = `
   id, student_id, date, start_time, duration, status, source, notes, is_modified,
-  student:students ( id, name, grade, level, performance, gender, first_day,
+  student:students ( id, name, grade, level, gender, first_day,
                      needs_schoolwork, slot_certainty, academic_status ),
-  assignments ( id, instructor_id )
+  assignments ( id, instructor_id, source )
 `
 
 const EMPTY = []
@@ -175,20 +175,39 @@ export function useDaySchedule(centerId, date) {
 
   const assign = useCallback(
     async (sessionId, instructorId) => {
-      const previous = sessions.find((s) => s.id === sessionId)?.instructor_id ?? null
+      const session = sessions.find((s) => s.id === sessionId)
+      const previous = session?.instructor_id ?? null
       if (previous === instructorId) return
       patchSession(key, sessionId, { instructor_id: instructorId })
 
       const { error } = await supabase
         .from('assignments')
-        .upsert({ session_id: sessionId, instructor_id: instructorId }, { onConflict: 'session_id' })
+        .upsert(
+          { session_id: sessionId, instructor_id: instructorId, source: 'manual' },
+          { onConflict: 'session_id' },
+        )
 
       if (error) {
         patchSession(key, sessionId, { instructor_id: previous })
         setError(error.message)
+        return
+      }
+
+      // Replacing an auto-assigned instructor by hand is a signal about the
+      // ranking. Recorded silently — never a dialog, never a prompt, because
+      // this happens mid-session on the floor. It only ever resurfaces as a
+      // small count on a rankings matrix cell.
+      if (previous && session?.assignment?.source === 'auto' && centerId) {
+        await supabase.from('assignment_overrides').insert({
+          center_id: centerId,
+          student_id: session.student_id,
+          instructor_id: instructorId,
+          previous_instructor_id: previous,
+          session_id: sessionId,
+        })
       }
     },
-    [sessions, key, patchSession],
+    [sessions, key, patchSession, centerId],
   )
 
   const unassign = useCallback(

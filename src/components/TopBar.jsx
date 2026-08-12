@@ -7,6 +7,7 @@ const NAV = [
   { to: '/roster', label: 'Roster' },
   { to: '/shifts', label: 'Shifts' },
   { to: '/instructors', label: 'Instructors', adminOnly: true },
+  { to: '/rankings', label: 'Rankings', adminOnly: true },
   { to: '/imports', label: 'Imports' },
   { to: '/health', label: 'Data health' },
 ]

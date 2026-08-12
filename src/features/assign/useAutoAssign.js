@@ -74,7 +74,13 @@ export function useAutoAssign({ sessions, instructors, shiftByInstructor, onDone
 
       if (outcome.made.length > 0) {
         const { error } = await supabase.from('assignments').upsert(
-          outcome.made.map((m) => ({ session_id: m.sessionId, instructor_id: m.instructorId })),
+          outcome.made.map((m) => ({
+            session_id: m.sessionId,
+            instructor_id: m.instructorId,
+            // Marks these as auto-placed so a later hand move is recognisable
+            // as an override rather than an ordinary edit.
+            source: 'auto',
+          })),
           { onConflict: 'session_id' },
         )
         if (error) {

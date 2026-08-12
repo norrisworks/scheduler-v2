@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { supabase } from '../../lib/supabase'
 import { useCenter } from '../centers/CenterProvider'
+import CreateStudentDialog from './CreateStudentDialog'
 import { formatTimeMeridiem } from '../../lib/dates'
 import Spinner from '../../components/Spinner'
 import { useFilteredRoster, useRoster } from './useRoster'
@@ -20,15 +22,23 @@ export default function RosterView() {
   const [level, setLevel] = useState('')
   const [showInactive, setShowInactive] = useState(false)
   const [selectedId, setSelectedId] = useState(null)
+  const [instructors, setInstructors] = useState([])
+  const [adding, setAdding] = useState(false)
 
   const filtered = useFilteredRoster(students, { query, level, showInactive })
 
-  async function addStudent() {
-    const name = window.prompt('New student name')
-    if (!name?.trim()) return
-    const id = await createStudent(name)
-    if (id) setSelectedId(id)
-  }
+  // Loaded for the create dialog's ranking step; a student is never created
+  // without one.
+  useEffect(() => {
+    if (!centerId) return
+    supabase
+      .from('instructors')
+      .select('id, name, color, tier, assignability, gender, can_teach_elementary, can_teach_middle, can_teach_high, active')
+      .eq('center_id', centerId)
+      .eq('active', true)
+      .order('name')
+      .then(({ data }) => setInstructors(data ?? []))
+  }, [centerId])
 
   return (
     <div className="flex h-full flex-col">
@@ -83,7 +93,7 @@ export default function RosterView() {
           </button>
           <button
             type="button"
-            onClick={addStudent}
+            onClick={() => setAdding(true)}
             className="rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-600"
           >
             Add student
@@ -123,6 +133,18 @@ export default function RosterView() {
             </ul>
           )}
         </div>
+
+        {adding && (
+          <CreateStudentDialog
+            centerId={centerId}
+            instructors={instructors}
+            onClose={() => setAdding(false)}
+            onCreated={async (id) => {
+              await refetch()
+              setSelectedId(id)
+            }}
+          />
+        )}
 
         {selectedId && (
           <StudentDrawer
