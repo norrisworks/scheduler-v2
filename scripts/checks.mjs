@@ -12,6 +12,7 @@ import { proposeRanking, proposalReasons, sameGender, eligibleForStudent, moveEn
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
 import { generateDisplayName, violatesNamingConvention, staleGradeInName } from '../src/features/imports/namingConvention.js'
 import { planStudentImport } from '../src/features/imports/studentImport.js'
+import { buildChecks } from '../src/features/health/checks.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime } from '../src/lib/dates.js'
 import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, gaugeCellClass, slotChipClass } from '../src/features/day/load.js'
 
@@ -670,6 +671,73 @@ eq('moving down renumbers',
 eq('a no-op move is a no-op', moveEntry(order, 1, 1).map(e => e.instructorId),
    order.map(e => e.instructorId))
 eq('out-of-range moves are ignored', moveEntry(order, 0, 99).length, 4)
+
+// ---- data health checks
+const hStu = (over = {}) => ({
+  id: 's1', name: 'S One', grade: '6', level: 'middle', gender: 'f',
+  slot_certainty: 'fixed', academic_status: 'at_level', active: true, ...over,
+})
+const hInst = (over = {}) => ({
+  id: 'i1', name: 'I One', tier: 'solid', assignability: 'normal', gender: 'f', active: true,
+  can_teach_elementary: true, can_teach_middle: true, can_teach_high: true, ...over,
+})
+const keys = (cs) => cs.map(c => c.key)
+
+// A center with students and no instructors is the blocking case (Blue Bell).
+const noInstructors = buildChecks([hStu()], [], [])
+eq('no instructors is flagged', keys(noInstructors).includes('no_instructors'), true)
+eq('no instructors is blocking',
+   noInstructors.find(c => c.key === 'no_instructors').severity, 'blocking')
+eq('and its students read as blocking too',
+   noInstructors.find(c => c.key === 'unranked_students').severity, 'blocking')
+eq('an empty center raises nothing', buildChecks([], [], []).length, 0)
+
+// Unranked students.
+eq('unranked students are listed',
+   buildChecks([hStu()], [hInst()], []).find(c => c.key === 'unranked_students').items
+     .map(i => i.label), ['S One'])
+eq('a ranked student is not flagged',
+   keys(buildChecks([hStu()], [hInst()], [{ student_id: 's1', instructor_id: 'i1' }]))
+     .includes('unranked_students'), false)
+
+// Missing attributes, aggregated by field.
+const gaps = buildChecks([hStu({ gender: null, grade: null })], [hInst()],
+  [{ student_id: 's1', instructor_id: 'i1' }])
+eq('attribute gaps are flagged', keys(gaps).includes('missing_attributes'), true)
+eq('the gaps are named', gaps.find(c => c.key === 'missing_attributes').items[0].note,
+   'grade, gender')
+
+// An instructor ranked for under half the students they could teach.
+const roster = [hStu({ id: 'a' }), hStu({ id: 'b' }), hStu({ id: 'c' }), hStu({ id: 'd' })]
+const thin = buildChecks(roster, [hInst()], [{ student_id: 'a', instructor_id: 'i1' }])
+eq('a thinly-ranked instructor is flagged', keys(thin).includes('thin_instructors'), true)
+eq('the shortfall is quantified',
+   thin.find(c => c.key === 'thin_instructors').items[0].note, 'ranked for 1 of 4 eligible')
+const wide = buildChecks(roster, [hInst()],
+  roster.map(s => ({ student_id: s.id, instructor_id: 'i1' })))
+eq('a fully-ranked instructor is not flagged', keys(wide).includes('thin_instructors'), false)
+// Capability limits what "eligible" means, so an ES-only instructor is not
+// judged against middle-school students.
+eq('ineligible students do not count against an instructor',
+   keys(buildChecks(roster, [hInst({ can_teach_middle: false })], [])).includes('thin_instructors'),
+   false)
+
+eq('an instructor with no levels is flagged',
+   keys(buildChecks([hStu()], [hInst({ can_teach_elementary: false, can_teach_middle: false,
+     can_teach_high: false })], [])).includes('instructors_no_levels'), true)
+eq('an instructor with no gender is flagged',
+   keys(buildChecks([hStu()], [hInst({ gender: null })], [])).includes('instructors_no_gender'),
+   true)
+
+// Rule-3 names embed a grade and go stale each August.
+eq('a stale grade in a name is flagged',
+   buildChecks([hStu({ name: 'Aryan P (2)', grade: '3' })], [hInst()],
+     [{ student_id: 's1', instructor_id: 'i1' }])
+     .find(c => c.key === 'stale_name_grade').items[0].note,
+   'name says 2, record says 3')
+eq('a matching grade is not flagged',
+   keys(buildChecks([hStu({ name: 'Aryan P (2)', grade: '2' })], [hInst()],
+     [{ student_id: 's1', instructor_id: 'i1' }])).includes('stale_name_grade'), false)
 
 // ---- dates: always America/New_York, never toISOString
 // 9pm ET on Aug 9 is already Aug 10 in UTC. v1 showed tomorrow after 8pm.

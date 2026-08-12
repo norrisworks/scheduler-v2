@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { readableTextOn } from '../../lib/colors'
 import { emptyToNull } from '../roster/studentFields'
 import {
@@ -42,10 +42,28 @@ function toForm(instructor) {
   }
 }
 
-/** Create or edit one instructor. Fields map 1:1 onto `instructors`. */
-export default function InstructorForm({ instructor, defaultColor, saving, onSubmit, onCancel }) {
+/** Free-text needs a beat so a name isn't written once per keystroke. */
+const TEXT_DEBOUNCE_MS = 500
+
+/**
+ * Editing an existing instructor autosaves: every change writes immediately,
+ * the same way a rankings matrix cell does. There is no Save button and
+ * nothing to confirm.
+ *
+ * Creating one still needs an explicit action — there is no row to write into
+ * until it exists — so the new-instructor case keeps a single Add button.
+ */
+export default function InstructorForm({
+  instructor,
+  defaultColor,
+  saving,
+  onPatch,
+  onCreate,
+  onCancel,
+}) {
+  const isNew = !instructor
   const [form, setForm] = useState(() => toForm(instructor))
-  const [dirty, setDirty] = useState(false)
+  const timers = useRef(new Map())
 
   useEffect(() => {
     setForm(() => {
@@ -53,19 +71,37 @@ export default function InstructorForm({ instructor, defaultColor, saving, onSub
       if (!instructor && defaultColor) next.color = defaultColor
       return next
     })
-    setDirty(false)
   }, [instructor, defaultColor])
 
-  function set(key, value) {
+  // Flush anything still pending if the panel closes or switches instructor.
+  useEffect(() => {
+    const pending = timers.current
+    return () => {
+      for (const timer of pending.values()) clearTimeout(timer)
+      pending.clear()
+    }
+  }, [instructor?.id])
+
+  function set(key, value, { text = false } = {}) {
     setForm((prev) => ({ ...prev, [key]: value }))
-    setDirty(true)
+    if (isNew) return
+
+    const write = () => onPatch?.({ [key]: normalizeField(key, value) })
+    const existing = timers.current.get(key)
+    if (existing) clearTimeout(existing)
+
+    if (text) {
+      timers.current.set(key, setTimeout(write, TEXT_DEBOUNCE_MS))
+    } else {
+      write()
+    }
   }
 
   const warnings = instructorWarnings(form)
 
-  async function submit(e) {
+  async function create(e) {
     e.preventDefault()
-    const ok = await onSubmit({
+    await onCreate({
       name: form.name.trim(),
       color: form.color,
       email: emptyToNull(form.email.trim()),
@@ -78,16 +114,15 @@ export default function InstructorForm({ instructor, defaultColor, saving, onSub
       can_teach_high: form.can_teach_high,
       active: form.active,
     })
-    if (ok) setDirty(false)
   }
 
   return (
-    <form onSubmit={submit} className="space-y-3">
+    <form onSubmit={create} className="space-y-3">
       <label className="block">
         <span className="mb-1 block text-xs font-medium text-zinc-600">Name</span>
         <input
           value={form.name}
-          onChange={(e) => set('name', e.target.value)}
+          onChange={(e) => set('name', e.target.value, { text: true })}
           required
           className={inputClass}
         />
@@ -168,7 +203,7 @@ export default function InstructorForm({ instructor, defaultColor, saving, onSub
           <input
             type="email"
             value={form.email}
-            onChange={(e) => set('email', e.target.value)}
+            onChange={(e) => set('email', e.target.value, { text: true })}
             className={inputClass}
           />
         </label>
@@ -176,7 +211,7 @@ export default function InstructorForm({ instructor, defaultColor, saving, onSub
           <span className="mb-1 block text-xs font-medium text-zinc-600">Workstream ID</span>
           <input
             value={form.workstream_id}
-            onChange={(e) => set('workstream_id', e.target.value)}
+            onChange={(e) => set('workstream_id', e.target.value, { text: true })}
             className={inputClass}
           />
         </label>
@@ -218,26 +253,41 @@ export default function InstructorForm({ instructor, defaultColor, saving, onSub
         </ul>
       )}
 
-      <div className="flex items-center gap-2 pt-1">
-        {onCancel && (
+      {isNew ? (
+        <div className="flex items-center gap-2 pt-1">
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              Cancel
+            </button>
+          )}
           <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+            type="submit"
+            disabled={saving || !form.name.trim()}
+            className="ml-auto rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:opacity-40"
           >
-            Cancel
+            {saving ? 'Adding…' : 'Add instructor'}
           </button>
-        )}
-        <button
-          type="submit"
-          disabled={saving || (instructor && !dirty) || !form.name.trim()}
-          className="ml-auto rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:opacity-40"
-        >
-          {saving ? 'Saving…' : instructor ? (dirty ? 'Save changes' : 'Saved') : 'Add instructor'}
-        </button>
-      </div>
+        </div>
+      ) : (
+        <p className="pt-1 text-[11px] text-zinc-400">
+          {saving ? 'Saving…' : 'Changes save as you make them.'}
+        </p>
+      )}
     </form>
   )
+}
+
+/** Match what the column expects, since each field is written on its own. */
+function normalizeField(key, value) {
+  if (key === 'name') return String(value).trim()
+  if (key === 'email' || key === 'workstream_id' || key === 'gender') {
+    return emptyToNull(String(value).trim())
+  }
+  return value
 }
 
 function Check({ label, hint, checked, onChange }) {

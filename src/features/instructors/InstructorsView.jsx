@@ -139,9 +139,8 @@ export default function InstructorsView() {
                 instructor={adding ? null : selected}
                 defaultColor={adding ? nextColor(instructors) : undefined}
                 saving={saving}
-                onSubmit={
-                  adding ? submitNew : (values) => updateInstructor(selected.id, values)
-                }
+                onCreate={submitNew}
+                onPatch={(patch) => updateInstructor(selected.id, patch)}
                 onCancel={
                   adding
                     ? () => setAdding(false)
