@@ -20,6 +20,7 @@ export default function SessionCard({
   shift,
   notes = [],
   layout = 'vertical',
+  showInstructorName = true,
   style,
   selected,
   active,
@@ -166,10 +167,14 @@ export default function SessionCard({
         </div>
 
         <div className="flex items-center gap-1">
+          {/* On a narrow bar the fill colour already says who it is; printing
+              a clipped name there costs more than it tells you. */}
           {instructor ? (
-            <span className="min-w-0 truncate text-[9px]" style={{ color: instructor.color }}>
-              → {instructor.name}
-            </span>
+            showInstructorName ? (
+              <span className="min-w-0 truncate text-[9px]" style={{ color: instructor.color }}>
+                → {instructor.name}
+              </span>
+            ) : null
           ) : (
             <span className="truncate text-[9px] text-zinc-400">Unassigned</span>
           )}

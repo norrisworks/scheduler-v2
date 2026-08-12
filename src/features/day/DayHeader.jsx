@@ -9,6 +9,8 @@ export default function DayHeader({
   onRefresh,
   orientation,
   onOrientationChange,
+  grouping,
+  onGroupingChange,
   onMaterialize,
   materializing,
   onAddSession,
@@ -104,6 +106,31 @@ export default function DayHeader({
           <span aria-hidden>▤</span> Rows
         </OrientationButton>
       </div>
+
+      {/* Only meaningful in Rows — the Grid is level columns by definition. */}
+      {orientation === 'transposed' && (
+        <div
+          className="flex items-center overflow-hidden rounded-lg border border-zinc-300"
+          role="group"
+          aria-label="Row grouping"
+        >
+          <OrientationButton
+            active={grouping === 'level'}
+            onClick={() => onGroupingChange('level')}
+            label="Group rows by level"
+          >
+            Level
+          </OrientationButton>
+          <span className="h-6 w-px bg-zinc-300" aria-hidden />
+          <OrientationButton
+            active={grouping === 'instructor'}
+            onClick={() => onGroupingChange('instructor')}
+            label="Group rows by instructor — each instructor's afternoon as one band"
+          >
+            Instructor
+          </OrientationButton>
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <button

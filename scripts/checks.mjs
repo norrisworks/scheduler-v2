@@ -8,6 +8,7 @@ import { capabilityString, instructorWarnings, nextColor, INSTRUCTOR_PALETTE, TI
 import { weekDays, validateShift, shiftHours, totalHours, planCopyWeek, indexShifts, suggestTimes } from '../src/features/shifts/weekShifts.js'
 import { ineligibleReason, buildCandidates, isFallbackOnly, unrankedStudents } from '../src/features/assign/rankings.js'
 import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessage } from '../src/features/assign/algorithms.js'
+import { buildGroups } from '../src/features/day/TransposedGrid.jsx'
 import { proposeRanking, proposalReasons, sameGender, eligibleForStudent, moveEntry } from '../src/features/assign/proposeRanking.js'
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
 import { generateDisplayName, violatesNamingConvention, staleGradeInName } from '../src/features/imports/namingConvention.js'
@@ -739,6 +740,55 @@ eq('a matching grade is not flagged',
    keys(buildChecks([hStu({ name: 'Aryan P (2)', grade: '2' })], [hInst()],
      [{ student_id: 's1', instructor_id: 'i1' }])).includes('stale_name_grade'), false)
 
+// ---- Rows view grouping
+const gSess = (id, studentId, name, start, duration, level, instructorId) => ({
+  id, student_id: studentId, start_time: start, duration, instructor_id: instructorId,
+  student: { name, level }, status: 'scheduled',
+})
+const byId = new Map([
+  ['i1', { id: 'i1', name: 'Kieran', color: '#E53935' }],
+  ['i2', { id: 'i2', name: 'Alavi', color: '#1E88E5' }],
+])
+const gSessions = [
+  gSess('s1', 'a', 'Late A', '17:00:00', 60, 'middle', 'i1'),
+  gSess('s2', 'b', 'Early B', '15:00:00', 60, 'middle', 'i2'),
+  gSess('s3', 'b', 'Early B', '17:30:00', 30, 'middle', 'i1'),
+  gSess('s4', 'c', 'Elem C', '16:00:00', 90, 'elementary', null),
+]
+
+const byLevel = buildGroups(gSessions, 'level', byId)
+eq('level groups are level-ordered', byLevel.map(g => g.label), ['Elementary', 'Middle'])
+// Rows cascade: earliest first session at the top.
+eq('rows sort by first session',
+   byLevel.find(g => g.label === 'Middle').rows.map(r => r.student.name), ['Early B', 'Late A'])
+eq('a student appears once per level group',
+   byLevel.find(g => g.label === 'Middle').rows.length, 2)
+eq('their sessions are collected on one row',
+   byLevel.find(g => g.label === 'Middle').rows[0].sessions.map(s => s.id), ['s2', 's3'])
+eq('row minutes sum the sessions',
+   byLevel.find(g => g.label === 'Middle').rows[0].minutes, 90)
+eq('group totals roll up',
+   [byLevel.find(g => g.label === 'Middle').totalSessions,
+    byLevel.find(g => g.label === 'Middle').totalMinutes], [3, 150])
+
+// Grouping by instructor turns the same data into one band each.
+const byInstructor = buildGroups(gSessions, 'instructor', byId)
+eq('instructor bands, unassigned last',
+   byInstructor.map(g => g.label), ['Alavi', 'Kieran', 'Unassigned'])
+eq('a band carries the instructor colour',
+   byInstructor.find(g => g.label === 'Kieran').color, '#E53935')
+// Early B works with both instructors, so she appears in both bands — but
+// only with the sessions belonging to that band.
+eq('a student split across instructors appears in both bands',
+   byInstructor.filter(g => g.rows.some(r => r.student.name === 'Early B')).map(g => g.label),
+   ['Alavi', 'Kieran'])
+eq('each band only holds its own sessions',
+   byInstructor.find(g => g.label === 'Kieran').rows
+     .flatMap(r => r.sessions.map(s => s.id)).sort(), ['s1', 's3'])
+eq('unassigned sessions get their own band',
+   byInstructor.find(g => g.label === 'Unassigned').rows.map(r => r.student.name), ['Elem C'])
+eq('no sessions, no groups', buildGroups([], 'level', byId).length, 0)
+
 // ---- dates: always America/New_York, never toISOString
 // 9pm ET on Aug 9 is already Aug 10 in UTC. v1 showed tomorrow after 8pm.
 eq('9pm ET stays same day',  toCenterISODate(new Date('2026-08-10T01:30:00Z')), '2026-08-09')
@@ -773,5 +823,6 @@ for (const [label, got, want, ok] of checks) {
 }
 console.log(failed === 0 ? `all ${checks.length} checks passed` : `${failed}/${checks.length} FAILED`)
 process.exit(failed === 0 ? 0 : 1)
+
 
 

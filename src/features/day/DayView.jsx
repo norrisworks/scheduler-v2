@@ -20,6 +20,7 @@ import { ALGORITHMS, summaryMessage } from '../assign/algorithms'
 
 const ORIENTATION_KEY = 'scheduler.dayOrientation'
 const SIDEBAR_KEY = 'scheduler.instructorSidebar'
+const GROUPING_KEY = 'scheduler.rowGrouping'
 
 export default function DayView() {
   const { centerId } = useCenter()
@@ -36,6 +37,7 @@ export default function DayView() {
   const [sidebarOpen, setSidebarOpen] = useState(
     () => localStorage.getItem(SIDEBAR_KEY) !== 'closed',
   )
+  const [grouping, setGrouping] = useState(() => localStorage.getItem(GROUPING_KEY) ?? 'level')
 
   const {
     sessions,
@@ -59,6 +61,10 @@ export default function DayView() {
   useEffect(() => {
     localStorage.setItem(SIDEBAR_KEY, sidebarOpen ? 'open' : 'closed')
   }, [sidebarOpen])
+
+  useEffect(() => {
+    localStorage.setItem(GROUPING_KEY, grouping)
+  }, [grouping])
 
   const {
     running: materializing,
@@ -148,6 +154,8 @@ export default function DayView() {
         onRefresh={refetch}
         orientation={orientation}
         onOrientationChange={setOrientation}
+        grouping={grouping}
+        onGroupingChange={setGrouping}
         onMaterialize={materialize}
         materializing={materializing}
         onAddSession={() => setAddingSession(true)}
@@ -240,7 +248,7 @@ export default function DayView() {
             {loading && gridSessions.length === 0 ? (
               <Spinner label="Loading day…" />
             ) : orientation === 'transposed' ? (
-              <TransposedGrid {...gridProps} />
+              <TransposedGrid {...gridProps} grouping={grouping} />
             ) : (
               <ScheduleGrid {...gridProps} />
             )}

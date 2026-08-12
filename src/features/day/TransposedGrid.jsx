@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { formatTime, minutesToTime } from '../../lib/dates'
+import { formatTime, minutesToTime, timeToMinutes } from '../../lib/dates'
+import { readableTextOn } from '../../lib/colors'
 import { LEVELS, UNSET_LEVEL, levelOf } from './levels'
 import { sessionEndMinutes } from './shiftCoverage'
 import {
@@ -8,19 +9,25 @@ import {
   SLOT_MINUTES,
   SLOT_WIDTH,
   axisWidth,
-  groupByStudent,
   sessionSpan,
 } from './timeGrid'
 import SessionCard from './SessionCard'
 import SlotCount from './SlotCount'
 import { SLOT_CERTAINTY } from './studentOptions'
 
-const NAME_COLUMN = 180 // px — name, certainty dot, grade and Supp live here
+const NAME_COLUMN = 184
+const SUMMARY_COLUMN = 74
+
+/** A bar needs this much room before an instructor name is worth printing. */
+const NAME_ON_BAR_MIN_WIDTH = 108
 
 /**
- * Transposed orientation: time runs left-to-right, one row per student,
- * grouped into collapsible level sections. A student's sessions are bars on
- * their row, so the gaps in their afternoon read instantly.
+ * Rows view: time runs left-to-right, one row per student, sessions as bars.
+ * Rows are sorted by first session so the afternoon reads as a cascade.
+ *
+ * Two groupings. By level is the floor's usual shape. By instructor turns the
+ * same data into one band per instructor — their whole afternoon on one line,
+ * which is the ratio-management view the Grid cannot produce.
  */
 export default function TransposedGrid({
   axis,
@@ -33,6 +40,7 @@ export default function TransposedGrid({
   selectedId,
   dragActive,
   armedInstructor,
+  grouping = 'level',
   onOpenStudent,
   onAssign,
   onUnassign,
@@ -40,13 +48,10 @@ export default function TransposedGrid({
 }) {
   const [collapsed, setCollapsed] = useState(() => new Set())
 
-  const groups = useMemo(() => {
-    const hasUnset = sessions.some((s) => levelOf(s) === UNSET_LEVEL.key)
-    const defs = hasUnset ? [...LEVELS, UNSET_LEVEL] : LEVELS
-    return defs
-      .map((def) => ({ def, rows: groupByStudent(sessions.filter((s) => levelOf(s) === def.key)) }))
-      .filter((group) => group.rows.length > 0)
-  }, [sessions])
+  const groups = useMemo(
+    () => buildGroups(sessions, grouping, instructorsById),
+    [sessions, grouping, instructorsById],
+  )
 
   const width = axisWidth(axis)
   const nowLeft =
@@ -65,60 +70,82 @@ export default function TransposedGrid({
 
   if (sessions.length === 0) {
     return (
-      <p className="px-6 py-16 text-center text-xs text-slate-400">
+      <p className="px-6 py-16 text-center text-xs text-zinc-400">
         No sessions on this day. Sessions arrive from the materializer, the Radius import, or manual
         entry.
       </p>
     )
   }
 
+  const totalWidth = NAME_COLUMN + width + SUMMARY_COLUMN
+
   return (
     <div className="min-w-fit p-4">
-      {/* Time axis header: labels and the per-half-hour student counts */}
+      {/* Time axis: labels on the ticks, counts centered in the bands */}
       <div className="sticky top-0 z-20 -mx-4 -mt-4 mb-2 bg-zinc-50 px-4 pt-4 pb-2">
         <div className="flex">
           <div style={{ width: NAME_COLUMN }} className="shrink-0" />
-          <div style={{ width }} className="relative h-9 shrink-0">
+          <div style={{ width }} className="relative h-10 shrink-0">
             {axis.slots.map((minutes, i) => (
               <span
                 key={minutes}
-                className="absolute top-0 flex -translate-x-1/2 flex-col items-center gap-0.5"
+                className="absolute top-0 -translate-x-1/2 text-[10px] whitespace-nowrap text-zinc-500 tabular-nums"
                 style={{ left: i * SLOT_WIDTH }}
               >
-                <span className="text-xs whitespace-nowrap text-zinc-500 tabular-nums">
-                  {formatTime(minutesToTime(minutes))}
-                </span>
+                {formatTime(minutesToTime(minutes))}
+              </span>
+            ))}
+            {axis.slots.slice(0, -1).map((minutes, i) => (
+              <span
+                key={`count-${minutes}`}
+                className="absolute bottom-0 flex justify-center"
+                style={{ left: i * SLOT_WIDTH, width: SLOT_WIDTH }}
+              >
                 <SlotCount stat={slotStats[i]} />
               </span>
             ))}
           </div>
+          <div
+            style={{ width: SUMMARY_COLUMN }}
+            className="shrink-0 self-end pb-0.5 text-center text-[10px] font-semibold text-zinc-500"
+          >
+            Total
+          </div>
         </div>
       </div>
 
-      {groups.map(({ def, rows }) => {
-        const isCollapsed = collapsed.has(def.key)
+      {groups.map((group) => {
+        const isCollapsed = collapsed.has(group.key)
         return (
-          <div key={def.key} className="mb-3">
+          <div key={group.key} className="mb-3">
             <button
               type="button"
-              onClick={() => toggle(def.key)}
+              onClick={() => toggle(group.key)}
               aria-expanded={!isCollapsed}
-              className="mb-1 flex w-full items-center gap-2 rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-left hover:bg-zinc-50"
-              style={{ width: NAME_COLUMN + width }}
+              className="mb-1 flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-left hover:bg-zinc-50"
+              style={{ width: totalWidth }}
             >
               <span className="text-[10px] text-zinc-400">{isCollapsed ? '▸' : '▾'}</span>
-              <span className={`h-2 w-2 shrink-0 rounded-full ${def.accent}`} />
-              <span className="text-xs font-semibold text-zinc-800">{def.label}</span>
+              {group.color ? (
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: group.color }}
+                />
+              ) : (
+                <span className={`h-2 w-2 shrink-0 rounded-full ${group.accent}`} />
+              )}
+              <span className="text-xs font-semibold text-zinc-800">{group.label}</span>
               <span className="ml-auto text-xs text-zinc-400">
-                {rows.length} student{rows.length === 1 ? '' : 's'}
+                {group.rows.length} student{group.rows.length === 1 ? '' : 's'} ·{' '}
+                {group.totalSessions} session{group.totalSessions === 1 ? '' : 's'} ·{' '}
+                {formatMinutes(group.totalMinutes)}
               </span>
             </button>
 
             {!isCollapsed &&
-              rows.map((row) => (
-                <div key={row.studentId} className="flex" style={{ height: ROW_HEIGHT }}>
-                  {/* The row label is the only place the student is named,
-                      so the bars can stay slim. */}
+              group.rows.map((row) => (
+                <div key={row.key} className="flex" style={{ height: ROW_HEIGHT }}>
+                  {/* The row label is the only place the student is named. */}
                   <div
                     style={{ width: NAME_COLUMN }}
                     className="flex shrink-0 items-center gap-1 pr-2 text-xs text-zinc-700"
@@ -173,7 +200,7 @@ export default function TransposedGrid({
                       const { left, width: barWidth } = sessionSpan(session, axis)
                       const active =
                         nowMinutes !== null &&
-                        nowMinutes >= axis.start + (left / SLOT_WIDTH) * SLOT_MINUTES &&
+                        nowMinutes >= timeToMinutes(session.start_time) &&
                         nowMinutes < sessionEndMinutes(session)
 
                       return (
@@ -184,6 +211,7 @@ export default function TransposedGrid({
                           shift={shiftByInstructor.get(session.instructor_id) ?? null}
                           notes={notesByStudent.get(session.student_id) ?? []}
                           layout="horizontal"
+                          showInstructorName={barWidth >= NAME_ON_BAR_MIN_WIDTH}
                           style={{
                             left,
                             width: barWidth - 2,
@@ -202,6 +230,19 @@ export default function TransposedGrid({
                       )
                     })}
                   </div>
+
+                  {/* Summary: what this row actually costs in floor time. */}
+                  <div
+                    style={{ width: SUMMARY_COLUMN }}
+                    className="flex shrink-0 flex-col items-center justify-center leading-tight"
+                  >
+                    <span className="text-xs font-semibold text-zinc-700 tabular-nums">
+                      {formatMinutes(row.minutes)}
+                    </span>
+                    <span className="text-[10px] text-zinc-400">
+                      {row.sessions.length} session{row.sessions.length === 1 ? '' : 's'}
+                    </span>
+                  </div>
                 </div>
               ))}
           </div>
@@ -209,4 +250,83 @@ export default function TransposedGrid({
       })}
     </div>
   )
+}
+
+function formatMinutes(total) {
+  if (!total) return '—'
+  const h = Math.floor(total / 60)
+  const m = total % 60
+  if (h === 0) return `${m}m`
+  return m === 0 ? `${h}h` : `${h}h ${m}m`
+}
+
+/**
+ * One row per student within a group. Rows sort by their first session so the
+ * day reads as a cascade; groups are levels, or one band per instructor.
+ */
+export function buildGroups(sessions, grouping, instructorsById) {
+  const buckets = new Map()
+
+  const push = (key, meta, session) => {
+    const bucket = buckets.get(key) ?? { ...meta, key, rows: new Map() }
+    // Grouping by instructor means one student can appear in two bands, so
+    // rows are keyed by group AND student rather than student alone.
+    const rowKey = `${key}|${session.student_id}`
+    const row = bucket.rows.get(rowKey) ?? {
+      key: rowKey,
+      student: session.student,
+      studentId: session.student_id,
+      sessions: [],
+    }
+    row.sessions.push(session)
+    bucket.rows.set(rowKey, row)
+    buckets.set(key, bucket)
+  }
+
+  if (grouping === 'instructor') {
+    for (const session of sessions) {
+      const instructor = instructorsById.get(session.instructor_id)
+      push(
+        instructor ? instructor.id : 'unassigned',
+        instructor
+          ? { label: instructor.name, color: instructor.color, order: 0 }
+          : { label: 'Unassigned', accent: 'bg-zinc-400', order: 1 },
+        session,
+      )
+    }
+  } else {
+    const defs = [...LEVELS, UNSET_LEVEL]
+    for (const session of sessions) {
+      const key = levelOf(session)
+      const def = defs.find((d) => d.key === key) ?? UNSET_LEVEL
+      push(key, { label: def.label, accent: def.accent, order: defs.indexOf(def) }, session)
+    }
+  }
+
+  return [...buckets.values()]
+    .map((bucket) => {
+      const rows = [...bucket.rows.values()].map((row) => {
+        const ordered = [...row.sessions].sort((a, b) =>
+          a.start_time.localeCompare(b.start_time),
+        )
+        return {
+          ...row,
+          sessions: ordered,
+          firstStart: timeToMinutes(ordered[0].start_time),
+          minutes: ordered.reduce((n, s) => n + (s.duration ?? 60), 0),
+        }
+      })
+      rows.sort(
+        (a, b) =>
+          a.firstStart - b.firstStart ||
+          (a.student?.name ?? '').localeCompare(b.student?.name ?? ''),
+      )
+      return {
+        ...bucket,
+        rows,
+        totalSessions: rows.reduce((n, r) => n + r.sessions.length, 0),
+        totalMinutes: rows.reduce((n, r) => n + r.minutes, 0),
+      }
+    })
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.label.localeCompare(b.label))
 }

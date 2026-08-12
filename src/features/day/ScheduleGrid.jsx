@@ -61,15 +61,25 @@ export default function ScheduleGrid({
 
       <div className="flex gap-3">
         <div style={{ width: GUTTER, height: axis.height }} className="relative shrink-0">
+          {/* Time labels sit ON the tick, because a tick is an instant. */}
           {axis.slots.map((minutes, i) => (
             <span
               key={minutes}
-              className="absolute right-0 flex -translate-y-1/2 items-center justify-end gap-1"
+              className="absolute right-7 -translate-y-1/2 text-xs text-zinc-500 tabular-nums"
               style={{ top: i * SLOT_HEIGHT }}
             >
-              <span className="text-xs text-zinc-500 tabular-nums">
-                {formatTime(minutesToTime(minutes))}
-              </span>
+              {formatTime(minutesToTime(minutes))}
+            </span>
+          ))}
+
+          {/* Counts sit BETWEEN ticks, centered in the half-hour band they
+              describe — a count is about an interval, not an instant. */}
+          {axis.slots.slice(0, -1).map((minutes, i) => (
+            <span
+              key={`count-${minutes}`}
+              className="absolute right-0 flex items-center"
+              style={{ top: i * SLOT_HEIGHT, height: SLOT_HEIGHT }}
+            >
               <SlotCount stat={slotStats[i]} />
             </span>
           ))}
