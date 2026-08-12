@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import StudentImportView from '../features/imports/StudentImportView'
+import RadiusImportView from '../features/imports/RadiusImportView'
 
 const TABS = [
   { key: 'students', label: 'Student roster', ready: true },
-  { key: 'radius', label: 'Radius sessions', ready: false, step: 7 },
+  { key: 'radius', label: 'Radius sessions', ready: true },
   { key: 'workstream', label: 'Workstream shifts', ready: false, step: 8 },
 ]
 
@@ -35,6 +36,8 @@ export default function ImportsPage() {
       <div className="min-h-0 flex-1 overflow-auto">
         {tab === 'students' ? (
           <StudentImportView />
+        ) : tab === 'radius' ? (
+          <RadiusImportView />
         ) : (
           <p className="mx-auto max-w-lg px-6 py-16 text-center text-sm text-zinc-400">
             {active.label} import lands in step {active.step}.

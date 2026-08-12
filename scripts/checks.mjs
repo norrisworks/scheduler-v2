@@ -12,6 +12,7 @@ import { buildGroups } from '../src/features/day/TransposedGrid.jsx'
 import { proposeRanking, proposalReasons, sameGender, eligibleForStudent, moveEntry } from '../src/features/assign/proposeRanking.js'
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
 import { generateDisplayName, violatesNamingConvention, staleGradeInName } from '../src/features/imports/namingConvention.js'
+import { parseRadiusDate, parseRadiusTime, mapStatus, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent } from '../src/features/imports/radiusImport.js'
 import { planStudentImport } from '../src/features/imports/studentImport.js'
 import { buildChecks } from '../src/features/health/checks.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime } from '../src/lib/dates.js'
@@ -789,6 +790,101 @@ eq('unassigned sessions get their own band',
    byInstructor.find(g => g.label === 'Unassigned').rows.map(r => r.student.name), ['Elem C'])
 eq('no sessions, no groups', buildGroups([], 'level', byId).length, 0)
 
+// ---- Radius import
+eq('M/D/YYYY parses', parseRadiusDate('8/10/2026'), '2026-08-10')
+eq('single digits pad', parseRadiusDate('1/5/2026'), '2026-01-05')
+eq('ISO input is rejected, not misread', parseRadiusDate('2026-08-10'), null)
+eq('blank date', parseRadiusDate(''), null)
+
+eq('afternoon time', parseRadiusTime('3:00 PM'), '15:00:00')
+eq('morning time', parseRadiusTime('9:30 AM'), '09:30:00')
+eq('noon is 12', parseRadiusTime('12:00 PM'), '12:00:00')
+eq('midnight is 00', parseRadiusTime('12:30 AM'), '00:30:00')
+eq('junk time', parseRadiusTime('later'), null)
+
+eq('Scheduled maps', mapStatus('Scheduled'), 'scheduled')
+eq('Attended maps to completed', mapStatus('Attended'), 'completed')
+eq('Cancelled maps', mapStatus('Cancelled'), 'cancelled')
+eq('Late cancelled maps to cancelled', mapStatus('Late cancelled'), 'cancelled')
+eq('No show maps', mapStatus('No show'), 'no_show')
+eq('unknown status is not guessed', mapStatus('Pending'), null)
+
+// v2 stores 'Last, First | id'; the export writes 'First Last'.
+eq('account key from v2 format', accountKey('Fenstermacher, Vanessa | 2802862'),
+   'vanessa fenstermacher')
+eq('account key from export format', accountKey('Vanessa Fenstermacher'), 'vanessa fenstermacher')
+eq('both formats agree',
+   accountKey('Abdullah, Katrina | 2806600') === accountKey('Katrina Abdullah'), true)
+eq('blank account', accountKey(''), '')
+
+eq('full name to display key', displayKeyFromFullName('Landon Russell'), 'landon r')
+eq('single-word name', displayKeyFromFullName('Cher'), 'cher')
+
+eq('test test is suspicious', isSuspiciousActor('test test'), true)
+eq('a repeated word is suspicious', isSuspiciousActor('demo demo'), true)
+eq('a real name is not', isSuspiciousActor('William.Griffin'), false)
+eq('System is not', isSuspiciousActor('System'), false)
+eq('blank is not', isSuspiciousActor(''), false)
+
+// Cancel-and-rebook. A live row proves the slot is live, whatever the order
+// or the timestamps — cancelling in Radius flips a row rather than adding one.
+const rr = (studentName, status, bookedOn, rowNumber) => ({
+  studentName, date: '2026-08-12', startTime: '18:00:00', status, bookedOn, rowNumber,
+})
+eq('a live row beats a cancellation',
+   resolveRebookings([rr('A', 'cancelled', '2026-07-29', 2), rr('A', 'scheduled', '2026-08-10', 3)])
+     .kept.map(r => r.status), ['scheduled'])
+// Order-independent: the same pair the other way round resolves identically.
+eq('order does not matter',
+   resolveRebookings([rr('A', 'scheduled', '2026-08-10', 2), rr('A', 'cancelled', '2026-07-29', 3)])
+     .kept.map(r => r.status), ['scheduled'])
+// The real Fenstermacher case: booked dates differ but an older booking is
+// the live one would still resolve, because status decides first.
+eq('an older live booking still wins',
+   resolveRebookings([rr('A', 'cancelled', '2026-08-10', 2), rr('A', 'scheduled', '2026-07-29', 3)])
+     .kept.map(r => r.status), ['scheduled'])
+eq('Attended counts as live',
+   resolveRebookings([rr('A', 'cancelled', '2026-07-31', 2), rr('A', 'completed', '2026-06-06', 3)])
+     .kept.map(r => r.status), ['completed'])
+eq('all cancelled stays cancelled',
+   resolveRebookings([rr('A', 'cancelled', '2026-07-29', 2), rr('A', 'cancelled', '2026-08-10', 3)])
+     .kept.map(r => r.status), ['cancelled'])
+eq('newest booking wins among two live rows',
+   resolveRebookings([rr('A', 'scheduled', '2026-07-01', 2), rr('A', 'scheduled', '2026-08-10', 3)])
+     .kept.map(r => r.bookedOn), ['2026-08-10'])
+eq('a no-show outranks a cancellation',
+   resolveRebookings([rr('A', 'cancelled', '2026-08-10', 2), rr('A', 'no_show', '2026-07-01', 3)])
+     .kept.map(r => r.status), ['no_show'])
+eq('different students do not collide',
+   resolveRebookings([rr('A', 'scheduled', '2026-08-10', 2), rr('B', 'cancelled', '2026-08-10', 3)])
+     .kept.length, 2)
+eq('a lone row is never reported as superseded',
+   resolveRebookings([rr('A', 'scheduled', '2026-08-10', 2)]).superseded.length, 0)
+
+// Matching is center-scoped and needs the student's own name, because
+// siblings share an account.
+const rStudents = [
+  { id: 'v', name: 'Victoria F', radius_account: 'Fenstermacher, Vanessa | 1' },
+  { id: 'm', name: 'Matthias F', radius_account: 'Fenstermacher, Vanessa | 2' },
+  { id: 'l', name: 'Landon R', radius_account: null },
+]
+eq('account plus name picks the right sibling',
+   matchStudent({ studentName: 'Victoria Fenstermacher', accountName: 'Vanessa Fenstermacher' },
+     rStudents).student.id, 'v')
+eq('the other sibling on the same account',
+   matchStudent({ studentName: 'Matthias Fenstermacher', accountName: 'Vanessa Fenstermacher' },
+     rStudents).student.id, 'm')
+eq('falls back to display name when there is no account',
+   matchStudent({ studentName: 'Landon Russell', accountName: '' }, rStudents).student.id, 'l')
+eq('the fallback is reported',
+   matchStudent({ studentName: 'Landon Russell', accountName: '' }, rStudents).via, 'name')
+// A different last initial is NOT a match — 'Audie Prykowski' vs 'Audie K'.
+eq('a differing last initial does not match',
+   matchStudent({ studentName: 'Audie Prykowski', accountName: 'Joy Keller' },
+     [{ id: 'k', name: 'Audie K', radius_account: null }]).student, null)
+eq('an unknown student does not match',
+   matchStudent({ studentName: 'Nobody Here', accountName: '' }, rStudents).student, null)
+
 // ---- dates: always America/New_York, never toISOString
 // 9pm ET on Aug 9 is already Aug 10 in UTC. v1 showed tomorrow after 8pm.
 eq('9pm ET stays same day',  toCenterISODate(new Date('2026-08-10T01:30:00Z')), '2026-08-09')
@@ -823,6 +919,7 @@ for (const [label, got, want, ok] of checks) {
 }
 console.log(failed === 0 ? `all ${checks.length} checks passed` : `${failed}/${checks.length} FAILED`)
 process.exit(failed === 0 ? 0 : 1)
+
 
 
 
