@@ -71,6 +71,30 @@ export function generateDisplayName(fullName, grade, takenNames = [], options = 
 }
 
 /**
+ * The shape a display name and the full name it came from have in common:
+ * first name plus the last name's initial. 'Danielle S', 'Danielle Sh' and
+ * 'Danielle Shaw' all reduce to `danielle|s`.
+ *
+ * This is how an importer recognises a student it already has. A display name
+ * never carries the full last name, so an export's 'Danielle Shaw' can never
+ * equal the stored 'Danielle S' — without this, every roster row without a
+ * Radius account looks new and gets duplicated.
+ *
+ * Deliberately lossy: it is a candidate key, never proof. Callers must only
+ * accept it when it picks out exactly one student on each side.
+ */
+export function displayNameShape(name) {
+  // Drop the rule-3 grade parenthetical and any '#2' disambiguator so the
+  // stored name and the raw file name reduce alike.
+  const bare = normalize(name)
+    .replace(/\((\w+)\)\s*$/, '')
+    .replace(/#\d+\s*$/, '')
+  const { first, last } = splitName(bare)
+  if (!first || !last) return null
+  return `${first.toLowerCase()}|${last[0].toLowerCase()}`
+}
+
+/**
  * Rule-3 names embed a grade, so they go stale every August when grades bump.
  * Returns the embedded grade when it no longer matches the student's.
  */

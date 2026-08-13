@@ -3,7 +3,7 @@ import { levelOf, UNSET_LEVEL } from '../src/features/day/levels.js'
 import { readableTextOn, tint } from '../src/lib/colors.js'
 import { centerHours, buildTimeAxis, sessionGeometry, packSubColumns, columnWidth, subColumnLeft, SLOT_HEIGHT, SLOT_WIDTH, sessionSpan, axisWidth, groupByStudent } from '../src/features/day/timeGrid.js'
 import { getRole, getPinnedCenter, centerMatchesPin, resolveCenterAccess } from '../src/features/auth/roles.js'
-import { emptyToNull, missingAttributes, GENDER_OPTIONS } from '../src/features/roster/studentFields.js'
+import { emptyToNull, missingAttributes, GENDER_OPTIONS, normalizeEnrollmentStatus, activeFromEnrollment } from '../src/features/roster/studentFields.js'
 import { capabilityString, instructorWarnings, nextColor, INSTRUCTOR_PALETTE, TIER_OPTIONS, TIER_ORDER, ASSIGNABILITY_OPTIONS, GENDER_OPTIONS as INSTRUCTOR_GENDER_OPTIONS } from '../src/features/instructors/instructorFields.js'
 import { weekDays, validateShift, shiftHours, totalHours, planCopyWeek, indexShifts, suggestTimes } from '../src/features/shifts/weekShifts.js'
 import { ineligibleReason, buildCandidates, isFallbackOnly, unrankedStudents } from '../src/features/assign/rankings.js'
@@ -11,10 +11,10 @@ import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessa
 import { buildGroups } from '../src/features/day/TransposedGrid.jsx'
 import { proposeRanking, proposalReasons, sameGender, eligibleForStudent, moveEntry } from '../src/features/assign/proposeRanking.js'
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
-import { generateDisplayName, violatesNamingConvention, staleGradeInName } from '../src/features/imports/namingConvention.js'
+import { generateDisplayName, violatesNamingConvention, staleGradeInName, displayNameShape } from '../src/features/imports/namingConvention.js'
 import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } from '../src/features/imports/workstreamImport.js'
 import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent } from '../src/features/imports/radiusImport.js'
-import { planStudentImport } from '../src/features/imports/studentImport.js'
+import { planStudentImport, planStudentImportByCenter } from '../src/features/imports/studentImport.js'
 import { buildChecks } from '../src/features/health/checks.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime } from '../src/lib/dates.js'
 import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, gaugeCellClass, slotChipClass } from '../src/features/day/load.js'
@@ -583,8 +583,11 @@ const plan = planStudentImport([
 
 eq('one new student', plan.created.length, 1)
 eq('new student gets a convention name', plan.created[0].name, 'Priya R')
+// `active: false` is explicit: this row carried no enrollment status, and a
+// student is never assumed onto the schedule.
 eq('unknown columns are ignored, known ones normalised',
-   plan.created[0].values, { grade: '7', level: 'middle', needs_schoolwork: true })
+   plan.created[0].values,
+   { grade: '7', level: 'middle', needs_schoolwork: true, active: false })
 eq('one changed student', plan.updated.map(u => u.name), ['Keira D'])
 eq('a performance column lands in academic_status',
    plan.updated[0].patch, { academic_status: 'behind' })
@@ -966,6 +969,149 @@ eq('a shift outside the window is untouched', wsBB.removed.some(r => r.shift.id 
 eq('deleting someone the file never mentions is called out',
    wsBB.removed[0].instructorInFile, false)
 
+// ---- enrollment status
+eq('Enrolled', normalizeEnrollmentStatus('Enrolled'), 'enrolled')
+eq('On Hold', normalizeEnrollmentStatus('On Hold'), 'on_hold')
+eq('Pre-Enrolled', normalizeEnrollmentStatus('Pre-Enrolled'), 'pre_enrolled')
+eq('New', normalizeEnrollmentStatus('New'), 'new')
+eq('Inactive', normalizeEnrollmentStatus('Inactive'), 'inactive')
+eq('blank is unset', normalizeEnrollmentStatus(''), null)
+// An unrecognised Radius value is left unset rather than guessed at.
+eq('unknown status is not guessed', normalizeEnrollmentStatus('Withdrawn'), null)
+
+eq('enrolled is schedulable', activeFromEnrollment('enrolled'), true)
+eq('pre-enrolled is schedulable', activeFromEnrollment('pre_enrolled'), true)
+eq('on hold is not', activeFromEnrollment('on_hold'), false)
+eq('inactive is not', activeFromEnrollment('inactive'), false)
+// The important one: New is a lead, not an enrollment. It must carry no
+// opinion, so it can never switch a student on.
+eq('New carries no opinion', activeFromEnrollment('new'), null)
+eq('unset carries no opinion', activeFromEnrollment(null), null)
+
+// The importer applies that rule.
+const enrollExisting = [
+  { id: 'a', name: 'Ada T', radius_account: 'ACC-A', active: false, enrollment_status: null },
+  { id: 'b', name: 'Bo R', radius_account: 'ACC-B', active: true, enrollment_status: null },
+  { id: 'c', name: 'Cy N', radius_account: 'ACC-C', active: false, enrollment_status: null },
+]
+const enrollPlan = planStudentImport([
+  { __row: 2, name: 'Ada Tran', radius_account: 'ACC-A', enrollment_status: 'Enrolled' },
+  { __row: 3, name: 'Bo Rivers', radius_account: 'ACC-B', enrollment_status: 'On Hold' },
+  { __row: 4, name: 'Cy Nolan', radius_account: 'ACC-C', enrollment_status: 'New' },
+], enrollExisting)
+
+const patchFor = (name) => enrollPlan.updated.find((u) => u.name === name)?.patch ?? {}
+eq('Enrolled reactivates a switched-off student',
+   patchFor('Ada T'), { enrollment_status: 'enrolled', active: true })
+eq('On Hold deactivates', patchFor('Bo R'), { enrollment_status: 'on_hold', active: false })
+// Cy stays inactive: the status is recorded, but `active` is untouched.
+eq('New records the status without activating',
+   patchFor('Cy N'), { enrollment_status: 'new' })
+
+// A brand-new student is only created active on a real enrollment.
+const newcomers = planStudentImport([
+  { __row: 2, name: 'Dee Park', enrollment_status: 'Enrolled' },
+  { __row: 3, name: 'Eli Vance', enrollment_status: 'New' },
+  { __row: 4, name: 'Fay Woods' },
+], [])
+eq('an enrolled newcomer is active',
+   newcomers.created.find((c) => c.name === 'Dee P').values.active, true)
+eq('a New newcomer is not', newcomers.created.find((c) => c.name === 'Eli V').values.active, false)
+eq('a newcomer with no status is not',
+   newcomers.created.find((c) => c.name === 'Fay W').values.active, false)
+
+// ---- matching: siblings share a Radius account
+// Real data: 'Yorgey, Suzanne' carries three children. With only one of them
+// on the roster, all three rows used to collapse onto that one student and the
+// last row won — silently overwriting their grade, school and status.
+eq('a display name reduces to first + last initial', displayNameShape('Danielle Shaw'), 'danielle|s')
+eq('and the stored short form reduces the same way', displayNameShape('Danielle S'), 'danielle|s')
+eq('two-letter forms too', displayNameShape('Charlotte Yo'), 'charlotte|y')
+eq('the grade parenthetical is ignored', displayNameShape('Micah C (7)'), 'micah|c')
+eq('a lone first name has no shape', displayNameShape('Madonna'), null)
+
+const siblings = planStudentImport([
+  { __row: 2, first_name: 'Max',  last_name: 'Yorgey', account: 'Yorgey, Suzanne', grade: '5' },
+  { __row: 3, first_name: 'Ivy',  last_name: 'Yorgey', account: 'Yorgey, Suzanne', grade: '8' },
+  { __row: 4, first_name: 'Theo', last_name: 'Yorgey', account: 'Yorgey, Suzanne', grade: '2' },
+], [{ id: 'max', name: 'Max Y', radius_account: 'Yorgey, Suzanne | 1516689', grade: '4', active: true }])
+eq('a sibling row never lands on the wrong child', siblings.updated.length, 1)
+eq('and it lands on the right one', siblings.updated[0].name, 'Max Y')
+eq("Max keeps his own grade", siblings.updated[0].patch.grade, '5')
+eq('the other two siblings are created', siblings.created.map((c) => c.name).sort(), ['Ivy Y', 'Theo Y'])
+
+// The lone-holder shortcut still has to work, or a stored nickname never
+// matches the legal name in the export.
+const nickname = planStudentImport(
+  [{ __row: 2, first_name: 'Alexander', last_name: 'Patel', account: 'Patel, Komal', grade: '6' }],
+  [{ id: 'a', name: 'Alex P', radius_account: 'Patel, Komal | 2700733', grade: '5', active: true }],
+)
+eq('one student and one row on an account match despite the name',
+   nickname.updated.map((u) => u.name), ['Alex P'])
+
+// ---- matching: the display-name convention
+// A stored name never carries a full last name, so nothing matches by string.
+const shaped = planStudentImport(
+  [{ __row: 2, first_name: 'Danielle', last_name: 'Shaw', grade: '9' }],
+  [{ id: 'd', name: 'Danielle S', grade: '8', active: true }],
+)
+eq('a full name in the file finds the short name on the roster',
+   shaped.updated.map((u) => u.name), ['Danielle S'])
+eq('and creates nobody', shaped.created.length, 0)
+
+// Ambiguity on either side makes the shape a guess, so it is refused.
+const twoOnRoster = planStudentImport(
+  [{ __row: 2, first_name: 'Micah', last_name: 'Cohen' }],
+  [{ id: '1', name: 'Micah Ch', active: true }, { id: '2', name: 'Micah Co', active: true }],
+)
+eq('two roster students of the same shape block the match', twoOnRoster.updated.length, 0)
+const twoInFile = planStudentImport(
+  [{ __row: 2, first_name: 'Micah', last_name: 'Cohen' },
+   { __row: 3, first_name: 'Micah', last_name: 'Chen' }],
+  [{ id: '1', name: 'Micah C', active: true }],
+)
+eq('two file rows of the same shape block it too', twoInFile.updated.length, 0)
+
+// Whatever the tier, a second row must never patch over the first.
+const doubled = planStudentImport(
+  [{ __row: 2, first_name: 'Rex', last_name: 'Ford', account: 'Ford, A', grade: '3' },
+   { __row: 3, first_name: 'Rex', last_name: 'Ford', account: 'Ford, A', grade: '9' }],
+  [{ id: 'r', name: 'Rex F', radius_account: 'Ford, A | 1', grade: '3', active: true }],
+)
+eq('a duplicated export row is flagged, not applied', doubled.problems.length, 1)
+eq('and the student is untouched', doubled.updated.length, 0)
+
+// ---- one file, two centers
+// A Blue Bell export selected while looking at Montgomeryville must not create
+// Blue Bell students inside Montgomeryville.
+const mvCenter = { id: 'mvCenter', name: 'Montgomeryville' }
+const bbCenter = { id: 'bbCenter', name: 'Blue Bell' }
+const centerSplit = planStudentImportByCenter([
+  { __row: 2, first_name: 'Ana', last_name: 'Reyes', center: 'Blue Bell' },
+  { __row: 3, first_name: 'Ben', last_name: 'Ortiz', center: 'Montgomeryville' },
+  { __row: 4, first_name: 'Cal', last_name: 'Vance', center: 'Blue Bell' },
+  { __row: 5, first_name: 'Dot', last_name: 'Kim',   center: 'Warrington' },
+], {
+  centersByName: new Map([['montgomeryville', mvCenter], ['blue bell', bbCenter]]),
+  studentsByCenter: new Map(),
+  fallbackCenter: mvCenter,
+})
+eq('rows are centerSplit by the file, not by the selected center',
+   centerSplit.centers.map((c) => [c.center.name, c.plan.created.length]),
+   [['Blue Bell', 2], ['Montgomeryville', 1]])
+eq('a center the app does not have is never guessed at', centerSplit.unknownCenter.length, 1)
+eq('every row is accounted for', centerSplit.totalRows, 4)
+eq('the centerSplit is marked as coming from the file', centerSplit.centers[0].fromColumn, true)
+
+// A hand-made CSV has no Center column; those rows go where you are looking.
+const noColumn = planStudentImportByCenter(
+  [{ __row: 2, first_name: 'Eve', last_name: 'Lang' }],
+  { centersByName: new Map([['blue bell', bbCenter]]), studentsByCenter: new Map(), fallbackCenter: mvCenter },
+)
+eq('a file without a Center column falls back to the selected center',
+   noColumn.centers.map((c) => c.center.name), ['Montgomeryville'])
+eq('and says so', noColumn.centers[0].fromColumn, false)
+
 // ---- dates: always America/New_York, never toISOString
 // 9pm ET on Aug 9 is already Aug 10 in UTC. v1 showed tomorrow after 8pm.
 eq('9pm ET stays same day',  toCenterISODate(new Date('2026-08-10T01:30:00Z')), '2026-08-09')
@@ -1000,6 +1146,7 @@ for (const [label, got, want, ok] of checks) {
 }
 console.log(failed === 0 ? `all ${checks.length} checks passed` : `${failed}/${checks.length} FAILED`)
 process.exit(failed === 0 ? 0 : 1)
+
 
 
 

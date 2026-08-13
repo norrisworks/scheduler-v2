@@ -31,6 +31,50 @@ export const GENDER_OPTIONS = [
   { value: 'm', label: 'M' },
 ]
 
+/**
+ * Radius enrollment status. This is the real signal for whether a student
+ * should be on the schedule; `active` used to carry it alone, which meant
+ * guessing from whether they had a standing slot.
+ *
+ * `schedulable: null` means "carries no opinion" — New is a lead, not an
+ * enrollment, so it must never flip anyone on.
+ */
+export const ENROLLMENT_STATUSES = [
+  { value: 'enrolled', label: 'Enrolled', schedulable: true, chip: 'bg-emerald-100 text-emerald-800' },
+  { value: 'pre_enrolled', label: 'Pre-enrolled', schedulable: true, chip: 'bg-sky-100 text-sky-800' },
+  { value: 'on_hold', label: 'On hold', schedulable: false, chip: 'bg-amber-100 text-amber-800' },
+  { value: 'new', label: 'New', schedulable: null, chip: 'bg-violet-100 text-violet-800' },
+  { value: 'inactive', label: 'Inactive', schedulable: false, chip: 'bg-zinc-200 text-zinc-600' },
+]
+
+export const ENROLLMENT_OPTIONS = [
+  { value: '', label: 'Not set' },
+  ...ENROLLMENT_STATUSES.map((s) => ({ value: s.value, label: s.label })),
+]
+
+export const enrollmentMeta = (value) =>
+  ENROLLMENT_STATUSES.find((s) => s.value === value) ?? null
+
+/** Radius spellings -> our keys. Unknown values are left unset, not guessed. */
+export function normalizeEnrollmentStatus(value) {
+  const v = String(value ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_')
+  if (!v) return null
+  if (v === 'enrolled') return 'enrolled'
+  if (v === 'pre_enrolled' || v === 'preenrolled') return 'pre_enrolled'
+  if (v === 'on_hold' || v === 'onhold' || v === 'hold') return 'on_hold'
+  if (v === 'new') return 'new'
+  if (v === 'inactive') return 'inactive'
+  return null
+}
+
+/**
+ * What this status implies for `active`. Returns null when the status says
+ * nothing, so the caller leaves the flag alone rather than inventing one.
+ */
+export function activeFromEnrollment(status) {
+  return enrollmentMeta(status)?.schedulable ?? null
+}
+
 export const NOTE_TYPES = [
   { value: 'heads_up', label: 'Heads up' },
   { value: 'standing', label: 'Standing' },

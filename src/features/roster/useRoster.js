@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 const EMPTY = []
 
 const ROSTER_SELECT = `
-  id, name, grade, level, school, gender, radius_account, performance,
+  id, name, grade, level, school, gender, radius_account, enrollment_status,
   academic_status, slot_certainty, needs_schoolwork, first_day,
   default_duration, active,
   recurring_slots ( id, day_of_week, start_time, duration, effective_until ),
@@ -79,15 +79,18 @@ export function useRoster(centerId) {
   }
 }
 
-/** Name search plus the level / inactive filters, applied in memory. */
-export function useFilteredRoster(students, { query, level, showInactive }) {
+/** Name search plus the level / enrollment / inactive filters, in memory. */
+export function useFilteredRoster(students, { query, level, showInactive, enrollment }) {
   return useMemo(() => {
     const needle = query.trim().toLowerCase()
     return students.filter((s) => {
       if (!showInactive && !s.active) return false
       if (level && (s.level ?? '') !== level) return false
+      if (enrollment === 'unset' ? s.enrollment_status : enrollment && s.enrollment_status !== enrollment) {
+        return false
+      }
       if (needle && !s.name.toLowerCase().includes(needle)) return false
       return true
     })
-  }, [students, query, level, showInactive])
+  }, [students, query, level, showInactive, enrollment])
 }

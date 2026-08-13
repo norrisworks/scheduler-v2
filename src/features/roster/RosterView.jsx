@@ -5,7 +5,14 @@ import CreateStudentDialog from './CreateStudentDialog'
 import { formatTimeMeridiem } from '../../lib/dates'
 import Spinner from '../../components/Spinner'
 import { useFilteredRoster, useRoster } from './useRoster'
-import { DAYS, LEVEL_OPTIONS, missingAttributes } from './studentFields'
+import {
+  DAYS,
+  ENROLLMENT_STATUSES,
+  LEVEL_OPTIONS,
+  activeFromEnrollment,
+  enrollmentMeta,
+  missingAttributes,
+} from './studentFields'
 import StudentDrawer from './StudentDrawer'
 
 const LEVEL_DOT = {
@@ -21,11 +28,17 @@ export default function RosterView() {
   const [query, setQuery] = useState('')
   const [level, setLevel] = useState('')
   const [showInactive, setShowInactive] = useState(false)
+  const [enrollment, setEnrollment] = useState('')
   const [selectedId, setSelectedId] = useState(null)
   const [instructors, setInstructors] = useState([])
   const [adding, setAdding] = useState(false)
 
-  const filtered = useFilteredRoster(students, { query, level, showInactive })
+  const filtered = useFilteredRoster(students, { query, level, showInactive, enrollment })
+
+  // The mismatch worth catching: schedulable in Radius, switched off here.
+  const contradictions = students.filter(
+    (s) => !s.active && activeFromEnrollment(s.enrollment_status) === true,
+  ).length
 
   // Loaded for the create dialog's ranking step; a student is never created
   // without one.
@@ -72,12 +85,25 @@ export default function RosterView() {
           ))}
         </select>
 
-        <label className="flex items-center gap-1.5 text-xs text-slate-600">
+        <select
+          value={enrollment}
+          onChange={(e) => setEnrollment(e.target.value)}
+          aria-label="Filter by enrollment status"
+          className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm"
+        >
+          <option value="">Any enrollment</option>
+          {ENROLLMENT_STATUSES.map((s) => (
+            <option key={s.value} value={s.value}>{s.label}</option>
+          ))}
+          <option value="unset">Not set</option>
+        </select>
+
+        <label className="flex items-center gap-1.5 text-xs text-zinc-600">
           <input
             type="checkbox"
             checked={showInactive}
             onChange={(e) => setShowInactive(e.target.checked)}
-            className="h-4 w-4 rounded border-slate-300 accent-brand-500"
+            className="h-4 w-4 rounded border-zinc-300 accent-brand-500"
           />
           Show inactive
         </label>
@@ -106,6 +132,25 @@ export default function RosterView() {
           <span className="flex-1">{error}</span>
           <button type="button" onClick={dismissError} className="font-medium underline">
             Dismiss
+          </button>
+        </div>
+      )}
+
+      {contradictions > 0 && (
+        <div className="flex items-center gap-3 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">
+          <span className="flex-1">
+            {contradictions} student{contradictions === 1 ? ' is' : 's are'} enrolled in Radius but
+            switched off here — they will not appear on the schedule.
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setShowInactive(true)
+              setEnrollment('')
+            }}
+            className="font-medium underline"
+          >
+            Show them
           </button>
         </div>
       )}
@@ -197,6 +242,22 @@ function StudentRow({ student, selected, onSelect }) {
             {student.needs_schoolwork && (
               <span className="shrink-0 rounded bg-[#FFEB3B] px-1 text-[10px] font-bold text-black">
                 Supp
+              </span>
+            )}
+            {enrollmentMeta(student.enrollment_status) && (
+              <span
+                className={`shrink-0 rounded px-1 text-[10px] ${enrollmentMeta(student.enrollment_status).chip}`}
+              >
+                {enrollmentMeta(student.enrollment_status).label}
+              </span>
+            )}
+            {/* Radius says schedulable, this roster says off. */}
+            {!student.active && activeFromEnrollment(student.enrollment_status) === true && (
+              <span
+                className="shrink-0 rounded bg-red-100 px-1 text-[10px] font-medium text-red-800"
+                title="Radius has this student as schedulable, but they are switched off here"
+              >
+                should be active
               </span>
             )}
           </span>

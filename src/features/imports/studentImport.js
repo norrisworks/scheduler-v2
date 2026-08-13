@@ -1,10 +1,13 @@
 import { pick } from './parseTable'
 import {
+  displayNameShape,
   generateDisplayName,
   nameKey,
   splitName,
   violatesNamingConvention,
 } from './namingConvention'
+import { activeFromEnrollment, normalizeEnrollmentStatus } from '../roster/studentFields'
+import { accountKey } from './radiusImport'
 
 /**
  * Fields the student roster importer understands. Anything else in the file
@@ -36,6 +39,13 @@ export const STUDENT_FIELDS = [
     key: 'default_duration',
     headers: ['default_duration', 'duration'],
     normalize: (v) => (v === '' ? null : Number(v) || null),
+  },
+  // From the Students export. This replaces inferring enrollment from whether
+  // a student happened to have a standing slot.
+  {
+    key: 'enrollment_status',
+    headers: ['enrollment_status', 'enrollment'],
+    normalize: normalizeEnrollmentStatus,
   },
 ]
 
@@ -78,6 +88,19 @@ function normalizeBool(value) {
   return null
 }
 
+/**
+ * A roster CSV may carry one 'Name' column; the Radius Students export splits
+ * First/Last and adds Preferred Name, which is what the student actually goes
+ * by and so wins for the display name.
+ */
+export function readFullName(row) {
+  const single = pick(row, 'name', 'student_name', 'student')
+  if (single) return single
+  const first = pick(row, 'preferred_name') || pick(row, 'first_name')
+  const last = pick(row, 'last_name')
+  return [first, last].filter(Boolean).join(' ')
+}
+
 export function readStudentRow(row) {
   const values = {}
   for (const field of STUDENT_FIELDS) {
@@ -88,7 +111,7 @@ export function readStudentRow(row) {
   }
   return {
     rowNumber: row.__row,
-    fullName: pick(row, 'name', 'student_name', 'student'),
+    fullName: readFullName(row),
     radiusAccount: pick(row, 'radius_account', 'account_name', 'account'),
     values,
   }
@@ -106,11 +129,38 @@ const changed = (before, after) => {
  * may legitimately be partial).
  */
 export function planStudentImport(rows, existingStudents) {
-  const byRadius = new Map()
+  // Accounts are stored as 'Last, First | RadiusId' but exported as
+  // 'Last, First', so both sides go through the same normaliser. An account is
+  // shared by siblings, so it is only decisive together with the first name.
+  const byAccount = new Map()
   const byName = new Map()
+  // first name + last initial -> students, for the third matching tier below.
+  const byShape = new Map()
   for (const student of existingStudents) {
-    if (student.radius_account) byRadius.set(student.radius_account.trim(), student)
+    if (student.radius_account) {
+      const key = accountKey(student.radius_account)
+      const list = byAccount.get(key) ?? []
+      list.push(student)
+      byAccount.set(key, list)
+    }
     byName.set(nameKey(student.name), student)
+    const shape = displayNameShape(student.name)
+    if (shape) byShape.set(shape, [...(byShape.get(shape) ?? []), student])
+  }
+
+  // How many FILE rows sit on each account and each name shape. Both counts
+  // are needed to tell a lone student from a set of siblings: three rows on
+  // one account are three children, not three views of the same child.
+  const rowsPerAccount = new Map()
+  const rowsPerShape = new Map()
+  for (const raw of rows) {
+    const row = readStudentRow(raw)
+    if (row.radiusAccount) {
+      const key = accountKey(row.radiusAccount)
+      rowsPerAccount.set(key, (rowsPerAccount.get(key) ?? 0) + 1)
+    }
+    const shape = displayNameShape(row.fullName)
+    if (shape) rowsPerShape.set(shape, (rowsPerShape.get(shape) ?? 0) + 1)
   }
 
   // Names already in use, grown as the plan invents new ones, so two new
@@ -139,16 +189,56 @@ export function planStudentImport(rows, existingStudents) {
     const row = readStudentRow(raw)
     if (!row.fullName && !row.radiusAccount) continue
 
-    const match =
-      (row.radiusAccount && byRadius.get(row.radiusAccount.trim())) ||
-      byName.get(nameKey(row.fullName))
+    // Tier 1: the Radius account. Siblings SHARE an account, so it only
+    // identifies a student together with the first name. The lone-holder
+    // shortcut (which lets 'Alexander Patel' find a stored 'Alex P') is only
+    // safe when one student and one row sit on the account — otherwise three
+    // sibling rows all collapse onto whichever child we happen to have, and
+    // the last row silently overwrites the others' grade, school and status.
+    const key = row.radiusAccount ? accountKey(row.radiusAccount) : null
+    const onAccount = key ? (byAccount.get(key) ?? []) : []
+    const rowFirst = nameKey(splitName(row.fullName).first)
+    const byFirstName = onAccount.filter((s) => nameKey(splitName(s.name).first) === rowFirst)
+    const accountMatch =
+      byFirstName.length === 1
+        ? byFirstName[0]
+        : onAccount.length === 1 && rowsPerAccount.get(key) === 1
+          ? onAccount[0]
+          : undefined
+
+    // Tier 3: the display-name convention. A stored name never carries a full
+    // last name, so 'Danielle Shaw' in the file is 'Danielle S' here and no
+    // exact comparison can see it. Accepted only when the shape is unambiguous
+    // on both sides — one student, one row — since it is a guess, not an id.
+    const shape = displayNameShape(row.fullName)
+    const sameShape = shape ? (byShape.get(shape) ?? []) : []
+    const shapeMatch =
+      sameShape.length === 1 && rowsPerShape.get(shape) === 1 ? sameShape[0] : undefined
+
+    const match = accountMatch || byName.get(nameKey(row.fullName)) || shapeMatch
 
     if (match) {
+      // Two rows landing on one student means the export lists them twice or
+      // the match is wrong. Either way the second row must not quietly patch
+      // over the first — surface it and let a person decide.
+      if (matchedIds.has(match.id)) {
+        problems.push({
+          rowNumber: row.rowNumber,
+          fullName: row.fullName,
+          reason: `also matches ${match.name}, already taken by an earlier row — not applied`,
+        })
+        continue
+      }
       matchedIds.add(match.id)
       const patch = {}
       for (const [key, value] of Object.entries(row.values)) {
         if (changed(match[key], value)) patch[key] = value
       }
+
+      // Enrollment drives `active`, but only when it actually says something:
+      // 'New' is a lead, not an enrollment, so it never switches anyone on.
+      const implied = activeFromEnrollment(row.values.enrollment_status)
+      if (implied !== null && Boolean(match.active) !== implied) patch.active = implied
       // An existing student is NEVER renamed, whatever the file says.
       if (row.radiusAccount && !match.radius_account) patch.radius_account = row.radiusAccount
 
@@ -169,13 +259,20 @@ export function planStudentImport(rows, existingStudents) {
       continue
     }
     taken.push(generated.name)
+    const impliedActive = activeFromEnrollment(row.values.enrollment_status)
     created.push({
       rowNumber: row.rowNumber,
       fullName: row.fullName,
       name: generated.name,
       needsReview: generated.needsReview,
       reviewReason: generated.reason,
-      values: { ...row.values, ...(row.radiusAccount ? { radius_account: row.radiusAccount } : {}) },
+      values: {
+        ...row.values,
+        ...(row.radiusAccount ? { radius_account: row.radiusAccount } : {}),
+        // A new student with no usable enrollment signal starts inactive
+        // rather than being assumed onto the schedule.
+        active: impliedActive === true,
+      },
     })
   }
 
@@ -190,5 +287,42 @@ export function planStudentImport(rows, existingStudents) {
     // Names in the file that break the convention are worth surfacing even
     // when they match an existing student, since the file is the source.
     conventionWarnings: created.filter((c) => violatesNamingConvention(c.name)).length,
+  }
+}
+
+/**
+ * Splits the file by its Center column before planning, so a Blue Bell export
+ * can never create Blue Bell students inside Montgomeryville. The Radius
+ * Students export carries a Center column; a hand-made roster CSV may not, and
+ * those rows fall back to the center you are looking at.
+ */
+export function planStudentImportByCenter(
+  rows,
+  { centersByName, studentsByCenter, fallbackCenter },
+) {
+  const buckets = new Map()
+  const unknownCenter = []
+
+  for (const row of rows) {
+    const named = pick(row, 'center')
+    const center = named ? centersByName.get(nameKey(named)) : fallbackCenter
+    if (!center) {
+      unknownCenter.push({ row, centerName: named })
+      continue
+    }
+    const bucket = buckets.get(center.id) ?? { center, rows: [], fromColumn: Boolean(named) }
+    bucket.rows.push(row)
+    buckets.set(center.id, bucket)
+  }
+
+  const centers = [...buckets.values()].map((bucket) => ({
+    ...bucket,
+    plan: planStudentImport(bucket.rows, studentsByCenter.get(bucket.center.id) ?? []),
+  }))
+
+  return {
+    centers: centers.sort((a, b) => a.center.name.localeCompare(b.center.name)),
+    unknownCenter,
+    totalRows: rows.length,
   }
 }

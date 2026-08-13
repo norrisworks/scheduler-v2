@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   ACADEMIC_OPTIONS,
   CERTAINTY_OPTIONS,
+  ENROLLMENT_OPTIONS,
   GENDER_OPTIONS,
   LEVEL_OPTIONS,
   emptyToNull,
@@ -10,7 +11,7 @@ import {
 const FIELDS = [
   'name', 'grade', 'level', 'school', 'gender', 'radius_account',
   'academic_status', 'slot_certainty', 'default_duration', 'needs_schoolwork',
-  'first_day', 'active',
+  'first_day', 'active', 'enrollment_status',
 ]
 
 function toForm(student) {
@@ -47,6 +48,7 @@ export default function StudentAttributes({ student, saving, onSave }) {
       gender: emptyToNull(form.gender),
       radius_account: emptyToNull(form.radius_account),
       academic_status: emptyToNull(form.academic_status),
+      enrollment_status: emptyToNull(form.enrollment_status),
       slot_certainty: emptyToNull(form.slot_certainty),
       default_duration: form.default_duration === '' ? null : Number(form.default_duration),
       needs_schoolwork: form.needs_schoolwork,
@@ -111,6 +113,17 @@ export default function StudentAttributes({ student, saving, onSave }) {
           value={form.radius_account}
           onChange={(e) => set('radius_account', e.target.value)}
           className={inputClass}
+        />
+      </Field>
+
+      <Field
+        label="Enrollment status"
+        hint="Comes from the Radius Students export. Enrolled and Pre-enrolled are schedulable."
+      >
+        <Select
+          value={form.enrollment_status}
+          onChange={(v) => set('enrollment_status', v)}
+          options={ENROLLMENT_OPTIONS}
         />
       </Field>
 
