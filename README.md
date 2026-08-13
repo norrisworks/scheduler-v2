@@ -153,5 +153,37 @@ Views ship in the order listed in BRIEF.md, each verified before the next:
 
 ## Deploy
 
-Vercel, framework preset Vite. Set `VITE_SUPABASE_URL` and
-`VITE_SUPABASE_ANON_KEY` in project env vars.
+Vercel. `vercel.json` is committed and does the two things a Vite SPA needs:
+
+- **Rewrites every non-asset path to `index.html`.** Without this, `/day`,
+  `/rankings` and every other route return 404 on refresh or on a shared
+  link — the router only exists once the bundle has loaded. `/assets/*` is
+  excluded so hashed files are served directly.
+- **Caches `/assets/*` immutably.** Filenames are content-hashed, so a year is
+  safe and a deploy invalidates by changing the name.
+
+### First deploy
+
+1. Vercel → **Add New → Project** → import `norrisworks/scheduler-v2`.
+2. Framework preset is detected as **Vite**; build command and output
+   directory come from `vercel.json`, so leave them alone.
+3. Add both environment variables **before** the first build — they are
+   inlined at build time, so a build without them ships a broken bundle:
+
+   | Name | Value |
+   |---|---|
+   | `VITE_SUPABASE_URL` | `https://solflnjhncpanwlomvjp.supabase.co` |
+   | `VITE_SUPABASE_ANON_KEY` | anon key from Supabase → Settings → API Keys |
+
+   Set both for Production, Preview and Development.
+4. Deploy. Every push to `main` redeploys; pull requests get preview URLs.
+
+### After the first deploy
+
+Add the Vercel domain to Supabase → Authentication → URL Configuration →
+**Redirect URLs**, or sign-in will bounce.
+
+`VITE_*` variables are compiled into the client bundle and are public by
+design. That is correct for the anon key — it is only as privileged as RLS
+allows, which is why every table is authenticated-only. Never put a service
+role key in a `VITE_*` variable.
