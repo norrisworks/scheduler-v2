@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import StudentImportView from '../features/imports/StudentImportView'
 import RadiusImportView from '../features/imports/RadiusImportView'
+import WorkstreamImportView from '../features/imports/WorkstreamImportView'
 
 const TABS = [
-  { key: 'students', label: 'Student roster', ready: true },
-  { key: 'radius', label: 'Radius sessions', ready: true },
-  { key: 'workstream', label: 'Workstream shifts', ready: false, step: 8 },
+  { key: 'students', label: 'Student roster' },
+  { key: 'radius', label: 'Radius sessions' },
+  { key: 'workstream', label: 'Workstream shifts' },
 ]
 
 export default function ImportsPage() {
@@ -39,9 +40,7 @@ export default function ImportsPage() {
         ) : tab === 'radius' ? (
           <RadiusImportView />
         ) : (
-          <p className="mx-auto max-w-lg px-6 py-16 text-center text-sm text-zinc-400">
-            {active.label} import lands in step {active.step}.
-          </p>
+          <WorkstreamImportView />
         )}
       </div>
     </div>

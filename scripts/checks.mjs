@@ -12,7 +12,8 @@ import { buildGroups } from '../src/features/day/TransposedGrid.jsx'
 import { proposeRanking, proposalReasons, sameGender, eligibleForStudent, moveEntry } from '../src/features/assign/proposeRanking.js'
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
 import { generateDisplayName, violatesNamingConvention, staleGradeInName } from '../src/features/imports/namingConvention.js'
-import { parseRadiusDate, parseRadiusTime, mapStatus, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent } from '../src/features/imports/radiusImport.js'
+import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } from '../src/features/imports/workstreamImport.js'
+import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent } from '../src/features/imports/radiusImport.js'
 import { planStudentImport } from '../src/features/imports/studentImport.js'
 import { buildChecks } from '../src/features/health/checks.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime } from '../src/lib/dates.js'
@@ -878,12 +879,92 @@ eq('falls back to display name when there is no account',
    matchStudent({ studentName: 'Landon Russell', accountName: '' }, rStudents).student.id, 'l')
 eq('the fallback is reported',
    matchStudent({ studentName: 'Landon Russell', accountName: '' }, rStudents).via, 'name')
-// A different last initial is NOT a match — 'Audie Prykowski' vs 'Audie K'.
+// A differing initial with no guardian to explain it stays unmatched.
 eq('a differing last initial does not match',
-   matchStudent({ studentName: 'Audie Prykowski', accountName: 'Joy Keller' },
+   matchStudent({ studentName: 'Audie Prykowski', accountName: '' },
      [{ id: 'k', name: 'Audie K', radius_account: null }]).student, null)
 eq('an unknown student does not match',
    matchStudent({ studentName: 'Nobody Here', accountName: '' }, rStudents).student, null)
+
+// ---- Radius: guardian surname and suggestions
+// v1 sometimes used the GUARDIAN's surname: 'Audie Prykowski' on account
+// 'Joy Keller' was entered as 'Audie K'.
+eq('guardian key', displayKeyFromGuardian('Audie Prykowski', 'Joy Keller'), 'audie k')
+eq('guardian key strips the radius id',
+   displayKeyFromGuardian('Audie Prykowski', 'Keller, Joy | 123'), 'audie k')
+eq('no guardian, no key', displayKeyFromGuardian('Audie Prykowski', ''), '')
+eq('the guardian surname matches where the student surname does not',
+   matchStudent({ studentName: 'Audie Prykowski', accountName: 'Joy Keller' },
+     [{ id: 'k', name: 'Audie K', radius_account: null }]).via, "guardian's surname")
+
+// Suggestions are offered, never applied.
+eq('a first-name spelling variant is suggested',
+   suggestStudents({ studentName: 'Charis Effraim' },
+     [{ id: 'c', name: 'Chariss E' }]).map(s => s.student.name), ['Chariss E'])
+eq('a different initial on the same first name is suggested',
+   suggestStudents({ studentName: 'Anvit Arun' },
+     [{ id: 'a', name: 'Anvit S' }])[0].why, 'same first name, initial S')
+eq('an unrelated student is not suggested',
+   suggestStudents({ studentName: 'Anvit Arun' }, [{ id: 'z', name: 'Zoe H' }]).length, 0)
+
+// ---- Workstream shifts
+const wsRow = (over = {}) => ({
+  __row: 2, employee_name: 'Tanvi Raman', employee_id: '151013', date: '7/14/2026',
+  time_in: '3:03 PM', time_out: '6:38 PM', center: 'Blue Bell',
+  duration_minutes: '216', ...over,
+})
+eq('a data row is data', isDataRow(wsRow()), true)
+// The real export introduces each employee with a bare name row and closes
+// them with a Total row. Neither is data.
+eq('a group header is not data', isDataRow({ __EMPTY: 'Roy Eisenhandler (I)' }), false)
+eq('a total row is not data',
+   isDataRow({ date: '', time_in: '', duration_minutes: 'Total: 648' }), false)
+eq('a row without a clock-in is not data', isDataRow(wsRow({ time_in: '' })), false)
+
+const ws = readWorkstreamRow(wsRow())
+eq('date parsed', ws.date, '2026-07-14')
+eq('clock in parsed', ws.startTime, '15:03:00')
+eq('clock out parsed', ws.endTime, '18:38:00')
+
+const wsInstructors = [
+  { id: 't', name: 'Tanvi Raman', workstream_id: null },
+  { id: 'r', name: 'Roy', workstream_id: null },
+  { id: 'b', name: 'Bob', workstream_id: '149434' },
+]
+eq('full name matches', matchInstructor(ws, wsInstructors).instructor.id, 't')
+// v2 holds several instructors by first name only.
+eq('a lone first name matches',
+   matchInstructor(readWorkstreamRow(wsRow({ employee_name: 'Roy Eisenhandler', employee_id: '' })),
+     wsInstructors).via, 'first name')
+// workstream_id wins outright — 'Robert Luisi' would never match 'Bob' by name.
+eq('the workstream id beats the name',
+   matchInstructor(readWorkstreamRow(wsRow({ employee_name: 'Robert Luisi', employee_id: '149434' })),
+     wsInstructors).instructor.id, 'b')
+eq('an unknown employee does not match',
+   matchInstructor(readWorkstreamRow(wsRow({ employee_name: 'Yeogyeong Gim', employee_id: '154945' })),
+     wsInstructors).instructor, null)
+
+// The deletion rule, which is the opposite of Radius.
+const wsCenters = new Map([['blue bell', { id: 'bb', name: 'Blue Bell' }]])
+const wsByCenter = new Map([['bb', wsInstructors]])
+const wsPlan = planWorkstreamImport([wsRow()], {
+  centersByName: wsCenters,
+  instructorsByCenter: wsByCenter,
+  existingShifts: [
+    // same slot, different end -> update
+    { id: 's1', instructor_id: 't', center_id: 'bb', date: '2026-07-14', start_time: '15:03:00', end_time: '17:00:00' },
+    // same day, absent from the file -> delete
+    { id: 's2', instructor_id: 'r', center_id: 'bb', date: '2026-07-14', start_time: '09:00:00', end_time: '12:00:00' },
+    // outside the file's window -> untouched
+    { id: 's3', instructor_id: 'r', center_id: 'bb', date: '2026-08-01', start_time: '09:00:00', end_time: '12:00:00' },
+  ],
+})
+const wsBB = wsPlan.centers[0]
+eq('an end-time change is an update', wsBB.updated.map(u => u.current.id), ['s1'])
+eq('a shift absent from the file is deleted', wsBB.removed.map(r => r.shift.id), ['s2'])
+eq('a shift outside the window is untouched', wsBB.removed.some(r => r.shift.id === 's3'), false)
+eq('deleting someone the file never mentions is called out',
+   wsBB.removed[0].instructorInFile, false)
 
 // ---- dates: always America/New_York, never toISOString
 // 9pm ET on Aug 9 is already Aug 10 in UTC. v1 showed tomorrow after 8pm.
@@ -919,6 +1000,8 @@ for (const [label, got, want, ok] of checks) {
 }
 console.log(failed === 0 ? `all ${checks.length} checks passed` : `${failed}/${checks.length} FAILED`)
 process.exit(failed === 0 ? 0 : 1)
+
+
 
 
 

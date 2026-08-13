@@ -93,6 +93,7 @@ export default function RadiusImportView() {
 
     const base = planRadiusImport(rows, {
       centersByName,
+      centersById: new Map(reference.centers.map((c) => [c.id, c])),
       studentsByCenter,
       existingSessions: reference.sessions,
     })
@@ -203,6 +204,16 @@ export default function RadiusImportView() {
         />
       </div>
 
+      <p className="mt-3 rounded-lg bg-zinc-100 px-3 py-2 text-[11px] leading-snug text-zinc-600">
+        <span className="font-semibold">Matching is name-based, and it does not have to be.</span>{' '}
+        The Appointments export carries no id columns, so rows are matched on account name and the
+        student's display name — which is why a name that drifted needs a manual link. The{' '}
+        <span className="font-medium">Students export</span> does carry Student Id and Account Id:
+        importing one on the Roster tab populates <code>radius_account</code> and makes every future
+        appointment import id-stable. Montgomeryville currently has none populated, so all of its
+        rows match by name today.
+      </p>
+
       {error && <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
       {done && (
@@ -269,43 +280,81 @@ export default function RadiusImportView() {
                 </span>
               </div>
 
-              {c.unmatched.length > 0 && (
+              {c.unmatched.some((r) => r.centerMismatch) && (
+                <div className="border-b border-red-200 bg-red-50 p-3">
+                  <p className="text-xs font-semibold text-red-800">
+                    Center mismatch — not imported, and not moved
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-red-700">
+                    The file puts these at {c.center.name}, but they exist at another center. This
+                    is always a question, never an assumption: fix it in Radius, or move the student
+                    on the Roster.
+                  </p>
+                  <ul className="mt-1 space-y-0.5">
+                    {[
+                      ...new Map(
+                        c.unmatched
+                          .filter((r) => r.centerMismatch)
+                          .map((r) => [nameKey(r.studentName), r]),
+                      ).values(),
+                    ].map((row) => (
+                      <li key={row.studentName} className="text-[11px] text-red-800">
+                        <span className="font-medium">{row.studentName}</span> — {row.reason}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {c.unmatched.some((r) => !r.centerMismatch) && (
                 <div className="border-b border-zinc-200 p-3">
                   <p className="mb-2 text-xs font-semibold text-zinc-700">
                     Link these names to a student, or leave them to skip
                   </p>
                   <ul className="space-y-1">
-                    {[...new Map(c.unmatched.map((r) => [nameKey(r.studentName), r])).values()].map(
-                      (row) => (
-                        <li key={row.studentName} className="flex flex-wrap items-center gap-2 text-sm">
-                          <span className="min-w-0 flex-1 truncate">
-                            <span className="font-medium text-zinc-900">{row.studentName}</span>
-                            <span className="ml-1 text-xs text-zinc-400">
-                              account “{row.accountName}” · {row.reason}
-                            </span>
+                    {[
+                      ...new Map(
+                        c.unmatched
+                          .filter((r) => !r.centerMismatch)
+                          .map((r) => [nameKey(r.studentName), r]),
+                      ).values(),
+                    ].map((row) => (
+                      <li key={row.studentName} className="flex flex-wrap items-center gap-2 text-sm">
+                        <span className="min-w-0 flex-1">
+                          <span className="font-medium text-zinc-900">{row.studentName}</span>
+                          <span className="ml-1 text-xs text-zinc-400">
+                            account “{row.accountName}”
                           </span>
-                          <select
-                            value={links[nameKey(row.studentName)] ?? ''}
-                            onChange={(e) =>
-                              setLinks((prev) => ({
-                                ...prev,
-                                [nameKey(row.studentName)]: e.target.value || undefined,
-                              }))
-                            }
-                            className="w-52 rounded-lg border border-zinc-300 px-2 py-1 text-xs"
-                          >
-                            <option value="">Skip</option>
-                            {(reference?.students ?? [])
-                              .filter((s) => s.center_id === c.center.id)
-                              .map((s) => (
-                                <option key={s.id} value={s.id}>
-                                  {s.name}
-                                </option>
-                              ))}
-                          </select>
-                        </li>
-                      ),
-                    )}
+                          {row.suggestions?.length > 0 && (
+                            <span className="block text-[11px] text-brand-600">
+                              probably{' '}
+                              {row.suggestions
+                                .map((s) => `${s.student.name} (${s.why})`)
+                                .join(' or ')}
+                            </span>
+                          )}
+                        </span>
+                        <select
+                          value={links[nameKey(row.studentName)] ?? ''}
+                          onChange={(e) =>
+                            setLinks((prev) => ({
+                              ...prev,
+                              [nameKey(row.studentName)]: e.target.value || undefined,
+                            }))
+                          }
+                          className="w-52 rounded-lg border border-zinc-300 px-2 py-1 text-xs"
+                        >
+                          <option value="">Skip</option>
+                          {(reference?.students ?? [])
+                            .filter((s) => s.center_id === c.center.id)
+                            .map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.name}
+                              </option>
+                            ))}
+                        </select>
+                      </li>
+                    ))}
                   </ul>
                 </div>
               )}

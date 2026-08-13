@@ -44,13 +44,17 @@ export function parseRadiusTime(value) {
  * v2 stores the account as 'Last, First | RadiusId'; the export writes it as
  * 'First Last'. Both collapse to the same comparable key.
  */
-export function accountKey(value) {
+/** Both stored and exported account forms as plain 'First Last'. */
+export function accountFullName(value) {
   const withoutId = String(value ?? '').split('|')[0].trim()
   if (!withoutId) return ''
   const parts = withoutId.split(',')
-  const normalized =
-    parts.length > 1 ? `${parts[1].trim()} ${parts[0].trim()}` : withoutId
-  return nameKey(normalized)
+  // 'Keller, Joy' -> 'Joy Keller'; 'Joy Keller' is already right.
+  return parts.length > 1 ? `${parts[1].trim()} ${parts[0].trim()}` : withoutId
+}
+
+export function accountKey(value) {
+  return nameKey(accountFullName(value))
 }
 
 /** The display name this full name would collapse to: 'Landon Russell' -> 'landon r'. */
@@ -58,6 +62,64 @@ export function displayKeyFromFullName(fullName) {
   const { first, last } = splitName(fullName)
   if (!first) return ''
   return nameKey(last ? `${first} ${last[0]}` : first)
+}
+
+/**
+ * v1 display names sometimes took the GUARDIAN's surname rather than the
+ * student's — 'Audie Prykowski' on account 'Joy Keller' was entered as
+ * 'Audie K'. So the account holder's surname is a legitimate second candidate
+ * for the initial.
+ */
+export function displayKeyFromGuardian(studentName, accountName) {
+  const first = splitName(studentName).first
+  // Normalise 'Keller, Joy | 123' to 'Joy Keller' first, or the surname would
+  // be read as 'Joy'.
+  const guardianLast = splitName(accountFullName(accountName)).last
+  if (!first || !guardianLast) return ''
+  return nameKey(`${first} ${guardianLast[0]}`)
+}
+
+/** Cheap edit distance, capped — only used to SUGGEST, never to match. */
+function closeEnough(a, b) {
+  if (a === b) return true
+  if (Math.abs(a.length - b.length) > 2) return false
+  const longer = a.length >= b.length ? a : b
+  const shorter = a.length >= b.length ? b : a
+  if (longer.startsWith(shorter)) return true
+  let diffs = 0
+  for (let i = 0, j = 0; i < longer.length && j < shorter.length; i++, j++) {
+    if (longer[i] !== shorter[j]) {
+      diffs++
+      if (diffs > 1) return false
+      j--
+    }
+  }
+  return diffs <= 1
+}
+
+/**
+ * Students this row PROBABLY means, offered in the manual linking pass and
+ * never applied on their own. Covers the two cases the deterministic rules
+ * cannot: a first-name spelling variant ('Charis' vs 'Chariss'), and an
+ * initial that matches neither the student's nor the guardian's surname.
+ */
+export function suggestStudents(row, students) {
+  const first = nameKey(splitName(row.studentName).first)
+  const studentInitial = nameKey(splitName(row.studentName).last?.[0] ?? '')
+  const out = []
+
+  for (const s of students) {
+    const sFirst = nameKey(splitName(s.name).first)
+    const sInitial = nameKey(splitName(s.name).last?.[0] ?? '')
+    if (!sFirst) continue
+
+    if (sFirst === first && sInitial !== studentInitial) {
+      out.push({ student: s, why: `same first name, initial ${sInitial.toUpperCase()}` })
+    } else if (sInitial && sInitial === studentInitial && closeEnough(sFirst, first)) {
+      out.push({ student: s, why: 'first name spelled differently' })
+    }
+  }
+  return out
 }
 
 /**
@@ -167,6 +229,14 @@ export function matchStudent(row, students) {
   if (byDisplay.length === 1) return { student: byDisplay[0], via: 'name' }
   if (byDisplay.length > 1) return { student: null, via: 'ambiguous name' }
 
+  // v1 sometimes used the guardian's surname for the initial.
+  const guardianKey = displayKeyFromGuardian(row.studentName, row.accountName)
+  if (guardianKey) {
+    const byGuardian = students.filter((s) => nameKey(s.name) === guardianKey)
+    if (byGuardian.length === 1) return { student: byGuardian[0], via: "guardian's surname" }
+    if (byGuardian.length > 1) return { student: null, via: 'ambiguous guardian surname' }
+  }
+
   return { student: null, via: null }
 }
 
@@ -179,7 +249,10 @@ const sessionKey = (studentId, date, startTime) => `${studentId}|${date}|${start
  * from the file are FLAGGED, never deleted: Radius adoption is partial, so
  * absence carries no information.
  */
-export function planRadiusImport(rows, { centersByName, studentsByCenter, existingSessions }) {
+export function planRadiusImport(
+  rows,
+  { centersByName, centersById, studentsByCenter, existingSessions },
+) {
   const parsed = rows.map(readRadiusRow).filter((r) => r.studentName || r.accountName)
 
   const unparsable = parsed.filter((r) => !r.date || !r.startTime || !r.status)
@@ -219,7 +292,29 @@ export function planRadiusImport(rows, { centersByName, studentsByCenter, existi
     for (const row of bucket.rows) {
       const { student, via } = matchStudent(row, students)
       if (!student) {
-        unmatched.push({ ...row, reason: via ?? 'no student with that name or account' })
+        // A student who matches at ANOTHER center is never imported here and
+        // never silently redirected there. It is always a question.
+        const elsewhere = []
+        for (const [otherId, otherStudents] of studentsByCenter) {
+          if (otherId === centerId) continue
+          const hit = matchStudent(row, otherStudents)
+          if (hit.student) {
+            elsewhere.push({
+              student: hit.student,
+              center: centersById?.get(otherId) ?? null,
+              via: hit.via,
+            })
+          }
+        }
+
+        unmatched.push({
+          ...row,
+          reason: elsewhere.length
+            ? `matches ${elsewhere[0].student.name} at ${elsewhere[0].center?.name ?? 'another center'}`
+            : (via ?? 'no student with that name or account'),
+          centerMismatch: elsewhere.length > 0 ? elsewhere : null,
+          suggestions: elsewhere.length ? [] : suggestStudents(row, students),
+        })
         continue
       }
 
