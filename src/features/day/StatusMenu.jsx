@@ -1,20 +1,40 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { supabase } from '../../lib/supabase'
+import { BINDER_STATUSES } from '../binder/BinderPrepView'
 
 /**
  * Status changes for one session. Rendered at the top of the day view rather
  * than inside the card, so it is never clipped by the card's overflow.
+ *
+ * Also the day view's one look at the binder note: the day query never loads
+ * it (cards must not show it), so this fetches the single session's note on
+ * open instead.
  */
 export default function StatusMenu({ menu, onStatusChange, onClose }) {
+  const [binder, setBinder] = useState(null)
+
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  useEffect(() => {
+    setBinder(null)
+    if (!menu) return
+    supabase
+      .from('sessions')
+      .select('binder_status, binder_note')
+      .eq('id', menu.session.id)
+      .single()
+      .then(({ data }) => data && setBinder(data))
+  }, [menu])
+
   if (!menu) return null
 
   const { session, x, y } = menu
   const off = session.status === 'cancelled' || session.status === 'no_show'
+  const binderMeta = BINDER_STATUSES.find((s) => s.value === (binder?.binder_status ?? 'not_started'))
 
   const items = off
     ? [{ status: 'scheduled', label: 'Restore to schedule' }]
@@ -57,6 +77,21 @@ export default function StatusMenu({ menu, onStatusChange, onClose }) {
             {item.label}
           </button>
         ))}
+        {binder && (
+          <div className="max-w-56 border-t border-zinc-100 px-3 py-1.5">
+            <p className="text-[10px] text-zinc-400">
+              Binder:{' '}
+              <span className={`rounded px-1 py-0.5 font-medium ${binderMeta.chip}`}>
+                {binderMeta.label}
+              </span>
+            </p>
+            {binder.binder_note && (
+              <p className="mt-1 text-[11px] leading-snug break-words text-zinc-600">
+                {binder.binder_note}
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </>
   )

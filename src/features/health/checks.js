@@ -43,6 +43,7 @@ export function buildChecks(students, instructors, rankings) {
   if (unranked.length > 0) {
     checks.push({
       key: 'unranked_students',
+      entity: 'student',
       severity: instructors.length === 0 ? 'blocking' : 'high',
       title: `${unranked.length} active student${unranked.length === 1 ? '' : 's'} with no rankings`,
       detail: 'Auto-assign cannot place them at all. Seed them from the Rankings matrix.',
@@ -60,6 +61,7 @@ export function buildChecks(students, instructors, rankings) {
     }
     checks.push({
       key: 'missing_attributes',
+      entity: 'student',
       severity: 'medium',
       title: `${missing.length} student${missing.length === 1 ? '' : 's'} missing attributes`,
       detail:
@@ -87,6 +89,7 @@ export function buildChecks(students, instructors, rankings) {
   if (thin.length > 0) {
     checks.push({
       key: 'thin_instructors',
+      entity: 'instructor',
       severity: 'high',
       title: `${thin.length} instructor${thin.length === 1 ? '' : 's'} missing from most rankings`,
       detail:
@@ -104,6 +107,7 @@ export function buildChecks(students, instructors, rankings) {
   if (noLevels.length > 0) {
     checks.push({
       key: 'instructors_no_levels',
+      entity: 'instructor',
       severity: 'high',
       title: `${noLevels.length} instructor${noLevels.length === 1 ? '' : 's'} with no levels set`,
       detail: 'They can never be auto-assigned. Set can-teach flags on their profile.',
@@ -115,6 +119,7 @@ export function buildChecks(students, instructors, rankings) {
   if (noGender.length > 0) {
     checks.push({
       key: 'instructors_no_gender',
+      entity: 'instructor',
       severity: 'low',
       title: `${noGender.length} instructor${noGender.length === 1 ? '' : 's'} with no gender set`,
       detail: 'Same-gender ordering is skipped for them when proposing rankings.',
@@ -129,6 +134,7 @@ export function buildChecks(students, instructors, rankings) {
   if (staleNames.length > 0) {
     checks.push({
       key: 'stale_name_grade',
+      entity: 'student',
       severity: 'medium',
       title: `${staleNames.length} display name${staleNames.length === 1 ? '' : 's'} with a stale grade`,
       detail: 'The grade in the name no longer matches the student. Rename them on the Roster.',

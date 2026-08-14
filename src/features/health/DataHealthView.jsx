@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { useCenter } from '../centers/CenterProvider'
 import Spinner from '../../components/Spinner'
+import Modal from '../../components/Modal'
+import StudentDrawer from '../roster/StudentDrawer'
+import InstructorForm from '../instructors/InstructorForm'
 import { useDataHealth } from './useDataHealth'
 
 const SEVERITY = {
@@ -12,8 +15,20 @@ const SEVERITY = {
 
 export default function DataHealthView() {
   const { center, centerId } = useCenter()
-  const { checks, students, instructors, loading, error, refetch } = useDataHealth(centerId)
+  const { checks, students, instructors, loading, error, refetch, patchInstructor } =
+    useDataHealth(centerId)
   const [open, setOpen] = useState(() => new Set())
+  // A flagged row opens its editor right here; closing re-runs the checks in
+  // place, so a fixed item drops off the list without a reload.
+  const [editing, setEditing] = useState(null) // { entity, id }
+
+  const editingInstructor =
+    editing?.entity === 'instructor' ? instructors.find((i) => i.id === editing.id) : null
+
+  async function closeEditor() {
+    setEditing(null)
+    await refetch()
+  }
 
   function toggle(key) {
     setOpen((prev) => {
@@ -91,12 +106,27 @@ export default function DataHealthView() {
                   {expanded && (
                     <ul className="max-h-64 divide-y divide-zinc-100 overflow-auto border-t border-zinc-200 bg-zinc-50">
                       {check.items.map((item) => (
-                        <li
-                          key={item.id}
-                          className="flex items-center gap-2 px-3 py-1.5 text-sm"
-                        >
-                          <span className="min-w-0 flex-1 truncate text-zinc-800">{item.label}</span>
-                          <span className="shrink-0 text-xs text-zinc-500">{item.note}</span>
+                        <li key={item.id}>
+                          {check.entity ? (
+                            <button
+                              type="button"
+                              onClick={() => setEditing({ entity: check.entity, id: item.id })}
+                              title={`Open ${item.label} to fix this`}
+                              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-white"
+                            >
+                              <span className="min-w-0 flex-1 truncate text-zinc-800 underline decoration-zinc-300 underline-offset-2">
+                                {item.label}
+                              </span>
+                              <span className="shrink-0 text-xs text-zinc-500">{item.note}</span>
+                            </button>
+                          ) : (
+                            <span className="flex items-center gap-2 px-3 py-1.5 text-sm">
+                              <span className="min-w-0 flex-1 truncate text-zinc-800">
+                                {item.label}
+                              </span>
+                              <span className="shrink-0 text-xs text-zinc-500">{item.note}</span>
+                            </span>
+                          )}
                         </li>
                       ))}
                     </ul>
@@ -107,6 +137,38 @@ export default function DataHealthView() {
           </ul>
         )}
       </div>
+
+      {editing?.entity === 'student' && (
+        <Modal side="right" label="Student editor" onClose={closeEditor}>
+          <StudentDrawer key={editing.id} studentId={editing.id} onClose={closeEditor} onChanged={refetch} />
+        </Modal>
+      )}
+
+      {editingInstructor && (
+        <Modal label={`Edit ${editingInstructor.name}`} onClose={closeEditor}>
+          <div className="border-b border-zinc-200 px-4 py-3">
+            <h2 className="text-sm font-semibold text-zinc-900">{editingInstructor.name}</h2>
+            <p className="mt-0.5 text-xs text-zinc-500">Every change saves as you make it.</p>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto p-4">
+            <InstructorForm
+              key={editingInstructor.id}
+              instructor={editingInstructor}
+              onPatch={(patch) => patchInstructor(editingInstructor.id, patch)}
+              onCancel={closeEditor}
+            />
+          </div>
+          <div className="flex justify-end border-t border-zinc-200 px-4 py-2.5">
+            <button
+              type="button"
+              onClick={closeEditor}
+              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              Done
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

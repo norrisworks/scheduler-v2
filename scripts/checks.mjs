@@ -765,6 +765,22 @@ eq('and its students read as blocking too',
    noInstructors.find(c => c.key === 'unranked_students').severity, 'blocking')
 eq('an empty center raises nothing', buildChecks([], [], []).length, 0)
 
+// Every check that lists entities says WHICH KIND, so the health screen can
+// open the right editor — student drawer or instructor form — in place.
+eq('every itemised check carries its entity type',
+   buildChecks(
+     [hStu({ gender: null, name: 'S One (4)', grade: '5' })],
+     [hInst({ gender: null, can_teach_elementary: false, can_teach_middle: false, can_teach_high: false })],
+     [],
+   ).filter((c) => c.items.length > 0).every((c) => c.entity === 'student' || c.entity === 'instructor'),
+   true)
+eq('student checks say student',
+   buildChecks([hStu()], [hInst()], []).find((c) => c.key === 'unranked_students').entity, 'student')
+eq('instructor checks say instructor',
+   buildChecks([hStu()], [hInst({ gender: null })],
+     [{ student_id: 's1', instructor_id: 'i1' }]).find((c) => c.key === 'instructors_no_gender').entity,
+   'instructor')
+
 // Unranked students.
 eq('unranked students are listed',
    buildChecks([hStu()], [hInst()], []).find(c => c.key === 'unranked_students').items

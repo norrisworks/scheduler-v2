@@ -217,6 +217,28 @@ export function useAutoAssign({ sessions, instructors, shiftByInstructor, onDone
     }
   }, [dayState, onDone])
 
+  /**
+   * Recompute the unplaced panel after rankings or shifts were edited from
+   * it, without running the algorithms. 'At capacity' is a claim about a run
+   * that already happened, so for a student whose new rankings would now get
+   * a hearing the honest headline is "run it again", not a fresh guess.
+   */
+  const refreshExplanations = useCallback(async () => {
+    if (!result || result.unassignable.length === 0) return
+    try {
+      const rankingsByStudent = await loadRankings(result.unassignable)
+      const explanations = result.unassignable.map((s) => {
+        const ex = explainUnplaced(s, instructors, shiftByInstructor, rankingsByStudent.get(s.student_id))
+        return ex.details.some((d) => d.reason === 'at capacity')
+          ? { ...ex, headline: 'has an available ranked instructor now — run auto-assign again' }
+          : ex
+      })
+      setResult((prev) => (prev ? { ...prev, explanations } : prev))
+    } catch (err) {
+      setError(err.message)
+    }
+  }, [result, instructors, shiftByInstructor, loadRankings])
+
   return {
     running,
     result,
@@ -227,6 +249,7 @@ export function useAutoAssign({ sessions, instructors, shiftByInstructor, onDone
     undo,
     canUndo: Boolean(lastRun),
     counts: dayState(),
+    refreshExplanations,
     dismiss: () => setResult(null),
   }
 }

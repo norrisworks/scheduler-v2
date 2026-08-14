@@ -111,6 +111,19 @@ export default function SessionCard({
     </button>
   )
 
+  // Binder tick: prepped or not, nothing more. The note itself is prep-room
+  // context and never appears on a card.
+  const binderTick =
+    session.binder_status === 'complete' ? (
+      <span className="shrink-0 text-[8px] leading-none text-emerald-600" title="Binder ready" aria-label="Binder ready">
+        ✓
+      </span>
+    ) : (
+      <span className="shrink-0 text-[8px] leading-none text-red-500" title="Binder not ready" aria-label="Binder not ready">
+        ✗
+      </span>
+    )
+
   const unassignButton = instructor && (
     <button
       type="button"
@@ -146,6 +159,7 @@ export default function SessionCard({
           >
             {formatTime(session.start_time)} • {session.duration}m
           </span>
+          {binderTick}
           {warning && (
             <span className="shrink-0 text-[9px] text-amber-600" title={warning} aria-label={warning}>
               ⚠
@@ -228,6 +242,7 @@ export default function SessionCard({
         <span>
           {formatTime(session.start_time)} • {session.duration}m
         </span>
+        {binderTick}
         {student?.grade && (
           <span className="shrink-0 rounded bg-zinc-200 px-1 py-0.5 text-[9px] text-zinc-600">
             {student.grade}

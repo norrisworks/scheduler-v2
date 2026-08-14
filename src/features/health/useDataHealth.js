@@ -34,7 +34,9 @@ export function useDataHealth(centerId) {
         .order('name'),
       supabase
         .from('instructors')
-        .select('id, name, tier, assignability, gender, can_teach_elementary, can_teach_middle, can_teach_high, active')
+        // The full row, because a flagged instructor opens straight into the
+        // editor from here and the form needs every field.
+        .select('id, name, color, email, workstream_id, tier, assignability, gender, can_teach_elementary, can_teach_middle, can_teach_high, active')
         .eq('center_id', centerId)
         .eq('active', true)
         .order('name'),
@@ -72,5 +74,27 @@ export function useDataHealth(centerId) {
     [students, instructors, snapshot.rankings, isCurrent],
   )
 
-  return { checks, students, instructors, loading: loading || !isCurrent, error, refetch: load }
+  /** Autosave patch for the instructor editor opened from a flagged row. */
+  const patchInstructor = useCallback(
+    async (id, patch) => {
+      const { error } = await supabase.from('instructors').update(patch).eq('id', id)
+      if (error) {
+        setError(error.message)
+        return false
+      }
+      await load()
+      return true
+    },
+    [load],
+  )
+
+  return {
+    checks,
+    students,
+    instructors,
+    loading: loading || !isCurrent,
+    error,
+    refetch: load,
+    patchInstructor,
+  }
 }

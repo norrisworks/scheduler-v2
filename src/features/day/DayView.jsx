@@ -17,6 +17,9 @@ import { useMaterializer } from '../materializer/useMaterializer'
 import { describeMaterialize, MATERIALIZE_DAYS } from '../materializer/materialize'
 import { useAutoAssign } from '../assign/useAutoAssign'
 import { ALGORITHMS, summaryMessage } from '../assign/algorithms'
+import Modal from '../../components/Modal'
+import InstructorPins from '../roster/InstructorPins'
+import DayShiftEditor from '../shifts/DayShiftEditor'
 
 const ORIENTATION_KEY = 'scheduler.dayOrientation'
 const SIDEBAR_KEY = 'scheduler.instructorSidebar'
@@ -86,9 +89,14 @@ export default function DayView() {
     clearDay: clearAssignments,
     undo: undoAssignRun,
     canUndo: canUndoAssign,
+    refreshExplanations,
     dismiss: dismissAssign,
   } = useAutoAssign({ date, sessions, instructors, shiftByInstructor, onDone: refetch })
   const [confirmingClear, setConfirmingClear] = useState(false)
+  // Fix-in-place modals opened from the unplaced panel. The date never
+  // changes underneath them; closing refreshes the panel, not the page.
+  const [editingRankings, setEditingRankings] = useState(null) // an explanation row
+  const [editingShifts, setEditingShifts] = useState(false)
 
   // Cancelled and no-show sessions come off the grid entirely and out of every
   // count. They're still reachable in the strip under the grid.
@@ -198,13 +206,21 @@ export default function DayView() {
             </button>
           </div>
 
-          {/* Who was left out, and exactly why — no more querying the database
-              to learn a student has no rankings. */}
+          {/* Who was left out, and exactly why — and the fix opens right here:
+              the name opens that student's ranking editor, and a shift-shaped
+              reason offers the day's shift editor. No navigating away. */}
           {(assignResult.explanations?.length ?? 0) > 0 && (
             <ul className="mt-1.5 space-y-1 border-t border-amber-200/60 pt-1.5">
               {assignResult.explanations.map((ex) => (
                 <li key={ex.sessionId} className="text-xs">
-                  <span className="font-semibold">{ex.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setEditingRankings(ex)}
+                    title={`Edit ${ex.name}'s rankings`}
+                    className="font-semibold underline decoration-amber-400 underline-offset-2 hover:text-amber-950"
+                  >
+                    {ex.name}
+                  </button>
                   <span className="text-amber-800/70"> {formatTimeMeridiem(ex.startTime)} — </span>
                   <span>{ex.headline}</span>
                   {ex.details.length > 0 && (
@@ -214,6 +230,17 @@ export default function DayView() {
                         .map((d) => `${d.name} (#${d.rank} ${d.reason})`)
                         .join(', ')}
                     </span>
+                  )}
+                  {ex.details.some(
+                    (d) => d.reason === 'not on shift' || d.reason === 'shift does not cover the session',
+                  ) && (
+                    <button
+                      type="button"
+                      onClick={() => setEditingShifts(true)}
+                      className="ml-1.5 rounded border border-amber-300 px-1 py-px text-[10px] font-medium hover:bg-amber-100"
+                    >
+                      Shifts…
+                    </button>
                   )}
                 </li>
               ))}
@@ -334,6 +361,68 @@ export default function DayView() {
           />
         )}
       </div>
+
+      {editingRankings && (
+        <Modal
+          label={`Rankings for ${editingRankings.name}`}
+          onClose={async () => {
+            setEditingRankings(null)
+            await refreshExplanations()
+          }}
+        >
+          <div className="border-b border-zinc-200 px-4 py-3">
+            <h2 className="text-sm font-semibold text-zinc-900">
+              Rankings — {editingRankings.name}
+            </h2>
+            <p className="mt-0.5 text-xs text-zinc-500">
+              Changes save immediately. Close, then run auto-assign again to place them.
+            </p>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto p-3">
+            <InstructorPins
+              studentId={editingRankings.studentId}
+              student={
+                sessions.find((s) => s.id === editingRankings.sessionId)?.student ?? {
+                  name: editingRankings.name,
+                }
+              }
+            />
+          </div>
+          <div className="flex justify-end border-t border-zinc-200 px-4 py-2.5">
+            <button
+              type="button"
+              onClick={async () => {
+                setEditingRankings(null)
+                await refreshExplanations()
+              }}
+              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              Done
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {editingShifts && (
+        <Modal
+          label={`Shifts for ${date}`}
+          onClose={async () => {
+            setEditingShifts(false)
+            await refreshExplanations()
+          }}
+        >
+          <DayShiftEditor
+            date={date}
+            instructors={instructors}
+            shiftByInstructor={shiftByInstructor}
+            onChanged={refetch}
+            onClose={async () => {
+              setEditingShifts(false)
+              await refreshExplanations()
+            }}
+          />
+        </Modal>
+      )}
 
       <StatusMenu
         menu={statusMenu}
