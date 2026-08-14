@@ -187,6 +187,9 @@ export default function StudentImportView() {
                   <Stat label="Changed" value={p.updated.length} tone="amber" />
                   <Stat label="Already correct" value={p.unchanged.length} tone="zinc" />
                   <Stat label="Not in file" value={p.absent.length} tone="zinc" />
+                  {p.skipped.length > 0 && (
+                    <Stat label="Left in Radius" value={p.skipped.length} tone="zinc" />
+                  )}
                   {p.problems.length > 0 && (
                     <Stat label="Need attention" value={p.problems.length} tone="red" />
                   )}
@@ -240,6 +243,15 @@ export default function StudentImportView() {
                       </li>
                     ))}
                   </ul>
+                </Section>
+              )}
+
+              {p.skipped.length > 0 && (
+                <Section title={`Left in Radius (${p.skipped.length})`}>
+                  <p className="px-3 py-2 text-xs text-zinc-500">
+                    Inactive in Radius and not on this roster — former students, so they are not
+                    created. A student already here is still updated to inactive by this file.
+                  </p>
                 </Section>
               )}
 

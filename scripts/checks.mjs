@@ -11,7 +11,7 @@ import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessa
 import { buildGroups } from '../src/features/day/TransposedGrid.jsx'
 import { proposeRanking, proposalReasons, sameGender, eligibleForStudent, moveEntry } from '../src/features/assign/proposeRanking.js'
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
-import { generateDisplayName, violatesNamingConvention, staleGradeInName, displayNameShape } from '../src/features/imports/namingConvention.js'
+import { generateDisplayName, violatesNamingConvention, staleGradeInName, displayNameShape, nearlySameFirstName, isPlaceholderName } from '../src/features/imports/namingConvention.js'
 import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } from '../src/features/imports/workstreamImport.js'
 import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent } from '../src/features/imports/radiusImport.js'
 import { planStudentImport, planStudentImportByCenter } from '../src/features/imports/studentImport.js'
@@ -1019,6 +1019,57 @@ eq('an enrolled newcomer is active',
 eq('a New newcomer is not', newcomers.created.find((c) => c.name === 'Eli V').values.active, false)
 eq('a newcomer with no status is not',
    newcomers.created.find((c) => c.name === 'Fay W').values.active, false)
+
+// ---- creation is gated on enrollment status
+// A Radius export carries a center's whole history. Former students must not
+// be created just to be switched off, or the live roster drowns in them.
+const historical = planStudentImport([
+  { __row: 2, name: 'Gus Ives',  enrollment_status: 'Inactive' },
+  { __row: 3, name: 'Hana Roy',  enrollment_status: 'Enrolled' },
+  { __row: 4, name: 'Ivo Tarr',  enrollment_status: 'On Hold' },
+  { __row: 5, name: 'Jo Wilde',  enrollment_status: 'New' },
+  { __row: 6, name: 'Kit Ames',  enrollment_status: 'Pre-Enrolled' },
+  { __row: 7, name: 'Lena Bly' },
+], [])
+eq('an Inactive stranger is never created',
+   historical.created.map((c) => c.name).sort(), ['Hana R', 'Ivo T', 'Jo W', 'Kit A', 'Lena B'])
+eq('and is counted rather than dropped', historical.skipped.map((s) => s.fullName), ['Gus Ives'])
+
+// The gate is about creation only — someone already here still goes inactive.
+const departing = planStudentImport(
+  [{ __row: 2, name: 'Gus Ives', enrollment_status: 'Inactive' }],
+  [{ id: 'g', name: 'Gus I', active: true }],
+)
+eq('an existing student is still marked inactive',
+   departing.updated[0].patch, { enrollment_status: 'inactive', active: false })
+eq('and nothing is skipped', departing.skipped.length, 0)
+
+// ---- near-miss spellings and placeholder records
+// Both real: the roster says 'Chariss E' and 'Hazik H', Radius says 'Charis
+// Effraim' and 'Haziq Hassan'. Warned about, never merged — one letter apart
+// is also what sibling names look like.
+eq('one substitution is a near miss',  nearlySameFirstName('Hazik', 'Haziq'), true)
+eq('one insertion is too',             nearlySameFirstName('Charis', 'Chariss'), true)
+eq('identical names are not a warning', nearlySameFirstName('Ana', 'Ana'), false)
+eq('a different initial is a different name', nearlySameFirstName('Dan', 'Ian'), false)
+eq('two edits is a different name',    nearlySameFirstName('Katie', 'Kacey'), false)
+
+const lookalike = planStudentImport(
+  [{ __row: 2, first_name: 'Charis', last_name: 'Effraim', enrollment_status: 'Enrolled' }],
+  [{ id: 'c', name: 'Chariss E', active: true }],
+)
+eq('a near-miss spelling is still created', lookalike.created.length, 1)
+eq('but flagged for review', lookalike.created[0].needsReview, true)
+eq('naming the student it resembles',
+   lookalike.created[0].reviewReason.includes('Chariss E'), true)
+
+eq('a template record is a placeholder', isPlaceholderName('First Last'), true)
+eq('so is a test record',               isPlaceholderName('Test Student'), true)
+eq('a real name that contains one is not', isPlaceholderName('Grace First'), false)
+const template = planStudentImport(
+  [{ __row: 2, first_name: 'First', last_name: 'Last', enrollment_status: 'New' }], [],
+)
+eq('and it is flagged rather than waved through', template.created[0].needsReview, true)
 
 // ---- matching: siblings share a Radius account
 // Real data: 'Yorgey, Suzanne' carries three children. With only one of them

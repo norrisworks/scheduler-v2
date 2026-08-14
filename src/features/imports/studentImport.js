@@ -2,7 +2,9 @@ import { pick } from './parseTable'
 import {
   displayNameShape,
   generateDisplayName,
+  isPlaceholderName,
   nameKey,
+  nearlySameFirstName,
   splitName,
   violatesNamingConvention,
 } from './namingConvention'
@@ -184,6 +186,9 @@ export function planStudentImport(rows, existingStudents) {
   const updated = []
   const unchanged = []
   const problems = []
+  // Rows that would have created a long-departed student. Counted rather than
+  // dropped silently, so the preview still accounts for every row in the file.
+  const skipped = []
 
   for (const raw of rows) {
     const row = readStudentRow(raw)
@@ -250,6 +255,17 @@ export function planStudentImport(rows, existingStudents) {
       continue
     }
 
+    // Nobody matched, so this row would create a student. A Radius export
+    // carries the FULL history of a center, and the Blue Bell file is mostly
+    // students who left years ago — 441 of 543 rows. Creating them just to
+    // switch them off would bury the live roster, so an Inactive row is never
+    // a new student. Only creation is gated: a student already here can still
+    // be marked inactive by the same file.
+    if (row.values.enrollment_status === 'inactive') {
+      skipped.push({ rowNumber: row.rowNumber, fullName: row.fullName })
+      continue
+    }
+
     const first = splitName(row.fullName).first.toLowerCase()
     const generated = generateDisplayName(row.fullName, row.values.grade, taken, {
       sharesFirstName: rosterFirstNames.has(first) || (incomingFirstNames.get(first) ?? 0) > 1,
@@ -260,12 +276,28 @@ export function planStudentImport(rows, existingStudents) {
     }
     taken.push(generated.name)
     const impliedActive = activeFromEnrollment(row.values.enrollment_status)
+
+    // Before inventing a student, look for one we already have under a
+    // near-miss spelling: the roster's 'Chariss E' is this file's 'Charis
+    // Effraim'. Too weak to match on, strong enough to stop and ask.
+    const lastInitial = splitName(row.fullName).last[0]?.toLowerCase()
+    const lookalike = existingStudents.find(
+      (s) =>
+        !matchedIds.has(s.id) &&
+        splitName(s.name).last[0]?.toLowerCase() === lastInitial &&
+        nearlySameFirstName(splitName(s.name).first, splitName(row.fullName).first),
+    )
+
     created.push({
       rowNumber: row.rowNumber,
       fullName: row.fullName,
       name: generated.name,
-      needsReview: generated.needsReview,
-      reviewReason: generated.reason,
+      needsReview: generated.needsReview || Boolean(lookalike) || isPlaceholderName(row.fullName),
+      reviewReason: lookalike
+        ? `looks like ${lookalike.name}, already on the roster — same student spelled differently?`
+        : isPlaceholderName(row.fullName)
+          ? 'a placeholder name, not a real student'
+          : generated.reason,
       values: {
         ...row.values,
         ...(row.radiusAccount ? { radius_account: row.radiusAccount } : {}),
@@ -283,6 +315,7 @@ export function planStudentImport(rows, existingStudents) {
     updated,
     unchanged,
     problems,
+    skipped,
     absent,
     // Names in the file that break the convention are worth surfacing even
     // when they match an existing student, since the file is the source.

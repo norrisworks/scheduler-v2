@@ -95,6 +95,62 @@ export function displayNameShape(name) {
 }
 
 /**
+ * A name nobody has. Radius carries training and template records — 'First
+ * Last', 'Test Student' — and they arrive in the export looking like anyone
+ * else. Flagged rather than dropped: the caller surfaces it for a person to
+ * decide, the same way a suspicious Last-Modified-By is surfaced.
+ */
+const PLACEHOLDER_WORDS = new Set([
+  'first', 'last', 'test', 'tester', 'testing', 'sample', 'demo', 'example',
+  'student', 'name', 'unknown', 'none', 'na', 'placeholder', 'dummy', 'xxx',
+])
+export function isPlaceholderName(fullName) {
+  const parts = normalize(fullName).toLowerCase().split(' ').filter(Boolean)
+  if (parts.length === 0) return false
+  // Every part has to be a filler word, so a real 'Grace First' is left alone.
+  return parts.every((p) => PLACEHOLDER_WORDS.has(p.replace(/[^a-z]/g, '')))
+}
+
+/**
+ * True when two first names are one typo apart — 'Charis'/'Chariss',
+ * 'Hazik'/'Haziq'. Real cases from the Montgomeryville roster, where the
+ * stored spelling was keyed by hand and the export's is Radius's.
+ *
+ * Used only to WARN. A one-letter difference is as likely to be two siblings
+ * ('Alan'/'Alana') as a typo, so nothing is merged on this evidence.
+ */
+export function nearlySameFirstName(a, b) {
+  const x = (a ?? '').toLowerCase()
+  const y = (b ?? '').toLowerCase()
+  if (!x || !y || x === y) return false
+  if (Math.abs(x.length - y.length) > 1) return false
+  if (x[0] !== y[0]) return false
+
+  // One edit: substitution when the lengths match, otherwise insertion.
+  if (x.length === y.length) {
+    let diffs = 0
+    for (let i = 0; i < x.length; i += 1) if (x[i] !== y[i]) diffs += 1
+    return diffs === 1
+  }
+  const [short, long] = x.length < y.length ? [x, y] : [y, x]
+  let i = 0
+  let j = 0
+  let skipped = false
+  while (i < short.length && j < long.length) {
+    if (short[i] === long[j]) {
+      i += 1
+      j += 1
+    } else if (skipped) {
+      return false
+    } else {
+      skipped = true
+      j += 1
+    }
+  }
+  return true
+}
+
+/**
  * Rule-3 names embed a grade, so they go stale every August when grades bump.
  * Returns the embedded grade when it no longer matches the student's.
  */
