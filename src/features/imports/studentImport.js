@@ -119,6 +119,36 @@ export function readStudentRow(row) {
   }
 }
 
+/**
+ * Statuses that can bring a student into existence. On hold is a real
+ * enrollment that happens to be paused, so it counts; Inactive and New do not,
+ * and neither does a blank — a roster row with no status at all is not
+ * evidence of an enrollment.
+ */
+const CREATES_A_STUDENT = new Set(['enrolled', 'pre_enrolled', 'on_hold'])
+
+/**
+ * Why this row must not create a student, or null if it may.
+ *
+ * `fileHasStatus` keeps the rule honest about what it knows. In a Radius
+ * export every row carries a status, so a blank one is a genuine unknown and
+ * cannot justify a new student. A hand-made roster CSV has no such column at
+ * all, and refusing to import it would be reading absence as evidence.
+ */
+function creationGate(row, fileHasStatus) {
+  if (isPlaceholderName(row.fullName)) return 'placeholder'
+  const status = row.values.enrollment_status
+  if (!status) return fileHasStatus ? 'no_status' : null
+  return CREATES_A_STUDENT.has(status) ? null : status
+}
+
+export const SKIP_REASONS = {
+  placeholder: 'Not a real person — a Radius template or test record',
+  no_status: 'No enrollment status in the file',
+  inactive: 'Inactive in Radius — a former student',
+  new: 'New in Radius — a lead, not yet an enrollment',
+}
+
 const changed = (before, after) => {
   if (typeof after === 'boolean') return Boolean(before) !== after
   return (before ?? null) !== after
@@ -155,8 +185,12 @@ export function planStudentImport(rows, existingStudents) {
   // one account are three children, not three views of the same child.
   const rowsPerAccount = new Map()
   const rowsPerShape = new Map()
+  // Whether this file carries enrollment at all, which decides how a blank
+  // status is read further down.
+  let fileHasStatus = false
   for (const raw of rows) {
     const row = readStudentRow(raw)
+    if (row.values.enrollment_status) fileHasStatus = true
     if (row.radiusAccount) {
       const key = accountKey(row.radiusAccount)
       rowsPerAccount.set(key, (rowsPerAccount.get(key) ?? 0) + 1)
@@ -204,12 +238,28 @@ export function planStudentImport(rows, existingStudents) {
     const onAccount = key ? (byAccount.get(key) ?? []) : []
     const rowFirst = nameKey(splitName(row.fullName).first)
     const byFirstName = onAccount.filter((s) => nameKey(splitName(s.name).first) === rowFirst)
+
+    // Failing an exact first name, allow a one-letter miss WITHIN the account:
+    // 'Hassan, Kanon' holds Hayat and Haziq, and the roster spells the second
+    // 'Hazik'. The account has already narrowed this to one family, and the
+    // sibling who does match exactly is taken first, so the remaining
+    // candidate is the right one. Still requires a single candidate — two
+    // near-misses on one account is a guess, not an answer.
+    const nearOnAccount = onAccount.filter(
+      (s) =>
+        !matchedIds.has(s.id) &&
+        !byFirstName.includes(s) &&
+        nearlySameFirstName(splitName(s.name).first, splitName(row.fullName).first),
+    )
+
     const accountMatch =
       byFirstName.length === 1
         ? byFirstName[0]
-        : onAccount.length === 1 && rowsPerAccount.get(key) === 1
-          ? onAccount[0]
-          : undefined
+        : nearOnAccount.length === 1
+          ? nearOnAccount[0]
+          : onAccount.length === 1 && rowsPerAccount.get(key) === 1
+            ? onAccount[0]
+            : undefined
 
     // Tier 3: the display-name convention. A stored name never carries a full
     // last name, so 'Danielle Shaw' in the file is 'Danielle S' here and no
@@ -256,13 +306,14 @@ export function planStudentImport(rows, existingStudents) {
     }
 
     // Nobody matched, so this row would create a student. A Radius export
-    // carries the FULL history of a center, and the Blue Bell file is mostly
-    // students who left years ago — 441 of 543 rows. Creating them just to
-    // switch them off would bury the live roster, so an Inactive row is never
-    // a new student. Only creation is gated: a student already here can still
-    // be marked inactive by the same file.
-    if (row.values.enrollment_status === 'inactive') {
-      skipped.push({ rowNumber: row.rowNumber, fullName: row.fullName })
+    // carries the FULL history of a center — the Blue Bell file is 543 rows
+    // for 105 real students — so creation is the one place that has to be
+    // fussy. Only a real enrollment makes a student: Inactive is someone who
+    // left, and New is a lead who has not enrolled yet. Both are recorded
+    // faithfully on a student we ALREADY have; neither invents one.
+    const gate = creationGate(row, fileHasStatus)
+    if (gate) {
+      skipped.push({ rowNumber: row.rowNumber, fullName: row.fullName, reason: gate })
       continue
     }
 

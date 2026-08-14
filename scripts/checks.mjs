@@ -1008,21 +1008,20 @@ eq('On Hold deactivates', patchFor('Bo R'), { enrollment_status: 'on_hold', acti
 eq('New records the status without activating',
    patchFor('Cy N'), { enrollment_status: 'new' })
 
-// A brand-new student is only created active on a real enrollment.
+// A newcomer the file does enroll arrives active.
 const newcomers = planStudentImport([
   { __row: 2, name: 'Dee Park', enrollment_status: 'Enrolled' },
-  { __row: 3, name: 'Eli Vance', enrollment_status: 'New' },
-  { __row: 4, name: 'Fay Woods' },
+  { __row: 3, name: 'Ivo Tarr', enrollment_status: 'On Hold' },
 ], [])
 eq('an enrolled newcomer is active',
    newcomers.created.find((c) => c.name === 'Dee P').values.active, true)
-eq('a New newcomer is not', newcomers.created.find((c) => c.name === 'Eli V').values.active, false)
-eq('a newcomer with no status is not',
-   newcomers.created.find((c) => c.name === 'Fay W').values.active, false)
+eq('an on-hold newcomer is created, switched off',
+   newcomers.created.find((c) => c.name === 'Ivo T').values.active, false)
 
 // ---- creation is gated on enrollment status
-// A Radius export carries a center's whole history. Former students must not
-// be created just to be switched off, or the live roster drowns in them.
+// A Radius export carries a center's whole history. Only a real enrollment
+// makes a student: Inactive is someone who left and New is a lead who has not
+// enrolled, so neither may invent one.
 const historical = planStudentImport([
   { __row: 2, name: 'Gus Ives',  enrollment_status: 'Inactive' },
   { __row: 3, name: 'Hana Roy',  enrollment_status: 'Enrolled' },
@@ -1031,9 +1030,21 @@ const historical = planStudentImport([
   { __row: 6, name: 'Kit Ames',  enrollment_status: 'Pre-Enrolled' },
   { __row: 7, name: 'Lena Bly' },
 ], [])
-eq('an Inactive stranger is never created',
-   historical.created.map((c) => c.name).sort(), ['Hana R', 'Ivo T', 'Jo W', 'Kit A', 'Lena B'])
-eq('and is counted rather than dropped', historical.skipped.map((s) => s.fullName), ['Gus Ives'])
+eq('only a real enrollment creates a student',
+   historical.created.map((c) => c.name).sort(), ['Hana R', 'Ivo T', 'Kit A'])
+eq('and every refusal is counted, with its reason',
+   historical.skipped.map((s) => [s.fullName, s.reason]).sort(),
+   [['Gus Ives', 'inactive'], ['Jo Wilde', 'new'], ['Lena Bly', 'no_status']])
+
+// A file with no enrollment column at all is a different thing from a file
+// that has one and left it blank. Reading absence as evidence would break
+// every hand-made roster CSV.
+const noStatusColumn = planStudentImport(
+  [{ __row: 2, name: 'Lena Bly', grade: '5' }, { __row: 3, name: 'Moe Kaur', grade: '7' }], [],
+)
+eq('a CSV without the column still imports',
+   noStatusColumn.created.map((c) => c.name), ['Lena B', 'Moe K'])
+eq('and nothing is withheld', noStatusColumn.skipped.length, 0)
 
 // The gate is about creation only — someone already here still goes inactive.
 const departing = planStudentImport(
@@ -1054,22 +1065,63 @@ eq('identical names are not a warning', nearlySameFirstName('Ana', 'Ana'), false
 eq('a different initial is a different name', nearlySameFirstName('Dan', 'Ian'), false)
 eq('two edits is a different name',    nearlySameFirstName('Katie', 'Kacey'), false)
 
+// Both real rows from Students Export 8_12_2026. The account pins the family,
+// so a one-letter miss inside it is the same child, not a new one.
+const effraim = planStudentImport([
+  { __row: 2, first_name: 'Charis', last_name: 'Effraim', account: 'Effraim, Seyi', enrollment_status: 'Enrolled' },
+  { __row: 3, first_name: 'Evan',   last_name: 'Effraim', account: 'Effraim, Seyi', enrollment_status: 'Enrolled' },
+  { __row: 4, first_name: 'First',  last_name: 'Last',    account: 'Effraim, Seyi', enrollment_status: 'New' },
+], [{ id: 'c', name: 'Chariss E', radius_account: 'Effraim, Seyi | 3149943', active: true }])
+eq("'Charis' finds the roster's 'Chariss' on the shared account",
+   effraim.updated.map((u) => u.name), ['Chariss E'])
+eq('the real sibling is created', effraim.created.map((c) => c.name), ['Evan E'])
+eq('and the template record on that account is not', effraim.skipped.map((s) => s.reason), ['placeholder'])
+
+// Two children on one account, one exact and one a letter off.
+const hassan = planStudentImport([
+  { __row: 2, first_name: 'Hayat', last_name: 'Hassan', account: 'Hassan, Kanon', enrollment_status: 'Enrolled' },
+  { __row: 3, first_name: 'Haziq', last_name: 'Hassan', account: 'Hassan, Kanon', enrollment_status: 'Enrolled' },
+], [
+  { id: 'h1', name: 'Hayat H', radius_account: 'Hassan, Kanon | 3245690', active: true },
+  { id: 'h2', name: 'Hazik H', radius_account: 'Hassan, Kanon | 3245690', active: true },
+])
+eq('the exact sibling and the near miss each find their own record',
+   hassan.updated.map((u) => u.name).sort(), ['Hayat H', 'Hazik H'])
+eq('and nobody is duplicated', hassan.created.length, 0)
+
+// Ambiguity inside an account is still a guess, so it is refused.
+const twins = planStudentImport(
+  [{ __row: 2, first_name: 'Alan', last_name: 'Roy', account: 'Roy, P', enrollment_status: 'Enrolled' }],
+  [{ id: '1', name: 'Alana R', radius_account: 'Roy, P | 9', active: true },
+   { id: '2', name: 'Alani R', radius_account: 'Roy, P | 9', active: true }],
+)
+eq('two near misses on one account match neither', twins.updated.length, 0)
+
+// Without a shared account there is nothing to pin the guess to, so a
+// near-miss is only ever a warning on a newly created student.
 const lookalike = planStudentImport(
   [{ __row: 2, first_name: 'Charis', last_name: 'Effraim', enrollment_status: 'Enrolled' }],
   [{ id: 'c', name: 'Chariss E', active: true }],
 )
-eq('a near-miss spelling is still created', lookalike.created.length, 1)
+eq('a near-miss spelling with no account is still created', lookalike.created.length, 1)
 eq('but flagged for review', lookalike.created[0].needsReview, true)
 eq('naming the student it resembles',
    lookalike.created[0].reviewReason.includes('Chariss E'), true)
 
 eq('a template record is a placeholder', isPlaceholderName('First Last'), true)
 eq('so is a test record',               isPlaceholderName('Test Student'), true)
+eq('and so is the stock fake name',     isPlaceholderName('John Smith'), true)
 eq('a real name that contains one is not', isPlaceholderName('Grace First'), false)
+eq('and a real surname is not',            isPlaceholderName('Ada Smith'), false)
+
+// Enrolled, so only the name keeps it out. 'John Smith' is a name real people
+// have, which is why this withholds from creation and says so rather than
+// discarding the row.
 const template = planStudentImport(
-  [{ __row: 2, first_name: 'First', last_name: 'Last', enrollment_status: 'New' }], [],
+  [{ __row: 2, first_name: 'John', last_name: 'Smith', enrollment_status: 'Enrolled' }], [],
 )
-eq('and it is flagged rather than waved through', template.created[0].needsReview, true)
+eq('a stock fake name never becomes a student', template.created.length, 0)
+eq('and the reason is recorded', template.skipped.map((s) => s.reason), ['placeholder'])
 
 // ---- matching: siblings share a Radius account
 // Real data: 'Yorgey, Suzanne' carries three children. With only one of them

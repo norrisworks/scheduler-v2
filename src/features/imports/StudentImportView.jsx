@@ -4,7 +4,7 @@ import { useCenter } from '../centers/CenterProvider'
 import { useAuth } from '../auth/AuthProvider'
 import { parseTableFile } from './parseTable'
 import { nameKey } from './namingConvention'
-import { planStudentImportByCenter, STUDENT_FIELDS } from './studentImport'
+import { planStudentImportByCenter, SKIP_REASONS, STUDENT_FIELDS } from './studentImport'
 
 /**
  * Student roster importer. Preview first, commit second — never the other way
@@ -248,10 +248,32 @@ export default function StudentImportView() {
 
               {p.skipped.length > 0 && (
                 <Section title={`Left in Radius (${p.skipped.length})`}>
-                  <p className="px-3 py-2 text-xs text-zinc-500">
-                    Inactive in Radius and not on this roster — former students, so they are not
-                    created. A student already here is still updated to inactive by this file.
+                  <p className="border-b border-zinc-100 px-3 py-2 text-xs text-zinc-500">
+                    Rows that would have created someone the roster has no business carrying. A
+                    student already here is still updated by the same file — this only governs
+                    who gets invented.
                   </p>
+                  <ul className="divide-y divide-zinc-100">
+                    {Object.entries(
+                      p.skipped.reduce((acc, s) => {
+                        acc[s.reason] = [...(acc[s.reason] ?? []), s]
+                        return acc
+                      }, {}),
+                    ).map(([reason, list]) => (
+                      <li key={reason} className="px-3 py-1.5 text-sm">
+                        <span className="text-zinc-700">
+                          {SKIP_REASONS[reason] ?? reason} — {list.length}
+                        </span>
+                        {/* Named only when the list is short enough to act on;
+                            438 former students is a number, not a to-do list. */}
+                        {list.length <= 8 && (
+                          <span className="ml-2 text-xs text-zinc-400">
+                            {list.map((s) => s.fullName).join(', ')}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
                 </Section>
               )}
 

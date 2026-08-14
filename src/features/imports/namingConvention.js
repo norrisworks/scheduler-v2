@@ -104,8 +104,20 @@ const PLACEHOLDER_WORDS = new Set([
   'first', 'last', 'test', 'tester', 'testing', 'sample', 'demo', 'example',
   'student', 'name', 'unknown', 'none', 'na', 'placeholder', 'dummy', 'xxx',
 ])
+/**
+ * The stock names training records are filed under. These ARE names real
+ * people have, so this list only ever withholds a row from CREATION and shows
+ * it for review — an actual John Smith is one click away, whereas a template
+ * record quietly added to the roster is a phantom student on the schedule.
+ */
+const PLACEHOLDER_FULL_NAMES = new Set([
+  'john smith', 'jane smith', 'john doe', 'jane doe', 'joe bloggs', 'first last',
+])
+
 export function isPlaceholderName(fullName) {
-  const parts = normalize(fullName).toLowerCase().split(' ').filter(Boolean)
+  const cleaned = normalize(fullName).toLowerCase()
+  if (PLACEHOLDER_FULL_NAMES.has(cleaned)) return true
+  const parts = cleaned.split(' ').filter(Boolean)
   if (parts.length === 0) return false
   // Every part has to be a filler word, so a real 'Grace First' is left alone.
   return parts.every((p) => PLACEHOLDER_WORDS.has(p.replace(/[^a-z]/g, '')))
