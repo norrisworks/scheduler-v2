@@ -78,3 +78,48 @@ export function unrankedStudents(sessions, rankingsByStudent) {
   }
   return [...seen.entries()].map(([id, name]) => ({ studentId: id, name }))
 }
+
+/**
+ * Why one session went unplaced, instructor by instructor. Everything here is
+ * recomputable from the run's own inputs, so the answer is exact, not a guess:
+ * a student's ranked instructors each fell to a hard filter, and anyone who
+ * survived them was at capacity in every phase — otherwise the algorithms
+ * would have placed the student.
+ */
+export function explainUnplaced(session, instructors, shiftByInstructor, rankings) {
+  const byId = new Map(instructors.map((i) => [i.id, i]))
+  const details = []
+  for (const [instructorId, rank] of rankings ?? []) {
+    const instructor = byId.get(instructorId)
+    if (!instructor) continue // ranked at another center or deleted
+    const reason = ineligibleReason(session, instructor, shiftByInstructor.get(instructorId) ?? null)
+    details.push({ name: instructor.name, rank, reason: reason ?? 'at capacity' })
+  }
+  details.sort((a, b) => a.rank - b.rank)
+
+  let headline
+  if (details.length === 0) {
+    headline = 'no rankings — rank instructors in the student drawer or the matrix'
+  } else if (details.some((d) => d.reason === 'at capacity')) {
+    headline = 'every available ranked instructor was at capacity'
+  } else if (details.every((d) => d.reason === 'cannot teach level')) {
+    headline = `no ranked instructor can teach ${session.student?.level ?? 'this level'}`
+  } else if (details.every((d) => d.reason !== 'at capacity')) {
+    const offShift = details.filter(
+      (d) => d.reason === 'not on shift' || d.reason === 'shift does not cover the session',
+    ).length
+    headline =
+      offShift === details.length
+        ? 'no ranked instructor is on shift for this session'
+        : 'no ranked instructor is available'
+  }
+
+  return {
+    sessionId: session.id,
+    studentId: session.student_id,
+    name: session.student?.name ?? 'Unknown',
+    startTime: session.start_time,
+    headline,
+    details,
+  }
+}

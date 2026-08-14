@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useCenter } from '../centers/CenterProvider'
-import { centerNowTime, timeToMinutes, todayISO } from '../../lib/dates'
+import { centerNowTime, formatTimeMeridiem, timeToMinutes, todayISO } from '../../lib/dates'
 import Spinner from '../../components/Spinner'
 import { useDaySchedule } from './useDaySchedule'
 import { buildTimeAxis } from './timeGrid'
@@ -82,8 +82,13 @@ export default function DayView() {
     result: assignResult,
     error: assignError,
     run: runAutoAssign,
+    reassign: runReassign,
+    clearDay: clearAssignments,
+    undo: undoAssignRun,
+    canUndo: canUndoAssign,
     dismiss: dismissAssign,
   } = useAutoAssign({ date, sessions, instructors, shiftByInstructor, onDone: refetch })
+  const [confirmingClear, setConfirmingClear] = useState(false)
 
   // Cancelled and no-show sessions come off the grid entirely and out of every
   // count. They're still reachable in the strip under the grid.
@@ -170,15 +175,75 @@ export default function DayView() {
       {assignResult && (
         <div
           className={
-            'flex items-center gap-3 border-b px-4 py-2 text-sm ' +
+            'border-b px-4 py-2 text-sm ' +
             (assignResult.couldNotAssign > 0
               ? 'border-amber-200 bg-amber-50 text-amber-900'
               : 'border-emerald-200 bg-emerald-50 text-emerald-800')
           }
         >
-          <span className="flex-1 font-medium">{summaryMessage(assignResult)}</span>
-          <button type="button" onClick={dismissAssign} className="font-medium underline">
-            Dismiss
+          <div className="flex items-center gap-3">
+            <span className="flex-1 font-medium">{summaryMessage(assignResult)}</span>
+            {canUndoAssign && (
+              <button
+                type="button"
+                onClick={undoAssignRun}
+                disabled={assigning}
+                className="font-medium underline"
+              >
+                Undo
+              </button>
+            )}
+            <button type="button" onClick={dismissAssign} className="font-medium underline">
+              Dismiss
+            </button>
+          </div>
+
+          {/* Who was left out, and exactly why — no more querying the database
+              to learn a student has no rankings. */}
+          {(assignResult.explanations?.length ?? 0) > 0 && (
+            <ul className="mt-1.5 space-y-1 border-t border-amber-200/60 pt-1.5">
+              {assignResult.explanations.map((ex) => (
+                <li key={ex.sessionId} className="text-xs">
+                  <span className="font-semibold">{ex.name}</span>
+                  <span className="text-amber-800/70"> {formatTimeMeridiem(ex.startTime)} — </span>
+                  <span>{ex.headline}</span>
+                  {ex.details.length > 0 && (
+                    <span className="text-amber-800/70">
+                      {' · '}
+                      {ex.details
+                        .map((d) => `${d.name} (#${d.rank} ${d.reason})`)
+                        .join(', ')}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {confirmingClear && (
+        <div className="flex items-center gap-3 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">
+          <span className="flex-1">
+            Remove all {gridSessions.filter((s) => s.instructor_id).length} assignments on this day?
+            Undo can bring them back until you leave the page.
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setConfirmingClear(false)
+              clearAssignments()
+            }}
+            className="rounded bg-red-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-700"
+          >
+            Clear all
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirmingClear(false)}
+            className="font-medium underline"
+          >
+            Cancel
           </button>
         </div>
       )}
@@ -240,6 +305,10 @@ export default function DayView() {
           onToggleOpen={() => setSidebarOpen((v) => !v)}
           algorithms={ALGORITHMS}
           onAutoAssign={runAutoAssign}
+          onReassign={runReassign}
+          onClearDay={() => setConfirmingClear(true)}
+          onUndo={undoAssignRun}
+          canUndo={canUndoAssign}
           assigning={assigning}
         />
 

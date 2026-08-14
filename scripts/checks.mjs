@@ -6,7 +6,7 @@ import { getRole, getPinnedCenter, centerMatchesPin, resolveCenterAccess } from 
 import { emptyToNull, missingAttributes, GENDER_OPTIONS, normalizeEnrollmentStatus, activeFromEnrollment } from '../src/features/roster/studentFields.js'
 import { capabilityString, instructorWarnings, nextColor, INSTRUCTOR_PALETTE, TIER_OPTIONS, TIER_ORDER, ASSIGNABILITY_OPTIONS, GENDER_OPTIONS as INSTRUCTOR_GENDER_OPTIONS } from '../src/features/instructors/instructorFields.js'
 import { weekDays, validateShift, shiftHours, totalHours, planCopyWeek, indexShifts, suggestTimes } from '../src/features/shifts/weekShifts.js'
-import { ineligibleReason, buildCandidates, isFallbackOnly, unrankedStudents } from '../src/features/assign/rankings.js'
+import { ineligibleReason, buildCandidates, isFallbackOnly, unrankedStudents, explainUnplaced } from '../src/features/assign/rankings.js'
 import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessage } from '../src/features/assign/algorithms.js'
 import { buildGroups } from '../src/features/day/TransposedGrid.jsx'
 import { proposeRanking, ineligibleForStudentReason, proposalReasons, sameGender, eligibleForStudent, moveEntry } from '../src/features/assign/proposeRanking.js'
@@ -481,6 +481,39 @@ eq('tied ranks are preserved',
 
 eq('fallback_only is recognised', isFallbackOnly(inst({ assignability: 'fallback_only' })), true)
 eq('normal is not fallback', isFallbackOnly(inst()), false)
+
+// ---- the unplaced report explains itself
+// Keira D's real Thursday: 4 rankings, all four instructors off shift. The
+// old banner said "1 could not be assigned" and nothing else; the answer had
+// to come from a database query, which a daily tool cannot require.
+const keiraLike = explainUnplaced(
+  aSess(), three, new Map(), ranks([['a', 1], ['b', 2], ['c', 3]]),
+)
+eq('off-shift rankings get the off-shift headline',
+   keiraLike.headline, 'no ranked instructor is on shift for this session')
+eq('and every ranked instructor is listed with a reason',
+   keiraLike.details.map((d) => `${d.name}#${d.rank}:${d.reason}`),
+   ['A#1:not on shift', 'B#2:not on shift', 'C#3:not on shift'])
+
+eq('no rankings says so, and where to fix it',
+   explainUnplaced(aSess(), three, shifts3, ranks([])).headline,
+   'no rankings — rank instructors in the student drawer or the matrix')
+eq('a missing rankings map reads the same',
+   explainUnplaced(aSess(), three, shifts3, undefined).headline,
+   'no rankings — rank instructors in the student drawer or the matrix')
+
+// A survivor of the hard filters can only mean the caps stopped placement —
+// otherwise the algorithms would have placed the student.
+eq('an eligible-but-unplaced ranking means capacity',
+   explainUnplaced(aSess(), three, shifts3, ranks([['a', 1]])).headline,
+   'every available ranked instructor was at capacity')
+eq('capability-only blocks get the level headline',
+   explainUnplaced(aSess(), [inst({ id: 'a', name: 'A', can_teach_middle: false })],
+     shifts3, ranks([['a', 1]])).headline,
+   'no ranked instructor can teach middle')
+eq('details sort by rank',
+   explainUnplaced(aSess(), three, new Map([['a', cover]]), ranks([['c', 3], ['a', 1], ['b', 2]]))
+     .details.map((d) => d.rank), [1, 2, 3])
 
 eq('students with no rankings are reported',
    unrankedStudents([aSess()], new Map()).map(u => u.studentId), ['st1'])

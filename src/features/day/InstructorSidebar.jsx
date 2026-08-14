@@ -28,6 +28,10 @@ export default function InstructorSidebar({
   onToggleOpen,
   algorithms = [],
   onAutoAssign,
+  onReassign,
+  onClearDay,
+  onUndo,
+  canUndo,
   assigning,
 }) {
   // v1_reference: only instructors on shift are listed. Off-shift staff stay
@@ -52,6 +56,10 @@ export default function InstructorSidebar({
   const onShift = instructors.filter((i) => shiftByInstructor.has(i.id))
   const offShift = instructors.filter((i) => !shiftByInstructor.has(i.id))
   const unassigned = sessions.filter((s) => !s.instructor_id && occupiesFloor(s)).length
+  const assignedCount = sessions.filter((s) => s.instructor_id && occupiesFloor(s)).length
+  const autoAssigned = sessions.filter(
+    (s) => s.instructor_id && s.assignment?.source === 'auto' && occupiesFloor(s),
+  ).length
 
   // Collapsed: a thin rail the grid can have the width back from, still
   // showing the numbers worth glancing at.
@@ -133,6 +141,42 @@ export default function InstructorSidebar({
               ? 'Everyone on the grid is assigned.'
               : `Assigns the ${unassigned} unassigned session${unassigned === 1 ? '' : 's'}.`}
           </p>
+
+          {/* Fill can only top up a day; these are how a day gets un-stuck. */}
+          <div className="mt-2 flex gap-2">
+            {algorithms.map((a) => (
+              <button
+                key={a.key}
+                type="button"
+                onClick={() => onReassign(a.key)}
+                disabled={assigning || autoAssigned === 0}
+                title={`Clears the ${autoAssigned} auto-placed session${autoAssigned === 1 ? '' : 's'} and runs ${a.label} fresh over the whole day. Hand-placed sessions stay put.`}
+                className="flex-1 rounded-lg border border-brand-300 px-2 py-1.5 text-[11px] font-semibold text-brand-700 transition hover:bg-brand-50 disabled:opacity-40"
+              >
+                Reassign · {a.label}
+              </button>
+            ))}
+          </div>
+          <div className="mt-1.5 flex gap-2">
+            <button
+              type="button"
+              onClick={onUndo}
+              disabled={assigning || !canUndo}
+              title="Put every session the last run touched back exactly as it was"
+              className="flex-1 rounded-lg border border-zinc-300 px-2 py-1.5 text-[11px] font-medium text-zinc-700 transition hover:bg-zinc-100 disabled:opacity-40"
+            >
+              Undo last run
+            </button>
+            <button
+              type="button"
+              onClick={onClearDay}
+              disabled={assigning || assignedCount === 0}
+              title="Remove every assignment on this day"
+              className="flex-1 rounded-lg border border-zinc-300 px-2 py-1.5 text-[11px] font-medium text-zinc-700 transition hover:bg-red-50 hover:text-red-700 disabled:opacity-40"
+            >
+              Clear all…
+            </button>
+          </div>
         </div>
       )}
 

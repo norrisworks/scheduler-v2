@@ -1,77 +1,83 @@
 import { useCallback, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { occupiesFloor } from '../day/load'
-import { buildRankIndex, unrankedStudents } from './rankings'
+import { buildRankIndex, explainUnplaced, unrankedStudents } from './rankings'
 import { ALGORITHMS } from './algorithms'
 
 /**
- * Runs an auto-assign algorithm over the unassigned sessions of one day.
- * instructor_rankings is the only input: no scoring, no history weighting,
- * no attribute math. A student with no rankings gets no candidates.
+ * Runs an auto-assign algorithm over one day. instructor_rankings is the only
+ * input: no scoring, no history weighting, no attribute math.
+ *
+ * Two modes:
+ *   run        — fills empty seats only; existing assignments are immovable.
+ *   reassign   — clears every AUTO-placed assignment first, then runs fresh.
+ *                Manually-placed sessions are preserved and count toward load.
+ *
+ * Every mutation records what the day looked like beforehand, so the last run
+ * can always be undone — v1 had this and losing it made a day permanent.
  */
 export function useAutoAssign({ sessions, instructors, shiftByInstructor, onDone }) {
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
+  // { touched: [sessionId], before: [{session_id, instructor_id, source}] }
+  const [lastRun, setLastRun] = useState(null)
 
-  const run = useCallback(
-    async (algorithmKey) => {
+  const dayState = useCallback(() => {
+    const dayS = sessions.filter(occupiesFloor)
+    return {
+      dayS,
+      assigned: dayS.filter((s) => s.instructor_id),
+      auto: dayS.filter((s) => s.instructor_id && s.assignment?.source === 'auto'),
+      manual: dayS.filter((s) => s.instructor_id && s.assignment?.source !== 'auto'),
+    }
+  }, [sessions])
+
+  const loadRankings = useCallback(async (dayS) => {
+    const studentIds = [...new Set(dayS.map((s) => s.student_id).filter(Boolean))]
+    if (studentIds.length === 0) return new Map()
+    const { data, error } = await supabase
+      .from('instructor_rankings')
+      .select('student_id, instructor_id, rank')
+      .in('student_id', studentIds)
+    if (error) throw new Error(error.message)
+    const byStudent = new Map()
+    for (const row of data ?? []) {
+      const forStudent = byStudent.get(row.student_id) ?? new Map()
+      forStudent.set(row.instructor_id, row.rank)
+      byStudent.set(row.student_id, forStudent)
+    }
+    return byStudent
+  }, [])
+
+  /**
+   * The core: assign `unassigned` given `existing` immovable placements,
+   * write the result, and remember how to put things back.
+   */
+  const execute = useCallback(
+    async (algorithmKey, { dayS, unassigned, existing, before, cleared }) => {
       const algorithm = ALGORITHMS.find((a) => a.key === algorithmKey)
       if (!algorithm) return null
 
-      setRunning(true)
-      setError(null)
-
-      const dayS = sessions.filter(occupiesFloor)
-      const unassigned = dayS.filter((s) => !s.instructor_id)
-      const studentIds = [...new Set(dayS.map((s) => s.student_id).filter(Boolean))]
-
-      if (unassigned.length === 0 || studentIds.length === 0) {
-        const empty = {
-          made: [],
-          unassignable: unassigned,
-          assigned: 0,
-          worstRank: 0,
-          couldNotAssign: unassigned.length,
-          unranked: [],
-        }
-        setResult(empty)
-        setRunning(false)
-        return empty
-      }
-
-      const { data, error } = await supabase
-        .from('instructor_rankings')
-        .select('student_id, instructor_id, rank')
-        .in('student_id', studentIds)
-
-      if (error) {
-        setError(error.message)
-        setRunning(false)
-        return null
-      }
-
-      const rankingsByStudent = new Map()
-      for (const row of data ?? []) {
-        const forStudent = rankingsByStudent.get(row.student_id) ?? new Map()
-        forStudent.set(row.instructor_id, row.rank)
-        rankingsByStudent.set(row.student_id, forStudent)
-      }
-
+      const rankingsByStudent = await loadRankings(dayS)
       const rankIndex = buildRankIndex(unassigned, instructors, shiftByInstructor, rankingsByStudent)
-      const existing = new Map(
-        dayS.filter((s) => s.instructor_id).map((s) => [s.id, s.instructor_id]),
-      )
 
-      const outcome = algorithm.run({
-        sessions: dayS,
-        unassigned,
-        instructors,
-        rankIndex,
-        existing,
-      })
+      const outcome = algorithm.run({ sessions: dayS, unassigned, instructors, rankIndex, existing })
       outcome.unranked = unrankedStudents(outcome.unassignable, rankingsByStudent)
+      // Why each leftover is a leftover — computed from the same inputs the
+      // run used, so the panel never has to guess.
+      outcome.explanations = outcome.unassignable.map((s) =>
+        explainUnplaced(s, instructors, shiftByInstructor, rankingsByStudent.get(s.student_id)),
+      )
+      outcome.cleared = cleared
 
+      if (cleared.length > 0) {
+        const { error } = await supabase
+          .from('assignments')
+          .delete()
+          .in('session_id', cleared)
+        if (error) throw new Error(error.message)
+      }
       if (outcome.made.length > 0) {
         const { error } = await supabase.from('assignments').upsert(
           outcome.made.map((m) => ({
@@ -83,20 +89,144 @@ export function useAutoAssign({ sessions, instructors, shiftByInstructor, onDone
           })),
           { onConflict: 'session_id' },
         )
-        if (error) {
-          setError(error.message)
-          setRunning(false)
-          return null
-        }
-        await onDone?.()
+        if (error) throw new Error(error.message)
       }
 
+      setLastRun({
+        touched: [...new Set([...cleared, ...outcome.made.map((m) => m.sessionId)])],
+        before,
+      })
+      if (cleared.length > 0 || outcome.made.length > 0) await onDone?.()
       setResult(outcome)
-      setRunning(false)
       return outcome
     },
-    [sessions, instructors, shiftByInstructor, onDone],
+    [instructors, shiftByInstructor, loadRankings, onDone],
   )
 
-  return { running, result, error, run, dismiss: () => setResult(null) }
+  /** Fill empty seats. Existing assignments — auto or manual — are immovable. */
+  const run = useCallback(
+    async (algorithmKey) => {
+      setRunning(true)
+      setError(null)
+      try {
+        const { dayS, assigned } = dayState()
+        const unassigned = dayS.filter((s) => !s.instructor_id)
+        return await execute(algorithmKey, {
+          dayS,
+          unassigned,
+          existing: new Map(assigned.map((s) => [s.id, s.instructor_id])),
+          // Filled seats were empty before, so 'before' is simply nothing.
+          before: [],
+          cleared: [],
+        })
+      } catch (err) {
+        setError(err.message)
+        return null
+      } finally {
+        setRunning(false)
+      }
+    },
+    [dayState, execute],
+  )
+
+  /**
+   * Clear the auto-placed seats and run fresh over all of them, so the
+   * algorithm can rebalance instead of only topping up. Manual placements are
+   * kept and still count toward capacity.
+   */
+  const reassign = useCallback(
+    async (algorithmKey) => {
+      setRunning(true)
+      setError(null)
+      try {
+        const { dayS, auto, manual } = dayState()
+        const unassigned = dayS.filter((s) => !s.instructor_id || s.assignment?.source === 'auto')
+        return await execute(algorithmKey, {
+          dayS,
+          unassigned,
+          existing: new Map(manual.map((s) => [s.id, s.instructor_id])),
+          before: auto.map((s) => ({
+            session_id: s.id,
+            instructor_id: s.instructor_id,
+            source: 'auto',
+          })),
+          cleared: auto.map((s) => s.id),
+        })
+      } catch (err) {
+        setError(err.message)
+        return null
+      } finally {
+        setRunning(false)
+      }
+    },
+    [dayState, execute],
+  )
+
+  /** Put every session the last run touched back exactly as it was. */
+  const undo = useCallback(async () => {
+    if (!lastRun) return
+    setRunning(true)
+    setError(null)
+    try {
+      const { error: delErr } = await supabase
+        .from('assignments')
+        .delete()
+        .in('session_id', lastRun.touched)
+      if (delErr) throw new Error(delErr.message)
+      if (lastRun.before.length > 0) {
+        const { error: insErr } = await supabase.from('assignments').insert(lastRun.before)
+        if (insErr) throw new Error(insErr.message)
+      }
+      setLastRun(null)
+      setResult(null)
+      await onDone?.()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setRunning(false)
+    }
+  }, [lastRun, onDone])
+
+  /** Wipe the day's assignments. The caller confirms; this just does it. */
+  const clearDay = useCallback(async () => {
+    setRunning(true)
+    setError(null)
+    try {
+      const { assigned } = dayState()
+      if (assigned.length === 0) return
+      const { error } = await supabase
+        .from('assignments')
+        .delete()
+        .in('session_id', assigned.map((s) => s.id))
+      if (error) throw new Error(error.message)
+      // Clearing is itself undoable: before = everything just removed.
+      setLastRun({
+        touched: assigned.map((s) => s.id),
+        before: assigned.map((s) => ({
+          session_id: s.id,
+          instructor_id: s.instructor_id,
+          source: s.assignment?.source ?? 'manual',
+        })),
+      })
+      setResult(null)
+      await onDone?.()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setRunning(false)
+    }
+  }, [dayState, onDone])
+
+  return {
+    running,
+    result,
+    error,
+    run,
+    reassign,
+    clearDay,
+    undo,
+    canUndo: Boolean(lastRun),
+    counts: dayState(),
+    dismiss: () => setResult(null),
+  }
 }
