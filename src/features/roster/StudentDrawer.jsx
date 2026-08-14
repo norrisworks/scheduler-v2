@@ -158,7 +158,7 @@ export default function StudentDrawer({ studentId, onClose, onChanged }) {
             </section>
           </div>
         ) : tab === 'pins' ? (
-          <InstructorPins studentId={studentId} />
+          <InstructorPins studentId={studentId} student={student} />
         ) : (
           <StudentNotes
             notes={notes}

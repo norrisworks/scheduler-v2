@@ -1,5 +1,6 @@
 import { CAPABILITY_FLAG } from '../day/levels'
 import { TIER_ORDER } from '../instructors/instructorFields'
+import { genderLabel, sameGender } from '../../lib/gender'
 import { isFallbackOnly } from './rankings'
 
 /**
@@ -21,16 +22,29 @@ export const PROPOSAL_SORTS = [
 
 const tierRank = (instructor) => TIER_ORDER[instructor.tier] ?? TIER_ORDER.solid
 
-export function sameGender(student, instructor) {
-  const a = student?.gender?.trim().toLowerCase()
-  const b = instructor?.gender?.trim().toLowerCase()
-  return Boolean(a && b && a === b)
-}
+export { sameGender }
 
-/** Instructors who could teach this student at all. */
+/**
+ * Instructors who could teach this student at all.
+ *
+ * Level capability is the ONLY attribute filter here, and deliberately so.
+ * Gender orders the proposal and never restricts it: any instructor certified
+ * for the student's level must stay rankable. If this list ever looks
+ * gender-shaped, the cause is the capability flags — at Montgomeryville four
+ * of five women are not marked for high school, so a high-school student's
+ * blocked column reads as gender when it is nothing of the kind.
+ */
 export function eligibleForStudent(student, instructors) {
   const flag = CAPABILITY_FLAG[student?.level]
   return instructors.filter((i) => i.active !== false && (!flag || i[flag]))
+}
+
+/** Why an instructor cannot be ranked for this student, or null if they can. */
+export function ineligibleForStudentReason(student, instructor) {
+  if (instructor.active === false) return 'inactive'
+  const flag = CAPABILITY_FLAG[student?.level]
+  if (flag && !instructor[flag]) return `not marked for ${student.level}`
+  return null
 }
 
 /**
@@ -41,7 +55,7 @@ export function proposalReasons(student, instructor, { useGender = true } = {}) 
   const reasons = []
   if (instructor.tier && instructor.tier !== 'solid') reasons.push(instructor.tier)
   if (useGender && sameGender(student, instructor)) {
-    reasons.push(`same gender (${instructor.gender.toUpperCase()})`)
+    reasons.push(`same gender (${genderLabel(instructor.gender)})`)
   }
   if (isFallbackOnly(instructor)) reasons.push('fallback only')
   return reasons

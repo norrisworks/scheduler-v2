@@ -5,9 +5,10 @@ import { readableTextOn } from '../../lib/colors'
 import Spinner from '../../components/Spinner'
 import { LEVEL_OPTIONS } from '../roster/studentFields'
 import { isFallbackOnly } from '../assign/rankings'
-import { eligibleForStudent, sameGender } from '../assign/proposeRanking'
+import { ineligibleForStudentReason } from '../assign/proposeRanking'
 import { useRankingsMatrix } from './useRankingsMatrix'
 import SeedRankingsDialog from './SeedRankingsDialog'
+import { GENDERS, genderLabel, sameGender } from '../../lib/gender'
 
 const NAME_COL = 190
 const CELL = 46
@@ -127,8 +128,9 @@ export default function RankingsMatrix() {
           className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm"
         >
           <option value="">Any gender</option>
-          <option value="f">F</option>
-          <option value="m">M</option>
+          {GENDERS.map((g) => (
+            <option key={g.value} value={g.value}>{g.long}</option>
+          ))}
         </select>
         <select
           value={sort}
@@ -191,7 +193,7 @@ export default function RankingsMatrix() {
                       {initials(i.name)}
                     </span>
                     <span className="mt-1 block text-[9px] font-normal text-zinc-400">
-                      {i.gender ? i.gender.toUpperCase() : '–'}
+                      {genderLabel(i.gender)}
                     </span>
                   </th>
                 ))}
@@ -208,7 +210,7 @@ export default function RankingsMatrix() {
                       <span className="min-w-0 flex-1 truncate text-zinc-800">{student.name}</span>
                       {student.gender && (
                         <span className="shrink-0 text-[10px] text-zinc-400">
-                          {student.gender.toUpperCase()}
+                          {genderLabel(student.gender)}
                         </span>
                       )}
                       {ranked === 0 ? (
@@ -229,7 +231,10 @@ export default function RankingsMatrix() {
                     const key = `${student.id}|${instructor.id}`
                     const rank = ranks.get(key)
                     const moved = overrides.get(key) ?? 0
-                    const eligible = eligibleForStudent(student, [instructor]).length > 0
+                    // The ONLY reason a cell is closed is level capability.
+                    // Gender never gates a ranking — it only orders proposals.
+                    const blocked = ineligibleForStudentReason(student, instructor)
+                    const eligible = !blocked
                     const match = sameGender(student, instructor)
 
                     return (
@@ -245,7 +250,8 @@ export default function RankingsMatrix() {
                             ? `${student.name} → ${instructor.name}` +
                               (match ? ' · same gender' : '') +
                               (moved ? ` · moved here ${moved}x` : '')
-                            : `${instructor.name} cannot teach ${student.level ?? 'this level'}`
+                            : `${instructor.name} is ${blocked} — level capability, not gender. ` +
+                              `Tick ${student.level} on their instructor record to open this up.`
                         }
                       >
                         <input

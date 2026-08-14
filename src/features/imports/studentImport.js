@@ -9,6 +9,7 @@ import {
   violatesNamingConvention,
 } from './namingConvention'
 import { activeFromEnrollment, normalizeEnrollmentStatus } from '../roster/studentFields'
+import { normalizeGender } from '../../lib/gender'
 import { accountKey } from './radiusImport'
 
 /**
@@ -72,14 +73,6 @@ function normalizeAcademic(value) {
   if (v.startsWith('behind')) return 'behind'
   if (v.startsWith('ahead')) return 'ahead'
   if (v.startsWith('at')) return 'at_level'
-  return null
-}
-
-/** M/F only — anything else is left unset rather than invented. */
-function normalizeGender(value) {
-  const v = value.trim().toLowerCase()
-  if (v.startsWith('f')) return 'f'
-  if (v.startsWith('m')) return 'm'
   return null
 }
 

@@ -7,8 +7,8 @@ export { INSTRUCTOR_PALETTE }
  *   can_teach_*   — hard capability filter (unchanged)
  *   assignability — replaces priority + last_resort
  *   tier          — strength judgment, the default sort when seeding rankings
- * `priority`, `last_resort`, `prefers_behind` and `preferred` are no longer
- * read or written; their columns are left dormant in the database.
+ * `priority`, `last_resort`, `prefers_behind` and `preferred` have been
+ * DROPPED from the database — any code that reaches for them is a bug.
  */
 export const ASSIGNABILITY_OPTIONS = [
   { value: 'normal', label: 'Normal', hint: 'Considered in the usual phases' },
@@ -28,11 +28,7 @@ export const TIER_OPTIONS = [
 /** Seeding order: strong first. */
 export const TIER_ORDER = { strong: 0, solid: 1, developing: 2 }
 
-export const GENDER_OPTIONS = [
-  { value: '', label: 'Not set' },
-  { value: 'f', label: 'F' },
-  { value: 'm', label: 'M' },
-]
+export { GENDER_OPTIONS } from '../../lib/gender'
 
 export const LEVEL_FLAGS = [
   { key: 'can_teach_elementary', short: 'E', label: 'Elementary' },

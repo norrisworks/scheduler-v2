@@ -10,8 +10,8 @@ export const SLOT_CERTAINTY = {
   dropin: { label: 'Drop-in', color: '#EF4444' },
 }
 
-// Pill badge under the time row. v1 wrote these with an underscore; the v2
-// `performance` column uses a hyphen, so both spellings resolve.
+// Pill badge under the time row. Old rows wrote these with a hyphen, current
+// ones use an underscore, so both spellings resolve.
 export const ACADEMIC_STATUS = {
   behind: { label: 'Behind', bg: '#FEE2E2', color: '#991B1B' },
   at_level: { label: 'At level', bg: '#E2E8F0', color: '#334155' },

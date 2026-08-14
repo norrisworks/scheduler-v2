@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { readableTextOn } from '../../lib/colors'
 import { moveEntry, proposeRanking, renumber } from '../assign/proposeRanking'
+import { genderLabel } from '../../lib/gender'
 
 /**
  * Proposes a starting ranking list and shows exactly what it would write
@@ -51,7 +52,7 @@ export default function SeedRankingsDialog({ student, instructors, onClose, onSa
           </h2>
           <p className="mt-0.5 text-xs text-zinc-500">
             {student.level ?? 'no level set'}
-            {student.gender ? ` · ${student.gender.toUpperCase()}` : ' · no gender set'} · nothing
+            {student.gender ? ` · ${genderLabel(student.gender)}` : ' · no gender set'} · nothing
             is written until you save.
           </p>
         </div>

@@ -8,6 +8,7 @@ import { capabilityString, instructorWarnings, nextColor } from './instructorFie
 import { isFallbackOnly } from '../assign/rankings'
 import InstructorForm from './InstructorForm'
 import BulkRankingInsert from './BulkRankingInsert'
+import { genderLabel } from '../../lib/gender'
 
 export default function InstructorsView() {
   const { centerId, center } = useCenter()
@@ -210,7 +211,7 @@ function InstructorRow({ instructor, selected, onSelect }) {
           </span>
           <span className="mt-0.5 block truncate text-xs text-zinc-500">
             {capabilities || 'no levels'}
-            {instructor.gender ? ` · ${instructor.gender.toUpperCase()}` : ''}
+            {instructor.gender ? ` · ${genderLabel(instructor.gender)}` : ''}
             {instructor.email ? ` · ${instructor.email}` : ''}
           </span>
         </span>

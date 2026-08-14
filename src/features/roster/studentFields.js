@@ -15,8 +15,7 @@ export const CERTAINTY_OPTIONS = [
 ]
 
 // The single measure of where a student is working. `students.performance`
-// was a duplicate of this and is no longer read or written anywhere; the
-// column is left dormant in the database.
+// was a duplicate of this and has been DROPPED from the database.
 export const ACADEMIC_OPTIONS = [
   { value: '', label: 'Not set' },
   { value: 'behind', label: 'Behind' },
@@ -25,11 +24,7 @@ export const ACADEMIC_OPTIONS = [
 ]
 
 // M/F only — gender is used as a visible ranking-sort input, not decoration.
-export const GENDER_OPTIONS = [
-  { value: '', label: 'Not set' },
-  { value: 'f', label: 'F' },
-  { value: 'm', label: 'M' },
-]
+export { GENDER_OPTIONS } from '../../lib/gender'
 
 /**
  * Radius enrollment status. This is the real signal for whether a student

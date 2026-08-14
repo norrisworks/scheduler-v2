@@ -9,7 +9,7 @@ import { weekDays, validateShift, shiftHours, totalHours, planCopyWeek, indexShi
 import { ineligibleReason, buildCandidates, isFallbackOnly, unrankedStudents } from '../src/features/assign/rankings.js'
 import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessage } from '../src/features/assign/algorithms.js'
 import { buildGroups } from '../src/features/day/TransposedGrid.jsx'
-import { proposeRanking, proposalReasons, sameGender, eligibleForStudent, moveEntry } from '../src/features/assign/proposeRanking.js'
+import { proposeRanking, ineligibleForStudentReason, proposalReasons, sameGender, eligibleForStudent, moveEntry } from '../src/features/assign/proposeRanking.js'
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
 import { generateDisplayName, violatesNamingConvention, staleGradeInName, displayNameShape, nearlySameFirstName, isPlaceholderName } from '../src/features/imports/namingConvention.js'
 import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } from '../src/features/imports/workstreamImport.js'
@@ -18,6 +18,7 @@ import { planStudentImport, planStudentImportByCenter } from '../src/features/im
 import { buildChecks } from '../src/features/health/checks.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime } from '../src/lib/dates.js'
 import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, gaugeCellClass, slotChipClass } from '../src/features/day/load.js'
+import { genderLabel, normalizeGender as normalizeGenderValue } from '../src/lib/gender.js'
 
 const checks = []
 const eq = (label, got, want) => checks.push([label, got, want, JSON.stringify(got) === JSON.stringify(want)])
@@ -331,11 +332,23 @@ eq('no levels warns', instructorWarnings(teacher({
 eq('fallback_only is not a warning',
   instructorWarnings(teacher({ assignability: 'fallback_only' })), [])
 
-// Gender is M/F only now — no 'other' option in either form.
-eq('student gender options are M/F only',
-   GENDER_OPTIONS.map(o => o.value), ['', 'f', 'm'])
-eq('instructor gender options are M/F only',
-   INSTRUCTOR_GENDER_OPTIONS.map(o => o.value), ['', 'f', 'm'])
+// Both tables now carry a CHECK constraint accepting only 'male'/'female', so
+// these are the only values the app may ever send. 'm'/'f' would be rejected
+// by Postgres outright.
+eq('student gender options match the check constraint',
+   GENDER_OPTIONS.map(o => o.value), ['', 'female', 'male'])
+eq('instructor gender options match it too',
+   INSTRUCTOR_GENDER_OPTIONS.map(o => o.value), ['', 'female', 'male'])
+eq('both forms share one definition', GENDER_OPTIONS, INSTRUCTOR_GENDER_OPTIONS)
+// Displayed short, stored long.
+eq('female shows as F', genderLabel('female'), 'F')
+eq('male shows as M', genderLabel('male'), 'M')
+eq('unset shows as a dash', genderLabel(null), '–')
+// A re-import of an older export must not fail on the legacy spelling.
+eq('legacy f normalizes', normalizeGenderValue('F'), 'female')
+eq('legacy m normalizes', normalizeGenderValue('m'), 'male')
+eq('a value we do not model is left unset', normalizeGenderValue('nonbinary'), null)
+eq('blank is left unset', normalizeGenderValue(''), null)
 eq('tier options', TIER_OPTIONS.map(o => o.value), ['strong', 'solid', 'developing'])
 eq('assignability options', ASSIGNABILITY_OPTIONS.map(o => o.value), ['normal', 'fallback_only'])
 eq('tier sorts strong first', TIER_ORDER.strong < TIER_ORDER.solid, true)
@@ -502,7 +515,7 @@ const noRanks = autoAssignBalanced({
 eq('unranked pairs are never used', noRanks.assigned, 0)
 
 // Last-resort instructors are held to the final phase.
-const lastResortOnly = [inst({ id: 'lr', last_resort: true })]
+const lastResortOnly = [inst({ id: 'lr', assignability: 'fallback_only' })]
 const oneSession = [aSess()]
 const lrRank = new Map([['s1', new Map([['lr', 1]])]])
 eq('a pinned last-resort still gets used in phase 3',
@@ -618,7 +631,7 @@ const pInst = (over = {}) => ({
   id: 'p1', name: 'P', active: true, assignability: 'normal', tier: 'solid', gender: null,
   can_teach_elementary: true, can_teach_middle: true, can_teach_high: true, ...over,
 })
-const pStu = (over = {}) => ({ level: 'middle', gender: 'f', ...over })
+const pStu = (over = {}) => ({ level: 'middle', gender: 'female', ...over })
 
 eq('same gender detected', sameGender(pStu(), pInst({ gender: 'F' })), true)
 eq('different gender', sameGender(pStu(), pInst({ gender: 'm' })), false)
@@ -658,9 +671,30 @@ eq('fallback_only sorts last',
      pInst({ id: 'ok', name: 'OK', tier: 'developing' }),
    ]).map(e => e.instructorId), ['ok', 'fb'])
 
+// Gender ORDERS a proposal and never restricts one. Locked down because a
+// gender-shaped block was reported: the real cause is level capability, which
+// at Montgomeryville happens to correlate with gender.
+const femaleStudent = pStu({ level: 'high', gender: 'female' })
+const mixedGenders = [
+  pInst({ id: 'm1', name: 'Male A', gender: 'male', can_teach_high: true }),
+  pInst({ id: 'f1', name: 'Female A', gender: 'female', can_teach_high: true }),
+]
+eq('an opposite-gender instructor is still eligible',
+   eligibleForStudent(femaleStudent, mixedGenders).map(i => i.id).sort(), ['f1', 'm1'])
+eq('and still appears in the proposal',
+   proposeRanking(femaleStudent, mixedGenders).map(e => e.instructorId).sort(), ['f1', 'm1'])
+eq('same gender only changes the ORDER',
+   proposeRanking(femaleStudent, mixedGenders).map(e => e.instructorId), ['f1', 'm1'])
+eq('nothing blocks an opposite-gender ranking',
+   ineligibleForStudentReason(femaleStudent, mixedGenders[0]), null)
+// Capability is the one attribute that does block, and it says so plainly.
+eq('a missing level capability blocks and names itself',
+   ineligibleForStudentReason(femaleStudent, pInst({ gender: 'female', can_teach_high: false })),
+   'not marked for high')
+
 // Every position explains itself.
 eq('reasons name the gender match',
-   proposalReasons(pStu(), pInst({ gender: 'f' })), ['same gender (F)'])
+   proposalReasons(pStu(), pInst({ gender: 'female' })), ['same gender (F)'])
 eq('reasons name a non-default tier',
    proposalReasons(pStu(), pInst({ tier: 'strong' })), ['strong'])
 eq('solid tier is not noise', proposalReasons(pStu(), pInst()), [])
