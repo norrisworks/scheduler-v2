@@ -10,7 +10,7 @@ import { BINDER_STATUSES } from '../binder/BinderPrepView'
  * it (cards must not show it), so this fetches the single session's note on
  * open instead.
  */
-export default function StatusMenu({ menu, onStatusChange, onClose }) {
+export default function StatusMenu({ menu, onStatusChange, onUnassign, onReschedule, onClose }) {
   const [binder, setBinder] = useState(null)
 
   useEffect(() => {
@@ -33,21 +33,24 @@ export default function StatusMenu({ menu, onStatusChange, onClose }) {
   if (!menu) return null
 
   const { session, x, y } = menu
-  const off = session.status === 'cancelled' || session.status === 'no_show'
+  const cancelled = session.status === 'cancelled'
   const binderMeta = BINDER_STATUSES.find((s) => s.value === (binder?.binder_status ?? 'not_started'))
 
-  const items = off
-    ? [{ status: 'scheduled', label: 'Restore to schedule' }]
-    : [
-        { status: 'cancelled', label: 'Cancel' },
-        { status: 'no_show', label: 'No-show' },
-        ...(session.status === 'completed'
-          ? [{ status: 'scheduled', label: 'Back to scheduled' }]
-          : [{ status: 'completed', label: 'Mark completed' }]),
-      ]
+  // Radius owns attendance, so completed / no-show are never set here — the
+  // status column still carries them when the import writes them, but the
+  // only status this UI touches is cancelled.
+  const items = [
+    cancelled
+      ? { key: 'restore', label: 'Restore to schedule', run: () => onStatusChange(session.id, 'scheduled') }
+      : { key: 'cancel', label: 'Cancel', run: () => onStatusChange(session.id, 'cancelled') },
+    { key: 'reschedule', label: 'Reschedule…', run: () => onReschedule(session) },
+    ...(session.instructor_id
+      ? [{ key: 'unassign', label: 'Unassign instructor', run: () => onUnassign(session.id) }]
+      : []),
+  ]
 
-  function pick(status) {
-    onStatusChange(session.id, status)
+  function pick(item) {
+    item.run()
     onClose()
   }
 
@@ -68,10 +71,10 @@ export default function StatusMenu({ menu, onStatusChange, onClose }) {
         </p>
         {items.map((item) => (
           <button
-            key={item.status}
+            key={item.key}
             type="button"
             role="menuitem"
-            onClick={() => pick(item.status)}
+            onClick={() => pick(item)}
             className="block w-full px-3 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-100"
           >
             {item.label}

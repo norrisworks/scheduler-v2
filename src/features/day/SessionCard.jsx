@@ -192,12 +192,6 @@ export default function SessionCard({
           ) : (
             <span className="truncate text-[9px] text-zinc-400">Unassigned</span>
           )}
-          {session.status !== 'scheduled' && (
-            <span className="ml-auto flex shrink-0 items-center gap-0.5 rounded bg-white/70 px-1 text-[8px] font-semibold text-zinc-700">
-              <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
-              {status.label}
-            </span>
-          )}
         </div>
       </div>
     )
@@ -250,23 +244,19 @@ export default function SessionCard({
         )}
       </div>
 
-      {/* Row 3: academic status, and session status when it isn't the norm */}
-      <div className="mt-0.5 flex flex-wrap items-center gap-1">
-        {academic && (
+      {/* Row 3: academic status. Session status is deliberately NOT here —
+          Radius owns attendance, and cancelled sessions are off the grid, so
+          a status chip on a card face could only ever say nothing useful. */}
+      {academic && (
+        <div className="mt-0.5 flex flex-wrap items-center gap-1">
           <span
             className="rounded px-1 py-0.5 text-[8px] font-medium"
             style={{ backgroundColor: academic.bg, color: academic.color }}
           >
             {academic.label}
           </span>
-        )}
-        {session.status !== 'scheduled' && (
-          <span className="inline-flex items-center gap-1 rounded bg-white/70 px-1 py-0.5 text-[8px] font-semibold text-zinc-700">
-            <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
-            {status.label}
-          </span>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Middle: pinned notes and the day's one-liner. BRIEF.md requires these
           at readable size; v1 rendered them at 8px. */}

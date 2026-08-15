@@ -8,6 +8,7 @@ import { capabilityString, instructorWarnings, nextColor, INSTRUCTOR_PALETTE, TI
 import { weekDays, validateShift, shiftHours, totalHours, planCopyWeek, indexShifts, suggestTimes } from '../src/features/shifts/weekShifts.js'
 import { ineligibleReason, buildCandidates, isFallbackOnly, unrankedStudents, explainUnplaced } from '../src/features/assign/rankings.js'
 import { placeAtRank } from '../src/features/assign/rankOrder.js'
+import { rescheduleRows, validateReschedule } from '../src/features/day/reschedule.js'
 import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessage } from '../src/features/assign/algorithms.js'
 import { buildGroups } from '../src/features/day/TransposedGrid.jsx'
 import { proposeRanking, ineligibleForStudentReason, proposalReasons, sameGender, eligibleForStudent, moveEntry } from '../src/features/assign/proposeRanking.js'
@@ -532,6 +533,28 @@ eq('drag-to-top and typing 1 agree',
 
 eq('fallback_only is recognised', isFallbackOnly(inst({ assignability: 'fallback_only' })), true)
 eq('normal is not fallback', isFallbackOnly(inst()), false)
+
+// ---- reschedule: a cancel plus a create, never an edit
+const moving = {
+  id: 'sess-1', center_id: 'c1', student_id: 'st1', date: '2026-08-14',
+  start_time: '16:00:00', duration: 90, notes: 'bring packet',
+}
+const moved = rescheduleRows(moving, '2026-08-20', '17:30')
+eq('the original is cancelled, not deleted',
+   moved.cancel, { id: 'sess-1', patch: { status: 'cancelled', is_modified: true } })
+eq('the new row is a real scheduled session',
+   moved.create, {
+     center_id: 'c1', student_id: 'st1', date: '2026-08-20', start_time: '17:30:00',
+     duration: 90, status: 'scheduled', source: 'manual', notes: 'bring packet',
+   })
+eq('a full hh:mm:ss time is not double-suffixed',
+   rescheduleRows(moving, '2026-08-20', '17:30:00').create.start_time, '17:30:00')
+eq('duration defaults to an hour',
+   rescheduleRows({ ...moving, duration: null }, '2026-08-20', '17:30').create.duration, 60)
+eq('a past date is refused', validateReschedule('2026-08-01', '16:00', '2026-08-14'),
+   'the new date is in the past')
+eq('today is allowed', validateReschedule('2026-08-14', '16:00', '2026-08-14'), null)
+eq('a missing time is refused', validateReschedule('2026-08-20', '', '2026-08-14'), 'pick a time')
 
 // ---- the unplaced report explains itself
 // Keira D's real Thursday: 4 rankings, all four instructors off shift. The

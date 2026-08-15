@@ -12,6 +12,7 @@ import CancelledList from './CancelledList'
 import InstructorSidebar from './InstructorSidebar'
 import StatusMenu from './StatusMenu'
 import AddSessionDialog from './AddSessionDialog'
+import RescheduleDialog from './RescheduleDialog'
 import StudentDrawer from '../roster/StudentDrawer'
 import { useMaterializer } from '../materializer/useMaterializer'
 import { describeMaterialize, MATERIALIZE_DAYS } from '../materializer/materialize'
@@ -31,6 +32,7 @@ export default function DayView() {
   const [armedInstructorId, setArmedInstructorId] = useState(null)
   const [openStudent, setOpenStudent] = useState(null) // { studentId, sessionId }
   const [statusMenu, setStatusMenu] = useState(null)
+  const [rescheduling, setRescheduling] = useState(null)
   const [addingSession, setAddingSession] = useState(false)
   const [dragActive, setDragActive] = useState(false)
   const [nowTick, setNowTick] = useState(() => centerNowTime())
@@ -401,8 +403,18 @@ export default function DayView() {
       <StatusMenu
         menu={statusMenu}
         onStatusChange={setStatus}
+        onUnassign={unassign}
+        onReschedule={(session) => setRescheduling(session)}
         onClose={() => setStatusMenu(null)}
       />
+
+      {rescheduling && (
+        <RescheduleDialog
+          session={rescheduling}
+          onClose={() => setRescheduling(null)}
+          onDone={refetch}
+        />
+      )}
 
       {addingSession && (
         <AddSessionDialog

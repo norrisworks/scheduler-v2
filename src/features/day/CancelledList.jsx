@@ -1,15 +1,16 @@
 import { formatTimeMeridiem } from '../../lib/dates'
 
 /**
- * Cancelled and no-show sessions are off the grid and out of the counts —
- * they aren't on the floor and they aren't consuming capacity. They still
- * have to be visible and reversible, so they live here as a compact strip.
+ * Cancelled sessions are off the grid and out of the counts — not on the
+ * floor, not consuming capacity — but stay visible and reversible here.
+ * Cancelled is the ONLY status this app surfaces: attendance (attended,
+ * no-show) belongs to Radius, so rows carrying those values simply leave the
+ * day view rather than being displayed.
  */
 export default function CancelledList({ sessions, onStatusChange }) {
   const cancelled = sessions.filter((s) => s.status === 'cancelled')
-  const noShows = sessions.filter((s) => s.status === 'no_show')
 
-  if (cancelled.length === 0 && noShows.length === 0) return null
+  if (cancelled.length === 0) return null
 
   return (
     <div className="flex flex-wrap items-start gap-x-6 gap-y-2 border-t border-slate-200 bg-white px-4 py-2">
@@ -17,12 +18,6 @@ export default function CancelledList({ sessions, onStatusChange }) {
         label="Cancelled today"
         sessions={cancelled}
         dot="bg-red-500"
-        onStatusChange={onStatusChange}
-      />
-      <Group
-        label="No-shows"
-        sessions={noShows}
-        dot="bg-amber-500"
         onStatusChange={onStatusChange}
       />
     </div>

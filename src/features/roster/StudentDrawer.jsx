@@ -7,6 +7,7 @@ import StudentAttributes from './StudentAttributes'
 import RecurringSlots from './RecurringSlots'
 import StudentNotes from './StudentNotes'
 import InstructorPins from './InstructorPins'
+import UpcomingSessions from './UpcomingSessions'
 
 const TABS = [
   { key: 'attributes', label: 'Details' },
@@ -155,6 +156,13 @@ export default function StudentDrawer({ studentId, onClose, onChanged }) {
                       : 'No upcoming sessions needed changing.'}
                 </p>
               )}
+            </section>
+
+            <section className="border-t border-zinc-200 pt-4">
+              <h3 className="mb-2 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+                Upcoming sessions
+              </h3>
+              <UpcomingSessions studentId={studentId} />
             </section>
           </div>
         ) : tab === 'pins' ? (
