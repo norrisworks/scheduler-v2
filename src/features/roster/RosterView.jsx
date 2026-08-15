@@ -46,7 +46,7 @@ export default function RosterView() {
     if (!centerId) return
     supabase
       .from('instructors')
-      .select('id, name, color, tier, assignability, gender, can_teach_elementary, can_teach_middle, can_teach_high, active')
+      .select('id, name, color, assignability, gender, can_teach_elementary, can_teach_middle, can_teach_high, active')
       .eq('center_id', centerId)
       .eq('active', true)
       .order('name')

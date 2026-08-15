@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { INSTRUCTOR_COLUMNS } from '../instructors/tierAccess'
 import { addDays } from '../../lib/dates'
 import { planCopyWeek, weekDays } from './weekShifts'
 
@@ -37,7 +38,8 @@ export function useWeekShifts(centerId, weekStart) {
         .order('start_time'),
       supabase
         .from('instructors')
-        .select('*')
+        // tier is column-revoked, so '*' would fail for every role.
+        .select(INSTRUCTOR_COLUMNS)
         .eq('center_id', centerId)
         .eq('active', true)
         .order('name'),

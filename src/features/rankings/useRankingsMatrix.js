@@ -25,7 +25,7 @@ export function useRankingsMatrix(centerId) {
     const token = ++requestRef.current
     setLoading(true)
 
-    const [studentRes, instructorRes, rankRes, overrideRes] = await Promise.all([
+    const [studentRes, instructorRes, tierRes, rankRes, overrideRes] = await Promise.all([
       supabase
         .from('students')
         .select('id, name, grade, level, gender, active')
@@ -34,10 +34,13 @@ export function useRankingsMatrix(centerId) {
         .order('name'),
       supabase
         .from('instructors')
-        .select('id, name, color, tier, assignability, gender, can_teach_elementary, can_teach_middle, can_teach_high')
+        .select('id, name, color, assignability, gender, can_teach_elementary, can_teach_middle, can_teach_high')
         .eq('center_id', centerId)
         .eq('active', true)
         .order('name'),
+      // Admin-only view: this page is admin-gated, and the seed dialog's
+      // tier ordering and reason chips read the merged value.
+      supabase.from('instructor_tiers').select('instructor_id, tier'),
       supabase.from('instructor_rankings').select('student_id, instructor_id, rank'),
       supabase
         .from('assignment_overrides')
@@ -63,10 +66,13 @@ export function useRankingsMatrix(centerId) {
       overrides.set(key, (overrides.get(key) ?? 0) + 1)
     }
 
+    const tiers = new Map((tierRes.data ?? []).map((r) => [r.instructor_id, r.tier]))
     setSnapshot({
       centerId,
       students: studentRes.data ?? EMPTY,
-      instructors: instructorRes.data ?? EMPTY,
+      instructors: (instructorRes.data ?? EMPTY).map((i) =>
+        tiers.has(i.id) ? { ...i, tier: tiers.get(i.id) } : i,
+      ),
       ranks,
       overrides,
     })

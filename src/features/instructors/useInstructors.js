@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import {
+  INSTRUCTOR_COLUMNS,
+  loadTiers,
+  mergeTiers,
+  saveTier,
+  splitTierPatch,
+} from './tierAccess'
 
 const EMPTY = []
 
@@ -21,20 +28,25 @@ export function useInstructors(centerId) {
     const token = ++requestRef.current
     setLoading(true)
 
-    const { data, error } = await supabase
-      .from('instructors')
-      .select('*')
-      .eq('center_id', centerId)
-      .order('name')
+    // tier is column-revoked, so the select names its columns and the tier
+    // values come from the admin-only view (empty for instructor sessions).
+    const [instRes, tiers] = await Promise.all([
+      supabase
+        .from('instructors')
+        .select(INSTRUCTOR_COLUMNS)
+        .eq('center_id', centerId)
+        .order('name'),
+      loadTiers().catch(() => new Map()),
+    ])
 
     if (token !== requestRef.current) return
-    if (error) {
-      setError(error.message)
+    if (instRes.error) {
+      setError(instRes.error.message)
       setLoading(false)
       return
     }
 
-    setSnapshot({ centerId, instructors: data ?? EMPTY })
+    setSnapshot({ centerId, instructors: mergeTiers(instRes.data ?? EMPTY, tiers) })
     setError(null)
     setLoading(false)
   }, [centerId])
@@ -58,12 +70,32 @@ export function useInstructors(centerId) {
   )
 
   const createInstructor = useCallback(
-    (values) => run(() => supabase.from('instructors').insert({ ...values, center_id: centerId })),
+    (values) =>
+      run(async () => {
+        // tier cannot ride along on the insert — the column grant excludes
+        // it — so the row is created first and tier set through the RPC.
+        const { tier, rest } = splitTierPatch(values)
+        const { data, error } = await supabase
+          .from('instructors')
+          .insert({ ...rest, center_id: centerId })
+          .select('id')
+          .single()
+        if (error || !tier) return { error }
+        return saveTier(data.id, tier)
+      }),
     [run, centerId],
   )
 
   const updateInstructor = useCallback(
-    (id, patch) => run(() => supabase.from('instructors').update(patch).eq('id', id)),
+    (id, patch) =>
+      run(async () => {
+        const { tier, rest } = splitTierPatch(patch)
+        if (Object.keys(rest).length > 0) {
+          const { error } = await supabase.from('instructors').update(rest).eq('id', id)
+          if (error) return { error }
+        }
+        return tier ? saveTier(id, tier) : { error: null }
+      }),
     [run],
   )
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { INSTRUCTOR_COLUMNS } from '../instructors/tierAccess'
 
 // binder_note is deliberately NOT selected: cards show a done/not-done tick
 // only, and the surest way to keep the note off them is to never load it here.
@@ -77,7 +78,9 @@ export function useDaySchedule(centerId, date) {
           .order('start_time'),
         supabase
           .from('instructors')
-          .select('*')
+          // Explicit columns: tier is column-revoked, and a '*' here would
+          // fail for every role. Nothing on the day view needs tier.
+          .select(INSTRUCTOR_COLUMNS)
           .eq('center_id', centerId)
           .eq('active', true)
           .order('name'),

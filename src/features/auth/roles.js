@@ -13,8 +13,11 @@
  * what an RLS policy will read straight out of the JWT later:
  *   center_id = (auth.jwt() -> 'app_metadata' ->> 'center_id')::uuid
  *
- * This is a UI restriction only for now. RLS still allows any authenticated
- * user to read any center, so treat it as ergonomics until the policies land.
+ * Center pinning is a UI restriction only for now — RLS still allows any
+ * authenticated user to read any center's rows. The exception is
+ * instructors.tier, which IS database-enforced: the column is revoked from
+ * clients, readable only through the instructor_tiers view (empty for
+ * instructor JWTs) and writable only through the set_instructor_tier RPC.
  *
  * Note this role is about which centers a LOGIN may see. It is unrelated to
  * the `instructors` table, which is staff records for assignment.
@@ -24,10 +27,11 @@ export const ROLE_ADMIN = 'admin'
 export const ROLE_INSTRUCTOR = 'instructor'
 
 export function getRole(user) {
-  const role = user?.app_metadata?.role
-  // Accounts predate this field, and the ~5 staff logins are created by hand.
-  // Absent role means the owner's own account, so it stays unrestricted.
-  return role === ROLE_INSTRUCTOR ? ROLE_INSTRUCTOR : ROLE_ADMIN
+  // Least privilege: ONLY an explicit `role: "admin"` claim is admin. An
+  // absent or unrecognized claim resolves to instructor, so an account
+  // created without metadata is a restricted login, not a silent admin.
+  // (Every real account now carries an explicit role.)
+  return user?.app_metadata?.role === ROLE_ADMIN ? ROLE_ADMIN : ROLE_INSTRUCTOR
 }
 
 /** The center an instructor account is pinned to, or null for admins. */

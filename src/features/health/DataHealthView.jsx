@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { supabase } from '../../lib/supabase'
 import { useCenter } from '../centers/CenterProvider'
+import { useAuth } from '../auth/AuthProvider'
 import Spinner from '../../components/Spinner'
 import Modal from '../../components/Modal'
 import StudentDrawer from '../roster/StudentDrawer'
@@ -15,15 +17,35 @@ const SEVERITY = {
 
 export default function DataHealthView() {
   const { center, centerId } = useCenter()
+  const { isAdmin } = useAuth()
   const { checks, students, instructors, loading, error, refetch, patchInstructor } =
     useDataHealth(centerId)
   const [open, setOpen] = useState(() => new Set())
   // A flagged row opens its editor right here; closing re-runs the checks in
-  // place, so a fixed item drops off the list without a reload.
+  // place, so a fixed item drops off the list without a reload. The
+  // INSTRUCTOR editor is admin-only: it carries the tier field, which is the
+  // owner's private evaluation.
   const [editing, setEditing] = useState(null) // { entity, id }
+  const [editingTier, setEditingTier] = useState(null)
 
   const editingInstructor =
-    editing?.entity === 'instructor' ? instructors.find((i) => i.id === editing.id) : null
+    editing?.entity === 'instructor' && isAdmin
+      ? instructors.find((i) => i.id === editing.id)
+      : null
+
+  // tier lives behind the admin-only view, not on the health list's rows.
+  useEffect(() => {
+    setEditingTier(null)
+    if (!editingInstructor) return
+    supabase
+      .from('instructor_tiers')
+      .select('tier')
+      .eq('instructor_id', editingInstructor.id)
+      .maybeSingle()
+      .then(({ data }) => setEditingTier(data?.tier ?? null))
+  }, [editingInstructor])
+
+  const canEdit = (entity) => entity === 'student' || (entity === 'instructor' && isAdmin)
 
   async function closeEditor() {
     setEditing(null)
@@ -107,7 +129,7 @@ export default function DataHealthView() {
                     <ul className="max-h-64 divide-y divide-zinc-100 overflow-auto border-t border-zinc-200 bg-zinc-50">
                       {check.items.map((item) => (
                         <li key={item.id}>
-                          {check.entity ? (
+                          {canEdit(check.entity) ? (
                             <button
                               type="button"
                               onClick={() => setEditing({ entity: check.entity, id: item.id })}
@@ -152,8 +174,8 @@ export default function DataHealthView() {
           </div>
           <div className="min-h-0 flex-1 overflow-auto p-4">
             <InstructorForm
-              key={editingInstructor.id}
-              instructor={editingInstructor}
+              key={`${editingInstructor.id}:${editingTier ?? ''}`}
+              instructor={editingTier ? { ...editingInstructor, tier: editingTier } : editingInstructor}
               onPatch={(patch) => patchInstructor(editingInstructor.id, patch)}
               onCancel={closeEditor}
             />

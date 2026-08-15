@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { readableTextOn } from '../../lib/colors'
-import { moveEntry, proposeRanking, renumber } from '../assign/proposeRanking'
+import { moveEntry, renumber } from '../assign/proposeRanking'
+import { fetchProposedOrder } from '../instructors/tierAccess'
 import {
   ACADEMIC_OPTIONS,
   CERTAINTY_OPTIONS,
@@ -44,14 +45,35 @@ export default function CreateStudentDialog({ centerId, instructors, onClose, on
   const missing = REQUIRED.filter(([key]) => !String(form[key] ?? '').trim()).map(([, label]) => label)
   const nameWarning = form.name.trim() && violatesNamingConvention(form.name)
 
-  const proposed = useMemo(
-    () => proposeRanking({ level: form.level, gender: form.gender }, instructors),
-    [form.level, form.gender, instructors],
-  )
-
+  // The proposal is ordered SERVER-side: tier still shapes it — that is what
+  // tier exists for — but the value itself is admin-only and never reaches
+  // this dialog. Only the resulting sequence does.
+  const byId = useMemo(() => new Map(instructors.map((i) => [i.id, i])), [instructors])
   useEffect(() => {
-    if (!touched) setEntries(proposed)
-  }, [proposed, touched])
+    if (touched) return
+    let cancelled = false
+    fetchProposedOrder(centerId, { level: form.level || null, gender: form.gender || null })
+      .then((order) => {
+        if (cancelled) return
+        setEntries(
+          order
+            .filter((o) => byId.has(o.instructorId))
+            .map((o, i) => ({
+              instructor: byId.get(o.instructorId),
+              instructorId: o.instructorId,
+              rank: i + 1,
+              reasons: [
+                ...(o.sameGender ? ['same gender'] : []),
+                ...(o.fallbackOnly ? ['fallback only'] : []),
+              ],
+            })),
+        )
+      })
+      .catch((err) => setError(err.message))
+    return () => {
+      cancelled = true
+    }
+  }, [centerId, form.level, form.gender, byId, touched])
 
   async function create() {
     setSaving(true)
@@ -208,7 +230,7 @@ export default function CreateStudentDialog({ centerId, instructors, onClose, on
           ) : (
             <div className="space-y-2">
               <p className="text-[11px] text-zinc-500">
-                Ordered by tier, then same gender as {form.name.trim() || 'the student'}. Drag or
+                Best-fit order, same gender as {form.name.trim() || 'the student'} preferred. Drag or
                 type a number to change it.
               </p>
               {entries.length === 0 ? (

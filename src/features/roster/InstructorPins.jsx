@@ -4,13 +4,9 @@ import { readableTextOn } from '../../lib/colors'
 import { useCenter } from '../centers/CenterProvider'
 import { capabilityString } from '../instructors/instructorFields'
 import { isFallbackOnly } from '../assign/rankings'
-import {
-  ineligibleForStudentReason,
-  moveEntry,
-  proposalReasons,
-  proposeRanking,
-} from '../assign/proposeRanking'
-import { genderLabel } from '../../lib/gender'
+import { ineligibleForStudentReason, moveEntry } from '../assign/proposeRanking'
+import { fetchProposedOrder } from '../instructors/tierAccess'
+import { genderLabel, sameGender } from '../../lib/gender'
 
 /**
  * This student's rankings — the only thing auto-assign reads. Ranked
@@ -35,8 +31,10 @@ export default function InstructorPins({ studentId, student }) {
     const [instRes, rankRes] = await Promise.all([
       supabase
         .from('instructors')
+        // No tier: it is the owner's private evaluation, column-revoked at
+        // the database, and this editor is open to instructor accounts.
         .select(
-          'id, name, color, tier, gender, assignability, active, can_teach_elementary, can_teach_middle, can_teach_high',
+          'id, name, color, gender, assignability, active, can_teach_elementary, can_teach_middle, can_teach_high',
         )
         .eq('center_id', centerId)
         .eq('active', true)
@@ -131,9 +129,19 @@ export default function InstructorPins({ studentId, student }) {
         <button
           type="button"
           disabled={saving}
-          onClick={() => persist(proposeRanking(student, instructors).map((e) => e.instructor))}
+          onClick={async () => {
+            // Ordered server-side so tier can shape the proposal without the
+            // value ever reaching this surface.
+            try {
+              const order = await fetchProposedOrder(centerId, student)
+              const byId = new Map(instructors.map((i) => [i.id, i]))
+              await persist(order.map((o) => byId.get(o.instructorId)).filter(Boolean))
+            } catch (err) {
+              setError(err.message)
+            }
+          }}
           className="shrink-0 rounded border border-zinc-300 px-1.5 py-0.5 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-40"
-          title="Rank every instructor who can teach this student, ordered by tier then same gender"
+          title="Rank every instructor who can teach this student, best fit first"
         >
           {ranked.length === 0 ? 'Rank everyone' : 'Re-propose order'}
         </button>
@@ -190,8 +198,7 @@ export default function InstructorPins({ studentId, student }) {
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm text-zinc-800">{instructor.name}</span>
               <span className="block text-[10px] text-zinc-400">
-                {capabilityString(instructor) || 'no levels'} · {instructor.tier} ·{' '}
-                {genderLabel(instructor.gender)}
+                {capabilityString(instructor) || 'no levels'} · {genderLabel(instructor.gender)}
                 {isFallbackOnly(instructor) ? ' · fallback only' : ''}
               </span>
             </span>
@@ -240,7 +247,10 @@ export default function InstructorPins({ studentId, student }) {
                       {instructor.name}
                     </span>
                     <span className="shrink-0 text-[10px] text-zinc-400">
-                      {proposalReasons(student, instructor).join(' · ') || instructor.tier}
+                      {[
+                        ...(sameGender(student, instructor) ? ['same gender'] : []),
+                        ...(isFallbackOnly(instructor) ? ['fallback only'] : []),
+                      ].join(' · ') || capabilityString(instructor)}
                     </span>
                   </button>
                 </li>

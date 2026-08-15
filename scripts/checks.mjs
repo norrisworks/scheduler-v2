@@ -219,14 +219,16 @@ const instrMv = { app_metadata: { role: 'instructor', center_code: 'mv' } }
 const instrById = { app_metadata: { role: 'instructor', center_id: 'uuid-bb' } }
 const legacy = { app_metadata: {} }
 
+// Least privilege: ONLY an explicit admin claim is admin. Anything else — a
+// missing claim, an unknown value, a retired one — is a restricted login. An
+// account created without metadata must never be a silent admin.
 eq('explicit admin', getRole(admin), 'admin')
 eq('instructor role', getRole(instrMv), 'instructor')
-eq('absent role stays unrestricted', getRole(legacy), 'admin')
-eq('no user at all', getRole(undefined), 'admin')
-eq('unknown role is not instructor', getRole({ app_metadata: { role: 'wat' } }), 'admin')
-// The old value must no longer grant a pin, or a stale account would silently
-// become an unrestricted admin after the rename.
-eq('retired "floor" value is not a role', getRole({ app_metadata: { role: 'floor' } }), 'admin')
+eq('absent role is least-privileged', getRole(legacy), 'instructor')
+eq('no user at all is least-privileged', getRole(undefined), 'instructor')
+eq('unknown role is least-privileged', getRole({ app_metadata: { role: 'wat' } }), 'instructor')
+eq('retired "floor" value is least-privileged',
+   getRole({ app_metadata: { role: 'floor' } }), 'instructor')
 
 eq('admins are not pinned', getPinnedCenter(admin), null)
 eq('pin by code is upper-cased', getPinnedCenter(instrMv), { id: null, code: 'MV' })
@@ -252,7 +254,9 @@ const REAL_CENTERS = [
   { id: 'e620f538-01b1-4963-8342-41d43ad2c3fd', name: 'Montgomeryville', short_code: 'MV' },
 ]
 const LIVE = {
-  owner: { app_metadata: { provider: 'email', providers: ['email'] } },
+  // will@ carries an explicit admin role now — required since an absent
+  // claim resolves to instructor.
+  owner: { app_metadata: { role: 'admin', provider: 'email', providers: ['email'] } },
   mv: { app_metadata: { role: 'instructor', provider: 'email', providers: ['email'],
         center_id: 'e620f538-01b1-4963-8342-41d43ad2c3fd', center_code: 'MV' } },
   bb: { app_metadata: { role: 'instructor', provider: 'email', providers: ['email'],

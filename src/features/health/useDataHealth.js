@@ -1,5 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { saveTier, splitTierPatch } from '../instructors/tierAccess'
 import { buildChecks } from './checks'
 
 const EMPTY = []
@@ -36,7 +37,7 @@ export function useDataHealth(centerId) {
         .from('instructors')
         // The full row, because a flagged instructor opens straight into the
         // editor from here and the form needs every field.
-        .select('id, name, color, email, workstream_id, tier, assignability, gender, can_teach_elementary, can_teach_middle, can_teach_high, active')
+        .select('id, name, color, email, workstream_id, assignability, gender, can_teach_elementary, can_teach_middle, can_teach_high, active')
         .eq('center_id', centerId)
         .eq('active', true)
         .order('name'),
@@ -74,13 +75,26 @@ export function useDataHealth(centerId) {
     [students, instructors, snapshot.rankings, isCurrent],
   )
 
-  /** Autosave patch for the instructor editor opened from a flagged row. */
+  /**
+   * Autosave patch for the instructor editor opened from a flagged row.
+   * Tier goes through its admin-only RPC; everything else writes directly.
+   */
   const patchInstructor = useCallback(
     async (id, patch) => {
-      const { error } = await supabase.from('instructors').update(patch).eq('id', id)
-      if (error) {
-        setError(error.message)
-        return false
+      const { tier, rest } = splitTierPatch(patch)
+      if (Object.keys(rest).length > 0) {
+        const { error } = await supabase.from('instructors').update(rest).eq('id', id)
+        if (error) {
+          setError(error.message)
+          return false
+        }
+      }
+      if (tier) {
+        const { error } = await saveTier(id, tier)
+        if (error) {
+          setError(error.message)
+          return false
+        }
       }
       await load()
       return true
