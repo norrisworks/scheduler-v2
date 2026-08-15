@@ -8,6 +8,8 @@ import { isFallbackOnly } from '../assign/rankings'
 import { ineligibleForStudentReason } from '../assign/proposeRanking'
 import { useRankingsMatrix } from './useRankingsMatrix'
 import SeedRankingsDialog from './SeedRankingsDialog'
+import Modal from '../../components/Modal'
+import InstructorPins from '../roster/InstructorPins'
 import { GENDERS, genderLabel, sameGender } from '../../lib/gender'
 
 const NAME_COL = 190
@@ -36,6 +38,10 @@ export default function RankingsMatrix() {
   const [gender, setGender] = useState('')
   const [sort, setSort] = useState('incomplete')
   const [seeding, setSeeding] = useState(null)
+  // The full drag editor for one student, over the matrix. Closing refetches
+  // so the row updates in place; the table itself never unmounts, so the
+  // scroll position survives.
+  const [editingStudent, setEditingStudent] = useState(null)
   const cellRefs = useRef(new Map())
 
   const visible = useMemo(() => {
@@ -207,7 +213,17 @@ export default function RankingsMatrix() {
                     className="sticky left-0 z-10 border-b border-zinc-100 bg-white px-3 py-1 text-left font-normal"
                   >
                     <span className="flex items-center gap-1.5">
-                      <span className="min-w-0 flex-1 truncate text-zinc-800">{student.name}</span>
+                      {/* Numbers in cells are the fast path; the name opens
+                          the full drag editor, because reordering a whole
+                          list one typed number at a time is not a thing. */}
+                      <button
+                        type="button"
+                        onClick={() => setEditingStudent(student)}
+                        title={`Open ${student.name}'s full ranking editor`}
+                        className="min-w-0 flex-1 truncate text-left text-zinc-800 hover:text-brand-700 hover:underline"
+                      >
+                        {student.name}
+                      </button>
                       {student.gender && (
                         <span className="shrink-0 text-[10px] text-zinc-400">
                           {genderLabel(student.gender)}
@@ -314,6 +330,42 @@ export default function RankingsMatrix() {
             return ok
           }}
         />
+      )}
+
+      {editingStudent && (
+        <Modal
+          label={`Rankings for ${editingStudent.name}`}
+          onClose={async () => {
+            setEditingStudent(null)
+            await refetch()
+          }}
+        >
+          <div className="border-b border-zinc-200 px-4 py-3">
+            <h2 className="text-sm font-semibold text-zinc-900">
+              Rankings — {editingStudent.name}
+            </h2>
+            <p className="mt-0.5 text-xs text-zinc-500">
+              {editingStudent.level ?? 'no level set'}
+              {editingStudent.gender ? ` · ${genderLabel(editingStudent.gender)}` : ''} · every
+              change saves immediately.
+            </p>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto p-3">
+            <InstructorPins studentId={editingStudent.id} student={editingStudent} />
+          </div>
+          <div className="flex justify-end border-t border-zinc-200 px-4 py-2.5">
+            <button
+              type="button"
+              onClick={async () => {
+                setEditingStudent(null)
+                await refetch()
+              }}
+              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              Done
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   )

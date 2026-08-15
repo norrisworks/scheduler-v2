@@ -92,7 +92,6 @@ export default function DayView() {
     refreshExplanations,
     dismiss: dismissAssign,
   } = useAutoAssign({ date, sessions, instructors, shiftByInstructor, onDone: refetch })
-  const [confirmingClear, setConfirmingClear] = useState(false)
   // Fix-in-place modals opened from the unplaced panel. The date never
   // changes underneath them; closing refreshes the panel, not the page.
   const [editingRankings, setEditingRankings] = useState(null) // an explanation row
@@ -249,31 +248,6 @@ export default function DayView() {
         </div>
       )}
 
-      {confirmingClear && (
-        <div className="flex items-center gap-3 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">
-          <span className="flex-1">
-            Remove all {gridSessions.filter((s) => s.instructor_id).length} assignments on this day?
-            Undo can bring them back until you leave the page.
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              setConfirmingClear(false)
-              clearAssignments()
-            }}
-            className="rounded bg-red-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-700"
-          >
-            Clear all
-          </button>
-          <button
-            type="button"
-            onClick={() => setConfirmingClear(false)}
-            className="font-medium underline"
-          >
-            Cancel
-          </button>
-        </div>
-      )}
 
       {materializeError && (
         <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
@@ -333,7 +307,7 @@ export default function DayView() {
           algorithms={ALGORITHMS}
           onAutoAssign={runAutoAssign}
           onReassign={runReassign}
-          onClearDay={() => setConfirmingClear(true)}
+          onClearDay={clearAssignments}
           onUndo={undoAssignRun}
           canUndo={canUndoAssign}
           assigning={assigning}

@@ -38,6 +38,7 @@ export default function InstructorSidebar({
   // reachable behind a disclosure — Workstream coverage is partial, and
   // someone who is physically here still has to be assignable.
   const [showOffShift, setShowOffShift] = useState(false)
+  const [confirmingClear, setConfirmingClear] = useState(false)
 
   const stats = useMemo(() => {
     const map = new Map()
@@ -169,14 +170,49 @@ export default function InstructorSidebar({
             </button>
             <button
               type="button"
-              onClick={onClearDay}
+              onClick={() => setConfirmingClear((v) => !v)}
               disabled={assigning || assignedCount === 0}
               title="Remove every assignment on this day"
-              className="flex-1 rounded-lg border border-zinc-300 px-2 py-1.5 text-[11px] font-medium text-zinc-700 transition hover:bg-red-50 hover:text-red-700 disabled:opacity-40"
+              className={
+                'flex-1 rounded-lg border px-2 py-1.5 text-[11px] font-medium transition disabled:opacity-40 ' +
+                (confirmingClear
+                  ? 'border-red-300 bg-red-50 text-red-700'
+                  : 'border-zinc-300 text-zinc-700 hover:bg-red-50 hover:text-red-700')
+              }
             >
               Clear all…
             </button>
           </div>
+
+          {/* The confirm sits right under the button that asked for it —
+              never in a banner on the other side of the screen. */}
+          {confirmingClear && (
+            <div className="mt-1.5 rounded-lg border border-red-200 bg-red-50 p-2">
+              <p className="text-[11px] leading-snug text-red-800">
+                Remove all {assignedCount} assignment{assignedCount === 1 ? '' : 's'} on this day?
+                Undo can bring them back until you leave the page.
+              </p>
+              <div className="mt-1.5 flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmingClear(false)
+                    onClearDay()
+                  }}
+                  className="rounded bg-red-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-red-700"
+                >
+                  Clear all
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingClear(false)}
+                  className="rounded border border-zinc-300 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
