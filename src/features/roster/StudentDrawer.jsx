@@ -21,10 +21,6 @@ export default function StudentDrawer({ studentId, onClose, onChanged }) {
   const [tab, setTab] = useState('attributes')
   const { centerId } = useCenter()
   const [slotEffect, setSlotEffect] = useState(null)
-  // Offered after default_duration changes: apply to what already exists, or
-  // only go forward. Never silent either way.
-  const [durationOffer, setDurationOffer] = useState(null)
-  const [applyingDuration, setApplyingDuration] = useState(false)
   const [sessionsRefresh, setSessionsRefresh] = useState(0)
   const {
     student,
@@ -58,9 +54,9 @@ export default function StudentDrawer({ studentId, onClose, onChanged }) {
   }
 
   /**
-   * A changed default_duration silently affects nothing that already exists —
-   * sessions and slots keep their own durations. So after the save, count
-   * what COULD follow the new default and ask.
+   * Duration is a STUDENT-level property, full stop. A changed default flows
+   * straight to the standing slots and every future scheduled session — no
+   * prompt, no per-session override anywhere.
    */
   async function saveAttributes(patch) {
     const before = student?.default_duration ?? null
@@ -69,63 +65,29 @@ export default function StudentDrawer({ studentId, onClose, onChanged }) {
 
     const minutes = patch.default_duration
     if (minutes && minutes !== before) {
-      const slotCount = slots.filter(
-        (s) =>
-          s.duration !== minutes &&
-          (!s.effective_until || s.effective_until >= new Date().toISOString().slice(0, 10)),
-      ).length
-      const { count } = await supabase
-        .from('sessions')
-        .select('id', { count: 'exact', head: true })
-        .eq('student_id', studentId)
-        .gte('date', todayISO())
-        .eq('status', 'scheduled')
-        .eq('is_modified', false)
-        .neq('duration', minutes)
-      const sessionCount = count ?? 0
-      if (slotCount > 0 || sessionCount > 0) {
-        setDurationOffer({ minutes, slotCount, sessionCount })
+      const today = todayISO()
+      const slotIds = slots
+        .filter((s) => s.duration !== minutes && (!s.effective_until || s.effective_until >= today))
+        .map((s) => s.id)
+      const writes = [
+        supabase
+          .from('sessions')
+          .update({ duration: minutes, updated_at: new Date().toISOString() })
+          .eq('student_id', studentId)
+          .gte('date', today)
+          .eq('status', 'scheduled'),
+      ]
+      if (slotIds.length > 0) {
+        writes.push(supabase.from('recurring_slots').update({ duration: minutes }).in('id', slotIds))
       }
+      const results = await Promise.all(writes)
+      const failure = results.find((r) => r.error)
+      if (failure) setSlotEffect({ error: failure.error.message })
+      setSessionsRefresh((n) => n + 1)
+      await refetch()
+      onChanged()
     }
     return ok
-  }
-
-  /** Apply the new default to the standing slots and future untouched sessions. */
-  async function applyDuration() {
-    if (!durationOffer) return
-    setApplyingDuration(true)
-    const { minutes } = durationOffer
-    const today = todayISO()
-
-    const slotIds = slots
-      .filter((s) => s.duration !== minutes && (!s.effective_until || s.effective_until >= today))
-      .map((s) => s.id)
-    const writes = []
-    if (slotIds.length > 0) {
-      writes.push(supabase.from('recurring_slots').update({ duration: minutes }).in('id', slotIds))
-    }
-    writes.push(
-      supabase
-        .from('sessions')
-        // is_modified stays false: these still follow their template, which
-        // now says the same thing.
-        .update({ duration: minutes, updated_at: new Date().toISOString() })
-        .eq('student_id', studentId)
-        .gte('date', today)
-        .eq('status', 'scheduled')
-        .eq('is_modified', false),
-    )
-    const results = await Promise.all(writes)
-    const failure = results.find((r) => r.error)
-    setApplyingDuration(false)
-    if (failure) {
-      setSlotEffect({ error: failure.error.message })
-      return
-    }
-    setDurationOffer(null)
-    setSessionsRefresh((n) => n + 1)
-    await refetch()
-    onChanged()
   }
 
   /**
@@ -210,34 +172,6 @@ export default function StudentDrawer({ studentId, onClose, onChanged }) {
               onSave={saveAttributes}
             />
 
-            {durationOffer && (
-              <div className="rounded-lg border border-brand-200 bg-brand-50 p-2.5">
-                <p className="text-xs leading-snug text-brand-900">
-                  Default is now {durationOffer.minutes}m. Apply it to{' '}
-                  {durationOffer.sessionCount} upcoming session
-                  {durationOffer.sessionCount === 1 ? '' : 's'} and {durationOffer.slotCount}{' '}
-                  standing slot{durationOffer.slotCount === 1 ? '' : 's'}? Hand-edited sessions are
-                  never touched either way.
-                </p>
-                <div className="mt-1.5 flex gap-1.5">
-                  <button
-                    type="button"
-                    disabled={applyingDuration}
-                    onClick={applyDuration}
-                    className="rounded bg-brand-500 px-2 py-1 text-[11px] font-semibold text-white hover:bg-brand-600 disabled:opacity-40"
-                  >
-                    {applyingDuration ? 'Applying…' : 'Apply to existing'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDurationOffer(null)}
-                    className="rounded border border-zinc-300 bg-white px-2 py-1 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100"
-                  >
-                    Only going forward
-                  </button>
-                </div>
-              </div>
-            )}
 
             <section className="border-t border-zinc-200 pt-4">
               <h3 className="mb-2 text-xs font-semibold tracking-wide text-zinc-500 uppercase">

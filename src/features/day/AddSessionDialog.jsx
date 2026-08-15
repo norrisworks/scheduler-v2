@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { formatDateShort } from '../../lib/dates'
-import { DURATION_OPTIONS } from '../roster/studentFields'
 
 const inputClass =
   'w-full rounded-lg border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200'
@@ -150,20 +149,9 @@ export default function AddSessionDialog({ centerId, date, onClose, onCreated })
                 className={inputClass}
               />
             </label>
-            <label>
-              <span className="mb-1 block text-xs font-medium text-zinc-600">Mins</span>
-              <select
-                value={form.duration}
-                onChange={(e) => setForm({ ...form, duration: e.target.value })}
-                className={inputClass}
-              >
-                {DURATION_OPTIONS.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {/* No duration input: duration is a student-level property, and
+                the session takes the picked student's default automatically. */}
+            <p className="self-end pb-1.5 text-xs text-zinc-400">{form.duration}m</p>
           </div>
 
           <label className="block">

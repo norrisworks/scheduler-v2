@@ -10,7 +10,7 @@ import { BINDER_STATUSES } from '../binder/BinderPrepView'
  * it (cards must not show it), so this fetches the single session's note on
  * open instead.
  */
-export default function StatusMenu({ menu, onStatusChange, onUnassign, onReschedule, onEditDuration, onClose }) {
+export default function StatusMenu({ menu, onStatusChange, onUnassign, onReschedule, onClose }) {
   const [binder, setBinder] = useState(null)
 
   useEffect(() => {
@@ -44,7 +44,6 @@ export default function StatusMenu({ menu, onStatusChange, onUnassign, onResched
       ? { key: 'restore', label: 'Restore to schedule', run: () => onStatusChange(session.id, 'scheduled') }
       : { key: 'cancel', label: 'Cancel', run: () => onStatusChange(session.id, 'cancelled') },
     { key: 'reschedule', label: 'Reschedule…', run: () => onReschedule(session) },
-    { key: 'duration', label: 'Duration…', run: () => onEditDuration(session) },
     ...(session.instructor_id
       ? [{ key: 'unassign', label: 'Unassign instructor', run: () => onUnassign(session.id) }]
       : []),

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { formatTimeMeridiem, todayISO } from '../../lib/dates'
-import { DAYS, DURATION_OPTIONS } from './studentFields'
+import { DAYS } from './studentFields'
 
 const inputClass =
   'rounded-lg border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200'
@@ -11,20 +11,15 @@ const inputClass =
  * future sessions that haven't been hand-edited (step 4).
  */
 export default function RecurringSlots({ slots, saving, defaultDuration, onAdd, onUpdate, onDelete }) {
-  // A new slot starts at the STUDENT'S default duration — this used to
-  // hardcode 60, which is how a 90-minute student's sessions were born short.
-  const [draft, setDraft] = useState({
-    day_of_week: 1,
-    start_time: '16:00',
-    duration: defaultDuration || 60,
-  })
+  const [draft, setDraft] = useState({ day_of_week: 1, start_time: '16:00' })
 
   async function add(e) {
     e.preventDefault()
     await onAdd({
       day_of_week: Number(draft.day_of_week),
       start_time: `${draft.start_time}:00`,
-      duration: Number(draft.duration),
+      // Duration is a student-level property; the slot simply inherits it.
+      duration: defaultDuration || 60,
       effective_from: todayISO(),
     })
   }
@@ -112,20 +107,8 @@ export default function RecurringSlots({ slots, saving, defaultDuration, onAdd, 
             className={inputClass}
           />
         </label>
-        <label>
-          <span className="mb-1 block text-xs font-medium text-slate-600">Mins</span>
-          <select
-            value={draft.duration}
-            onChange={(e) => setDraft({ ...draft, duration: e.target.value })}
-            className={inputClass}
-          >
-            {DURATION_OPTIONS.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </label>
+        {/* No duration input: duration is a student-level property, and the
+            slot takes the student's default automatically. */}
         <button
           type="submit"
           disabled={saving}
