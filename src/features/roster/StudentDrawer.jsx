@@ -162,7 +162,7 @@ export default function StudentDrawer({ studentId, onClose, onChanged }) {
               <h3 className="mb-2 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
                 Upcoming sessions
               </h3>
-              <UpcomingSessions studentId={studentId} />
+              <UpcomingSessions studentId={studentId} slots={slots} />
             </section>
           </div>
         ) : tab === 'pins' ? (
