@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useCenter } from '../centers/CenterProvider'
 import { formatDateShort, formatTimeMeridiem, todayISO } from '../../lib/dates'
+import { DURATION_OPTIONS } from './studentFields'
 import { MATERIALIZE_DAYS, materializeSessions } from '../materializer/materialize'
 import RescheduleDialog from '../day/RescheduleDialog'
 
@@ -20,7 +21,7 @@ const EXTENDED_DAYS = 60
  * "Generate further ahead" materializes THIS student's standing slots out to
  * EXTENDED_DAYS so the later sessions become real, listable rows.
  */
-export default function UpcomingSessions({ studentId, slots = [] }) {
+export default function UpcomingSessions({ studentId, slots = [], refreshKey = 0 }) {
   const { centerId } = useCenter()
   const [sessions, setSessions] = useState([])
   const [loading, setLoading] = useState(true)
@@ -49,7 +50,8 @@ export default function UpcomingSessions({ studentId, slots = [] }) {
   useEffect(() => {
     setLoading(true)
     load()
-  }, [load])
+    // refreshKey lets the drawer force a reload after bulk duration changes.
+  }, [load, refreshKey])
 
   /** Materialize this student's slots further out, then reload the list. */
   async function extend() {
@@ -68,6 +70,18 @@ export default function UpcomingSessions({ studentId, slots = [] }) {
     }
     await load()
     setExtending(false)
+  }
+
+  /** One session's duration, touching nothing else. is_modified pins it. */
+  async function setDuration(session, minutes) {
+    setSaving(true)
+    const { error } = await supabase
+      .from('sessions')
+      .update({ duration: minutes, is_modified: true, updated_at: new Date().toISOString() })
+      .eq('id', session.id)
+    setSaving(false)
+    if (error) setError(error.message)
+    else await load()
   }
 
   async function cancel(session) {
@@ -102,8 +116,19 @@ export default function UpcomingSessions({ studentId, slots = [] }) {
             >
               <span className="min-w-0 flex-1 text-sm text-zinc-800">
                 {formatDateShort(session.date)} · {formatTimeMeridiem(session.start_time)}
-                <span className="text-xs text-zinc-400"> · {session.duration ?? 60}m</span>
               </span>
+              <select
+                value={session.duration ?? 60}
+                disabled={saving}
+                onChange={(e) => setDuration(session, Number(e.target.value))}
+                aria-label={`Duration on ${formatDateShort(session.date)}`}
+                title="Change just this session's duration"
+                className="shrink-0 rounded border border-zinc-200 px-1 py-0.5 text-[11px] text-zinc-600"
+              >
+                {DURATION_OPTIONS.map((d) => (
+                  <option key={d} value={d}>{d}m</option>
+                ))}
+              </select>
               <button
                 type="button"
                 disabled={saving}

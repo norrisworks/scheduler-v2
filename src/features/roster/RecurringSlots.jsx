@@ -10,8 +10,14 @@ const inputClass =
  * materializer turns them into real `sessions`. Editing one re-materializes
  * future sessions that haven't been hand-edited (step 4).
  */
-export default function RecurringSlots({ slots, saving, onAdd, onUpdate, onDelete }) {
-  const [draft, setDraft] = useState({ day_of_week: 1, start_time: '16:00', duration: 60 })
+export default function RecurringSlots({ slots, saving, defaultDuration, onAdd, onUpdate, onDelete }) {
+  // A new slot starts at the STUDENT'S default duration — this used to
+  // hardcode 60, which is how a 90-minute student's sessions were born short.
+  const [draft, setDraft] = useState({
+    day_of_week: 1,
+    start_time: '16:00',
+    duration: defaultDuration || 60,
+  })
 
   async function add(e) {
     e.preventDefault()
