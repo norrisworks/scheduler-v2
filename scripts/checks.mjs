@@ -7,6 +7,7 @@ import { emptyToNull, missingAttributes, GENDER_OPTIONS, normalizeEnrollmentStat
 import { capabilityString, instructorWarnings, nextColor, INSTRUCTOR_PALETTE, TIER_OPTIONS, TIER_ORDER, ASSIGNABILITY_OPTIONS, GENDER_OPTIONS as INSTRUCTOR_GENDER_OPTIONS } from '../src/features/instructors/instructorFields.js'
 import { weekDays, validateShift, shiftHours, totalHours, planCopyWeek, indexShifts, suggestTimes } from '../src/features/shifts/weekShifts.js'
 import { ineligibleReason, buildCandidates, isFallbackOnly, unrankedStudents, explainUnplaced } from '../src/features/assign/rankings.js'
+import { placeAtRank } from '../src/features/assign/rankOrder.js'
 import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessage } from '../src/features/assign/algorithms.js'
 import { buildGroups } from '../src/features/day/TransposedGrid.jsx'
 import { proposeRanking, ineligibleForStudentReason, proposalReasons, sameGender, eligibleForStudent, moveEntry } from '../src/features/assign/proposeRanking.js'
@@ -478,10 +479,56 @@ eq('a ranked instructor who cannot teach the level is excluded',
    buildCandidates(aSess(), [inst({ id: 'a', can_teach_middle: false }), inst({ id: 'b' })],
      shifts3, ranks([['a', 1], ['b', 2]])).map(c => c.instructorId), ['b'])
 
-// Equal ranks are allowed and keep their tie for the load tie-break.
+// The candidate layer TOLERATES equal ranks defensively (old data may carry
+// them), even though the editors can no longer produce them.
 eq('tied ranks are preserved',
    buildCandidates(aSess(), three, shifts3, ranks([['a', 1], ['b', 1], ['c', 2]]))
      .map(c => `${c.instructorId}:${c.rank}`), ['a:1', 'b:1', 'c:2'])
+
+// ---- one placement rule for every editor
+// The real bug: Kieran ranked 1 for Danny C, Alavi's cell set to 1, and the
+// matrix wrote the lone cell — two instructors sharing rank 1. Rank N is an
+// INSERTION at position N, never an independent number.
+const dannyC = [{ instructorId: 'kieran', rank: 1 }]
+eq('setting rank 1 shifts the incumbent down',
+   placeAtRank(dannyC, 'alavi', 1),
+   [{ instructorId: 'alavi', rank: 1 }, { instructorId: 'kieran', rank: 2 }])
+eq('inserting mid-list shifts everyone at or below',
+   placeAtRank([{ instructorId: 'a', rank: 1 }, { instructorId: 'b', rank: 2 },
+                { instructorId: 'c', rank: 3 }], 'x', 2)
+     .map(e => `${e.instructorId}:${e.rank}`), ['a:1', 'x:2', 'b:3', 'c:4'])
+eq('moving an existing instructor renumbers, never duplicates',
+   placeAtRank([{ instructorId: 'a', rank: 1 }, { instructorId: 'b', rank: 2 },
+                { instructorId: 'c', rank: 3 }], 'c', 1)
+     .map(e => `${e.instructorId}:${e.rank}`), ['c:1', 'a:2', 'b:3'])
+eq('clearing closes the gap',
+   placeAtRank([{ instructorId: 'a', rank: 1 }, { instructorId: 'b', rank: 2 },
+                { instructorId: 'c', rank: 3 }], 'b', null)
+     .map(e => `${e.instructorId}:${e.rank}`), ['a:1', 'c:2'])
+eq('a rank past the end appends',
+   placeAtRank([{ instructorId: 'a', rank: 1 }], 'z', 99),
+   [{ instructorId: 'a', rank: 1 }, { instructorId: 'z', rank: 2 }])
+eq('rank 0 clamps to the top',
+   placeAtRank([{ instructorId: 'a', rank: 1 }], 'z', 0)[0].instructorId, 'z')
+eq('an empty list accepts its first entry',
+   placeAtRank([], 'a', 1), [{ instructorId: 'a', rank: 1 }])
+eq('clearing the only entry empties the list', placeAtRank(dannyC, 'kieran', null), [])
+// Any edit repairs the list it touches: bad old data comes out contiguous.
+eq('duplicated and gapped input comes out contiguous',
+   placeAtRank([{ instructorId: 'a', rank: 1 }, { instructorId: 'b', rank: 1 },
+                { instructorId: 'c', rank: 7 }], 'd', 2)
+     .map(e => `${e.instructorId}:${e.rank}`), ['a:1', 'd:2', 'b:3', 'c:4'])
+
+// The two editors must produce identical results: the drawer's drag of an
+// existing row (moveEntry) and the matrix's typed rank agree.
+const dragged = moveEntry(
+  [{ instructorId: 'a', rank: 1 }, { instructorId: 'b', rank: 2 }, { instructorId: 'c', rank: 3 }],
+  2, 0)
+const typed = placeAtRank(
+  [{ instructorId: 'a', rank: 1 }, { instructorId: 'b', rank: 2 }, { instructorId: 'c', rank: 3 }],
+  'c', 1)
+eq('drag-to-top and typing 1 agree',
+   dragged.map(e => `${e.instructorId}:${e.rank}`), typed.map(e => `${e.instructorId}:${e.rank}`))
 
 eq('fallback_only is recognised', isFallbackOnly(inst({ assignability: 'fallback_only' })), true)
 eq('normal is not fallback', isFallbackOnly(inst()), false)

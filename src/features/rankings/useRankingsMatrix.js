@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { placeAtRank } from '../assign/rankOrder'
 
 const EMPTY = []
 
@@ -86,49 +87,70 @@ export function useRankingsMatrix(centerId) {
 
   const isCurrent = snapshot.centerId === centerId
 
-  /** Optimistic so typing across a row feels immediate. */
+  /**
+   * A cell edit is an INSERTION, not a lone number: rank N slots the
+   * instructor in at position N and shifts everyone at or below down one, so
+   * the student's list stays contiguous 1..N — exactly what the drawer's drag
+   * reorder produces. Clearing closes the gap. Optimistic, whole-row.
+   */
   const setRank = useCallback(
     async (studentId, instructorId, rank) => {
-      const key = `${studentId}|${instructorId}`
-      const previous = snapshot.ranks.get(key)
+      const nameOf = new Map(snapshot.instructors.map((i) => [i.id, i.name]))
+      const current = snapshot.instructors
+        .map((i) => ({ instructorId: i.id, rank: snapshot.ranks.get(`${studentId}|${i.id}`) }))
+        .filter((e) => typeof e.rank === 'number')
+        .sort(
+          (a, b) =>
+            a.rank - b.rank ||
+            (nameOf.get(a.instructorId) ?? '').localeCompare(nameOf.get(b.instructorId) ?? ''),
+        )
 
+      const hadRow = current.some((e) => e.instructorId === instructorId)
+      if (rank === null && !hadRow) return
+      const next = placeAtRank(current, instructorId, rank)
+
+      const previousRanks = snapshot.ranks
       setSnapshot((prev) => {
         const ranks = new Map(prev.ranks)
-        if (rank === null) ranks.delete(key)
-        else ranks.set(key, rank)
+        for (const e of current) ranks.delete(`${studentId}|${e.instructorId}`)
+        for (const e of next) ranks.set(`${studentId}|${e.instructorId}`, e.rank)
         return { ...prev, ranks }
       })
       setSaving(true)
 
-      const { error } =
-        rank === null
-          ? await supabase
-              .from('instructor_rankings')
-              .delete()
-              .eq('student_id', studentId)
-              .eq('instructor_id', instructorId)
-          : await supabase.from('instructor_rankings').upsert(
-              {
-                student_id: studentId,
-                instructor_id: instructorId,
-                rank,
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: 'student_id,instructor_id' },
-            )
+      const writes = []
+      if (next.length > 0) {
+        writes.push(
+          supabase.from('instructor_rankings').upsert(
+            next.map((e) => ({
+              student_id: studentId,
+              instructor_id: e.instructorId,
+              rank: e.rank,
+              updated_at: new Date().toISOString(),
+            })),
+            { onConflict: 'student_id,instructor_id' },
+          ),
+        )
+      }
+      if (rank === null) {
+        writes.push(
+          supabase
+            .from('instructor_rankings')
+            .delete()
+            .eq('student_id', studentId)
+            .eq('instructor_id', instructorId),
+        )
+      }
 
+      const results = await Promise.all(writes)
+      const failure = results.find((r) => r.error)
       setSaving(false)
-      if (error) {
-        setError(error.message)
-        setSnapshot((prev) => {
-          const ranks = new Map(prev.ranks)
-          if (previous === undefined) ranks.delete(key)
-          else ranks.set(key, previous)
-          return { ...prev, ranks }
-        })
+      if (failure) {
+        setError(failure.error.message)
+        setSnapshot((prev) => ({ ...prev, ranks: previousRanks }))
       }
     },
-    [snapshot.ranks],
+    [snapshot.ranks, snapshot.instructors],
   )
 
   /** Writes a whole proposed list for one student in a single round trip. */

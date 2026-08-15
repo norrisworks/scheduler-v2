@@ -5,6 +5,7 @@ import { useCenter } from '../centers/CenterProvider'
 import { capabilityString } from '../instructors/instructorFields'
 import { isFallbackOnly } from '../assign/rankings'
 import { ineligibleForStudentReason, moveEntry } from '../assign/proposeRanking'
+import { placeAtRank } from '../assign/rankOrder'
 import { fetchProposedOrder } from '../instructors/tierAccess'
 import { genderLabel, sameGender } from '../../lib/gender'
 
@@ -25,7 +26,6 @@ export default function InstructorPins({ studentId, student }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [dragIndex, setDragIndex] = useState(null)
-  const [adding, setAdding] = useState(false)
 
   const load = async () => {
     const [instRes, rankRes] = await Promise.all([
@@ -114,8 +114,21 @@ export default function InstructorPins({ studentId, student }) {
 
   const rankedIds = useMemo(() => new Set(ranked.map((i) => i.id)), [ranked])
   const rest = instructors.filter((i) => !rankedIds.has(i.id))
-  const addable = rest.filter((i) => !ineligibleForStudentReason(student, i))
+  // Every eligible instructor is ALWAYS on screen — ranked with a number,
+  // unranked as an empty row. A new hire must never be simply absent here.
+  const unranked = rest.filter((i) => !ineligibleForStudentReason(student, i))
   const blocked = rest.filter((i) => ineligibleForStudentReason(student, i))
+
+  /** Insert an unranked instructor at a 1-based position (or the end). */
+  const addAt = (instructor, rank) => {
+    const byId = new Map([...ranked, instructor].map((i) => [i.id, i]))
+    const next = placeAtRank(
+      ranked.map((i) => ({ instructorId: i.id })),
+      instructor.id,
+      rank ?? ranked.length + 1,
+    )
+    persist(next.map((e) => byId.get(e.instructorId)))
+  }
 
   if (loading) return <p className="py-3 text-center text-xs text-zinc-400">Loading instructors…</p>
 
@@ -216,63 +229,65 @@ export default function InstructorPins({ studentId, student }) {
         ))}
       </ol>
 
-      {addable.length > 0 &&
-        (adding ? (
-          <div className="rounded-lg border border-zinc-200 bg-white p-1.5">
-            <p className="px-1 pb-1 text-[10px] font-medium text-zinc-500">
-              Adds to the end of the list — drag it where it belongs.
-            </p>
-            <ul className="max-h-44 space-y-0.5 overflow-auto">
-              {addable.map((instructor) => (
-                <li key={instructor.id}>
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() => {
-                      persist([...ranked, instructor])
-                      setAdding(false)
+      {unranked.length > 0 && (
+        <div>
+          <p className="mb-1 px-1 text-[10px] font-semibold tracking-wide text-zinc-400 uppercase">
+            Not ranked — type a position, or click to add last
+          </p>
+          <ul className="space-y-1">
+            {unranked.map((instructor) => (
+              <li
+                key={instructor.id}
+                className="flex items-center gap-2 rounded-lg border border-dashed border-zinc-300 bg-white px-2 py-1.5"
+              >
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value=""
+                  placeholder="—"
+                  disabled={saving}
+                  aria-label={`Rank ${instructor.name}`}
+                  onChange={(e) => {
+                    const n = Number(e.target.value)
+                    if (Number.isFinite(n) && n >= 1) addAt(instructor, n)
+                  }}
+                  className="w-11 shrink-0 rounded border border-zinc-300 bg-white px-1 py-0.5 text-center text-xs tabular-nums placeholder:text-zinc-300"
+                />
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => addAt(instructor, null)}
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  title={`Add ${instructor.name} at the end of the list`}
+                >
+                  <span
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[9px] font-bold"
+                    style={{
+                      backgroundColor: instructor.color,
+                      color: readableTextOn(instructor.color),
                     }}
-                    className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-zinc-100"
                   >
-                    <span
-                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[9px] font-bold"
-                      style={{
-                        backgroundColor: instructor.color,
-                        color: readableTextOn(instructor.color),
-                      }}
-                    >
-                      {instructor.name.trim()[0]?.toUpperCase()}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-sm text-zinc-800">
-                      {instructor.name}
-                    </span>
-                    <span className="shrink-0 text-[10px] text-zinc-400">
+                    {instructor.name.trim()[0]?.toUpperCase()}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-zinc-600">{instructor.name}</span>
+                    <span className="block text-[10px] text-zinc-400">
                       {[
+                        capabilityString(instructor) || 'no levels',
+                        genderLabel(instructor.gender),
                         ...(sameGender(student, instructor) ? ['same gender'] : []),
                         ...(isFallbackOnly(instructor) ? ['fallback only'] : []),
-                      ].join(' · ') || capabilityString(instructor)}
+                      ].join(' · ')}
                     </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <button
-              type="button"
-              onClick={() => setAdding(false)}
-              className="mt-1 w-full rounded px-2 py-1 text-[11px] font-medium text-zinc-500 hover:bg-zinc-100"
-            >
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setAdding(true)}
-            className="w-full rounded-lg border border-dashed border-zinc-300 px-2 py-1.5 text-xs font-medium text-zinc-600 hover:border-zinc-400 hover:bg-zinc-50"
-          >
-            + Add an instructor ({addable.length} available)
-          </button>
-        ))}
+                  </span>
+                  <span className="shrink-0 text-xs text-zinc-300">+</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {blocked.length > 0 && (
         <p className="text-[11px] leading-snug text-zinc-400">
