@@ -10,7 +10,7 @@ import {
 } from './namingConvention'
 import { activeFromEnrollment, normalizeEnrollmentStatus } from '../roster/studentFields'
 import { normalizeGender } from '../../lib/gender'
-import { accountKey } from './radiusImport'
+import { accountKey, parseRadiusDate } from './radiusImport'
 
 /**
  * Fields the student roster importer understands. Anything else in the file
@@ -49,6 +49,13 @@ export const STUDENT_FIELDS = [
     key: 'enrollment_status',
     headers: ['enrollment_status', 'enrollment'],
     normalize: normalizeEnrollmentStatus,
+  },
+  // Also from the Students export; feeds the "new student" window in
+  // auto-assign (a student enrolled recently prefers a top-ranked instructor).
+  {
+    key: 'enrollment_start_date',
+    headers: ['enrollment_start_date', 'enrollment_start'],
+    normalize: (v) => parseRadiusDate(v),
   },
 ]
 

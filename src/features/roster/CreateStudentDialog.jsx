@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { readableTextOn } from '../../lib/colors'
 import { moveEntry, renumber } from '../assign/proposeRanking'
-import { fetchProposedOrder } from '../instructors/tierAccess'
+import { fetchProposedOrder } from '../instructors/rankAccess'
 import {
   ACADEMIC_OPTIONS,
   CERTAINTY_OPTIONS,
@@ -45,9 +45,9 @@ export default function CreateStudentDialog({ centerId, instructors, onClose, on
   const missing = REQUIRED.filter(([key]) => !String(form[key] ?? '').trim()).map(([, label]) => label)
   const nameWarning = form.name.trim() && violatesNamingConvention(form.name)
 
-  // The proposal is ordered SERVER-side: tier still shapes it — that is what
-  // tier exists for — but the value itself is admin-only and never reaches
-  // this dialog. Only the resulting sequence does.
+  // The proposal is ordered SERVER-side: instructor_rank shapes it — that is
+  // what the ranking exists for — but the value itself is admin-only and
+  // never reaches this dialog. Only the resulting sequence does.
   const byId = useMemo(() => new Map(instructors.map((i) => [i.id, i])), [instructors])
   useEffect(() => {
     if (touched) return

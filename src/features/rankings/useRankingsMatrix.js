@@ -40,8 +40,8 @@ export function useRankingsMatrix(centerId) {
         .eq('active', true)
         .order('name'),
       // Admin-only view: this page is admin-gated, and the seed dialog's
-      // tier ordering and reason chips read the merged value.
-      supabase.from('instructor_tiers').select('instructor_id, tier'),
+      // rank ordering and reason chips read the merged value.
+      supabase.from('instructor_ranks').select('instructor_id, instructor_rank'),
       supabase.from('instructor_rankings').select('student_id, instructor_id, rank'),
       supabase
         .from('assignment_overrides')
@@ -67,12 +67,14 @@ export function useRankingsMatrix(centerId) {
       overrides.set(key, (overrides.get(key) ?? 0) + 1)
     }
 
-    const tiers = new Map((tierRes.data ?? []).map((r) => [r.instructor_id, r.tier]))
+    const instructorRankById = new Map(
+      (tierRes.data ?? []).map((r) => [r.instructor_id, r.instructor_rank]),
+    )
     setSnapshot({
       centerId,
       students: studentRes.data ?? EMPTY,
       instructors: (instructorRes.data ?? EMPTY).map((i) =>
-        tiers.has(i.id) ? { ...i, tier: tiers.get(i.id) } : i,
+        instructorRankById.has(i.id) ? { ...i, instructor_rank: instructorRankById.get(i.id) } : i,
       ),
       ranks,
       overrides,

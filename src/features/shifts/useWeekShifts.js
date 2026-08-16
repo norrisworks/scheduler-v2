@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { INSTRUCTOR_COLUMNS } from '../instructors/tierAccess'
+import { INSTRUCTOR_COLUMNS } from '../instructors/rankAccess'
 import { addDays } from '../../lib/dates'
 import { planCopyWeek, weekDays } from './weekShifts'
 

@@ -1,7 +1,10 @@
 import { useCallback, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { occupiesFloor } from '../day/load'
+import { addDays, todayISO } from '../../lib/dates'
+import { fetchRankSequence } from '../instructors/rankAccess'
 import { buildRankIndex, explainUnplaced, unrankedStudents } from './rankings'
+import { NEW_STUDENT_WINDOW_DAYS } from './algorithmFlags'
 import { ALGORITHMS } from './algorithms'
 
 /**
@@ -62,7 +65,28 @@ export function useAutoAssign({ sessions, instructors, shiftByInstructor, onDone
       const rankingsByStudent = await loadRankings(dayS)
       const rankIndex = buildRankIndex(unassigned, instructors, shiftByInstructor, rankingsByStudent)
 
-      const outcome = algorithm.run({ sessions: dayS, unassigned, instructors, rankIndex, existing })
+      // Order-only: the sequence RPC exposes positions, never column values,
+      // so instructor-role runs get the same tie-breaks admins do.
+      const centerId = instructors[0]?.center_id
+      const rankSeq = centerId
+        ? await fetchRankSequence(centerId).catch(() => new Map())
+        : new Map()
+      const newCutoff = addDays(todayISO(), -NEW_STUDENT_WINDOW_DAYS)
+      const newStudentIds = new Set(
+        dayS
+          .filter((s) => s.student?.enrollment_start_date && s.student.enrollment_start_date >= newCutoff)
+          .map((s) => s.student_id),
+      )
+
+      const outcome = algorithm.run({
+        sessions: dayS,
+        unassigned,
+        instructors,
+        rankIndex,
+        existing,
+        rankSeq,
+        newStudentIds,
+      })
       outcome.unranked = unrankedStudents(outcome.unassignable, rankingsByStudent)
       // Why each leftover is a leftover — computed from the same inputs the
       // run used, so the panel never has to guess.

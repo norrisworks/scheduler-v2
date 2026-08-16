@@ -10,15 +10,15 @@ import { genderLabel } from '../../lib/gender'
  */
 export default function SeedRankingsDialog({ student, instructors, onClose, onSave }) {
   const [useGender, setUseGender] = useState(true)
-  const [useTier, setUseTier] = useState(true)
+  const [useRank, setUseRank] = useState(true)
   const [entries, setEntries] = useState([])
   const [dragIndex, setDragIndex] = useState(null)
   const [saving, setSaving] = useState(false)
   const [touched, setTouched] = useState(false)
 
   const proposed = useMemo(
-    () => proposeRanking(student, instructors, { useGender, useTier }),
-    [student, instructors, useGender, useTier],
+    () => proposeRanking(student, instructors, { useGender, useRank }),
+    [student, instructors, useGender, useRank],
   )
 
   // Recompute while untouched; once reordered by hand, the list is yours.
@@ -59,7 +59,7 @@ export default function SeedRankingsDialog({ student, instructors, onClose, onSa
 
         <div className="flex items-center gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-2">
           <span className="text-[11px] font-medium text-zinc-500">Sort by</span>
-          <Toggle label="Tier" checked={useTier} onChange={(v) => { setUseTier(v); setTouched(false) }} />
+          <Toggle label="Instructor rank" checked={useRank} onChange={(v) => { setUseRank(v); setTouched(false) }} />
           <Toggle
             label="Same gender"
             checked={useGender}

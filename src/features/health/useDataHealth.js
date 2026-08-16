@@ -1,6 +1,5 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { saveTier, splitTierPatch } from '../instructors/tierAccess'
 import { buildChecks } from './checks'
 
 const EMPTY = []
@@ -81,20 +80,10 @@ export function useDataHealth(centerId) {
    */
   const patchInstructor = useCallback(
     async (id, patch) => {
-      const { tier, rest } = splitTierPatch(patch)
-      if (Object.keys(rest).length > 0) {
-        const { error } = await supabase.from('instructors').update(rest).eq('id', id)
-        if (error) {
-          setError(error.message)
-          return false
-        }
-      }
-      if (tier) {
-        const { error } = await saveTier(id, tier)
-        if (error) {
-          setError(error.message)
-          return false
-        }
+      const { error } = await supabase.from('instructors').update(patch).eq('id', id)
+      if (error) {
+        setError(error.message)
+        return false
       }
       await load()
       return true

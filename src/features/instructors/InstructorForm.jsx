@@ -6,7 +6,6 @@ import {
   GENDER_OPTIONS,
   INSTRUCTOR_PALETTE,
   LEVEL_FLAGS,
-  TIER_OPTIONS,
   instructorWarnings,
 } from './instructorFields'
 
@@ -20,7 +19,6 @@ const BLANK = {
   workstream_id: '',
   gender: '',
   assignability: 'normal',
-  tier: 'solid',
   // Capability is deliberately opt-in for a new instructor: guessing it would
   // silently make them assignable to levels nobody has vouched for.
   can_teach_elementary: false,
@@ -38,7 +36,6 @@ function toForm(instructor) {
     workstream_id: instructor.workstream_id ?? '',
     gender: instructor.gender ?? '',
     assignability: instructor.assignability ?? 'normal',
-    tier: instructor.tier ?? 'solid',
   }
 }
 
@@ -115,7 +112,6 @@ export default function InstructorForm({
       workstream_id: emptyToNull(form.workstream_id.trim()),
       gender: emptyToNull(form.gender),
       assignability: form.assignability,
-      tier: form.tier,
       can_teach_elementary: form.can_teach_elementary,
       can_teach_middle: form.can_teach_middle,
       can_teach_high: form.can_teach_high,
@@ -177,20 +173,7 @@ export default function InstructorForm({
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <label>
-          <span className="mb-1 block text-xs font-medium text-zinc-600">Tier</span>
-          <select
-            value={form.tier}
-            onChange={(e) => set('tier', e.target.value)}
-            className={inputClass}
-          >
-            {TIER_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        {/* No tier and no rank field: instructor_rank is edited by dragging the list. */}
         <label>
           <span className="mb-1 block text-xs font-medium text-zinc-600">Gender</span>
           <select

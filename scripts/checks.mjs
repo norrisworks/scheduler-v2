@@ -4,10 +4,11 @@ import { readableTextOn, tint } from '../src/lib/colors.js'
 import { centerHours, buildTimeAxis, sessionGeometry, packSubColumns, columnWidth, subColumnLeft, SLOT_HEIGHT, SLOT_WIDTH, sessionSpan, axisWidth, groupByStudent } from '../src/features/day/timeGrid.js'
 import { getRole, getPinnedCenter, centerMatchesPin, resolveCenterAccess } from '../src/features/auth/roles.js'
 import { emptyToNull, missingAttributes, GENDER_OPTIONS, normalizeEnrollmentStatus, activeFromEnrollment } from '../src/features/roster/studentFields.js'
-import { capabilityString, instructorWarnings, nextColor, INSTRUCTOR_PALETTE, TIER_OPTIONS, TIER_ORDER, ASSIGNABILITY_OPTIONS, GENDER_OPTIONS as INSTRUCTOR_GENDER_OPTIONS } from '../src/features/instructors/instructorFields.js'
+import { capabilityString, instructorWarnings, nextColor, INSTRUCTOR_PALETTE, ASSIGNABILITY_OPTIONS, GENDER_OPTIONS as INSTRUCTOR_GENDER_OPTIONS } from '../src/features/instructors/instructorFields.js'
 import { weekDays, validateShift, shiftHours, totalHours, planCopyWeek, indexShifts, suggestTimes } from '../src/features/shifts/weekShifts.js'
 import { ineligibleReason, buildCandidates, isFallbackOnly, unrankedStudents, explainUnplaced } from '../src/features/assign/rankings.js'
 import { placeAtRank } from '../src/features/assign/rankOrder.js'
+import { RANK_TIEBREAK, RANK_GATED_CAP, NEW_STUDENT_PREFERENCE } from '../src/features/assign/algorithmFlags.js'
 import { rescheduleRows, validateReschedule } from '../src/features/day/reschedule.js'
 import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessage } from '../src/features/assign/algorithms.js'
 import { buildGroups } from '../src/features/day/TransposedGrid.jsx'
@@ -319,7 +320,7 @@ eq('something changed', materializeChanged({ created: 0, updated: 0, removed: 1 
 
 // ---- instructor configuration
 const teacher = (over = {}) => ({
-  name: 'Test', color: '#1E88E5', assignability: 'normal', tier: 'solid',
+  name: 'Test', color: '#1E88E5', assignability: 'normal',
   can_teach_elementary: true, can_teach_middle: true, can_teach_high: true, ...over,
 })
 eq('all three levels', capabilityString(teacher()), 'EMH')
@@ -355,10 +356,7 @@ eq('legacy f normalizes', normalizeGenderValue('F'), 'female')
 eq('legacy m normalizes', normalizeGenderValue('m'), 'male')
 eq('a value we do not model is left unset', normalizeGenderValue('nonbinary'), null)
 eq('blank is left unset', normalizeGenderValue(''), null)
-eq('tier options', TIER_OPTIONS.map(o => o.value), ['strong', 'solid', 'developing'])
 eq('assignability options', ASSIGNABILITY_OPTIONS.map(o => o.value), ['normal', 'fallback_only'])
-eq('tier sorts strong first', TIER_ORDER.strong < TIER_ORDER.solid, true)
-eq('tier sorts developing last', TIER_ORDER.developing > TIER_ORDER.solid, true)
 
 // New instructors take the first unused palette colour so they stay distinct.
 eq('first colour when none taken', nextColor([]), '#E53935')
@@ -428,7 +426,7 @@ eq('new shift reuses the week', suggestTimes([{ start_time: '14:30:00', end_time
 
 // ---- auto-assign: rankings are the SOLE input
 const inst = (over = {}) => ({
-  id: 'i1', name: 'I', active: true, assignability: 'normal', tier: 'solid',
+  id: 'i1', name: 'I', active: true, assignability: 'normal',
   can_teach_elementary: true, can_teach_middle: true, can_teach_high: true, ...over,
 })
 const stu = (over = {}) => ({ level: 'middle', academic_status: 'at_level', ...over })
@@ -555,6 +553,100 @@ eq('a past date is refused', validateReschedule('2026-08-01', '16:00', '2026-08-
    'the new date is in the past')
 eq('today is allowed', validateReschedule('2026-08-14', '16:00', '2026-08-14'), null)
 eq('a missing time is refused', validateReschedule('2026-08-20', '', '2026-08-14'), 'pick a time')
+
+// ---- instructor_rank flags: OFF must be EXACTLY today's behavior
+// Fixture: three instructors, four overlapping sessions with identical
+// student-rankings, so every tie-break has something to bite on.
+const OFF = { tiebreak: false, gatedCap: false, newPref: false }
+const flagInst = [inst({ id: 'fa', name: 'A' }), inst({ id: 'fb', name: 'B' }), inst({ id: 'fc', name: 'C' })]
+const flagSessions = ['w', 'x', 'y', 'z'].map((id, i) =>
+  aSess({ id, student_id: `st-${id}`, start_time: '16:00:00' }))
+const flatRanks = new Map(flagSessions.map((s) => [s.id, new Map([['fa', 1], ['fb', 1], ['fc', 1]])]))
+// The rank sequence says C is the owner's #1, then B, then A — the REVERSE of
+// name order, so any influence it has is visible.
+const seqCBA = new Map([['fc', 1], ['fb', 2], ['fa', 3]])
+
+const runBal = (over = {}) => autoAssignBalanced({
+  sessions: flagSessions, unassigned: flagSessions, instructors: flagInst,
+  rankIndex: flatRanks, existing: new Map(), flags: OFF, ...over,
+})
+eq('flags off: rank sequence present changes NOTHING (balanced)',
+   JSON.stringify(runBal({ rankSeq: seqCBA, newStudentIds: new Set(['st-w']) }).made),
+   JSON.stringify(runBal({ rankSeq: undefined }).made))
+const runBM = (over = {}) => autoAssignBestMatch({
+  sessions: flagSessions, unassigned: flagSessions, instructors: flagInst,
+  rankIndex: flatRanks, existing: new Map(), flags: OFF, ...over,
+})
+eq('flags off: rank sequence present changes NOTHING (best match)',
+   JSON.stringify(runBM({ rankSeq: seqCBA }).made),
+   JSON.stringify(runBM({ rankSeq: undefined }).made))
+// The shipped defaults ARE off until the owner turns them on one at a time.
+eq('shipped flag defaults are all off',
+   [RANK_TIEBREAK, RANK_GATED_CAP, NEW_STUDENT_PREFERENCE], [false, false, false])
+
+// FLAG A: identical (student-rank, load, day-total) -> instructor_rank wins.
+const oneSess = [aSess({ id: 'solo', student_id: 'st-solo' })]
+const soloRanks = new Map([['solo', new Map([['fa', 1], ['fb', 1], ['fc', 1]])]])
+eq('tie-break off: arbitrary (first in list) wins',
+   autoAssignBalanced({ sessions: oneSess, unassigned: oneSess, instructors: flagInst,
+     rankIndex: soloRanks, existing: new Map(), rankSeq: seqCBA, flags: OFF }).made[0].instructorId,
+   'fa')
+eq('tie-break on: the owner-ranked #1 wins the exact tie',
+   autoAssignBalanced({ sessions: oneSess, unassigned: oneSess, instructors: flagInst,
+     rankIndex: soloRanks, existing: new Map(), rankSeq: seqCBA,
+     flags: { ...OFF, tiebreak: true } }).made[0].instructorId,
+   'fc')
+// NOT a tie: a better student-ranking always beats a better instructor_rank.
+eq('tie-break never overrides the student ranking',
+   autoAssignBalanced({ sessions: oneSess, unassigned: oneSess, instructors: flagInst,
+     rankIndex: new Map([['solo', new Map([['fa', 1], ['fc', 2]])]]), existing: new Map(),
+     rankSeq: seqCBA, flags: { ...OFF, tiebreak: true } }).made[0].instructorId,
+   'fa')
+
+// FLAG B: cap 4 is earned. One instructor, fiveAtOnce same-time sessions: today the
+// stretch phase gives them a 4th; gated with them OUTSIDE the top N, it must not.
+const fiveAtOnce = ['s1', 's2', 's3', 's4', 's5'].map((id) => aSess({ id, student_id: `st-${id}` }))
+const oneInst = [inst({ id: 'only', name: 'Only' })]
+const onlyRanks = new Map(fiveAtOnce.map((s) => [s.id, new Map([['only', 1]])]))
+const gatedOut = new Map([['only', 99]]) // far outside CAP_RELAX_TOP_N
+eq('gate off: stretch phase allows a 4th concurrent',
+   autoAssignBalanced({ sessions: fiveAtOnce, unassigned: fiveAtOnce, instructors: oneInst,
+     rankIndex: onlyRanks, existing: new Map(), rankSeq: gatedOut, flags: OFF }).assigned, 4)
+eq('gate on: outside the top N stays capped at 3 in every phase',
+   autoAssignBalanced({ sessions: fiveAtOnce, unassigned: fiveAtOnce, instructors: oneInst,
+     rankIndex: onlyRanks, existing: new Map(), rankSeq: gatedOut,
+     flags: { ...OFF, gatedCap: true } }).assigned, 3)
+eq('gate on: a top-N instructor still earns the 4th',
+   autoAssignBalanced({ sessions: fiveAtOnce, unassigned: fiveAtOnce, instructors: oneInst,
+     rankIndex: onlyRanks, existing: new Map(), rankSeq: new Map([['only', 1]]),
+     flags: { ...OFF, gatedCap: true } }).assigned, 4)
+
+// FLAG C: a new student whose rank-1 instructor is LOW-ranked staff (seq 9,
+// outside the top 5), with the owner's #1 at student-rank 2. Within the
+// margin, the top instructor is chosen; beyond it, never. When the best
+// candidate is already top-5 the preference changes nothing, so the fixture
+// puts fa outside it.
+const newSess = [aSess({ id: 'ns', student_id: 'st-new' })]
+const margin1 = new Map([['ns', new Map([['fa', 1], ['fc', 2]])]]) // fc is 1 worse
+const margin2 = new Map([['ns', new Map([['fa', 1], ['fc', 3]])]]) // fc is 2 worse
+const seqForNew = new Map([['fc', 1], ['fb', 2], ['fa', 9]])
+const newSet = new Set(['st-new'])
+eq('new-student off: plain best student-ranking wins',
+   autoAssignBalanced({ sessions: newSess, unassigned: newSess, instructors: flagInst,
+     rankIndex: margin1, existing: new Map(), rankSeq: seqForNew, newStudentIds: newSet,
+     flags: OFF }).made[0].instructorId, 'fa')
+eq('new-student on: a top instructor within the margin is preferred',
+   autoAssignBalanced({ sessions: newSess, unassigned: newSess, instructors: flagInst,
+     rankIndex: margin1, existing: new Map(), rankSeq: seqForNew, newStudentIds: newSet,
+     flags: { ...OFF, newPref: true } }).made[0].instructorId, 'fc')
+eq('new-student on: never overrides rank 1 by MORE than the margin',
+   autoAssignBalanced({ sessions: newSess, unassigned: newSess, instructors: flagInst,
+     rankIndex: margin2, existing: new Map(), rankSeq: seqForNew, newStudentIds: newSet,
+     flags: { ...OFF, newPref: true } }).made[0].instructorId, 'fa')
+eq('new-student on: an OLD student is untouched',
+   autoAssignBalanced({ sessions: newSess, unassigned: newSess, instructors: flagInst,
+     rankIndex: margin1, existing: new Map(), rankSeq: seqForNew, newStudentIds: new Set(),
+     flags: { ...OFF, newPref: true } }).made[0].instructorId, 'fa')
 
 // ---- the unplaced report explains itself
 // Keira D's real Thursday: 4 rankings, all four instructors off shift. The
@@ -735,7 +827,7 @@ eq('within-file collisions escalate', collide.created.map(c => c.name), ['Micah 
 
 // ---- ranking proposal: a visible ordering, never a hidden score
 const pInst = (over = {}) => ({
-  id: 'p1', name: 'P', active: true, assignability: 'normal', tier: 'solid', gender: null,
+  id: 'p1', name: 'P', active: true, assignability: 'normal', gender: null,
   can_teach_elementary: true, can_teach_middle: true, can_teach_high: true, ...over,
 })
 const pStu = (over = {}) => ({ level: 'middle', gender: 'female', ...over })
@@ -756,12 +848,12 @@ eq('a student with no level is not filtered',
 // change in order is therefore attributable to gender, not to the name
 // tie-break underneath it.
 const pool = [
-  pInst({ id: 'solidM', name: 'Aaron M', tier: 'solid', gender: 'm' }),
-  pInst({ id: 'solidF', name: 'Zoe F', tier: 'solid', gender: 'f' }),
-  pInst({ id: 'strongM', name: 'Strong M', tier: 'strong', gender: 'm' }),
-  pInst({ id: 'devF', name: 'Dev F', tier: 'developing', gender: 'f' }),
+  pInst({ id: 'solidM', name: 'Aaron M', instructor_rank: 2, gender: 'm' }),
+  pInst({ id: 'solidF', name: 'Zoe F', instructor_rank: 2, gender: 'f' }),
+  pInst({ id: 'strongM', name: 'Strong M', instructor_rank: 1, gender: 'm' }),
+  pInst({ id: 'devF', name: 'Dev F', instructor_rank: 4, gender: 'f' }),
 ]
-eq('tier outranks gender',
+eq('instructor rank outranks gender',
    proposeRanking(pStu(), pool).map(e => e.instructorId),
    ['strongM', 'solidF', 'solidM', 'devF'])
 eq('ranks are 1..N', proposeRanking(pStu(), pool).map(e => e.rank), [1, 2, 3, 4])
@@ -771,11 +863,11 @@ eq('turning gender off falls back to name',
    proposeRanking(pStu(), pool, { useGender: false }).map(e => e.instructorId).slice(1, 3),
    ['solidM', 'solidF'])
 
-// Fallback-only always sinks, whatever its tier.
+// Fallback-only always sinks, whatever its rank.
 eq('fallback_only sorts last',
    proposeRanking(pStu(), [
-     pInst({ id: 'fb', name: 'FB', tier: 'strong', assignability: 'fallback_only' }),
-     pInst({ id: 'ok', name: 'OK', tier: 'developing' }),
+     pInst({ id: 'fb', name: 'FB', instructor_rank: 1, assignability: 'fallback_only' }),
+     pInst({ id: 'ok', name: 'OK', instructor_rank: 9 }),
    ]).map(e => e.instructorId), ['ok', 'fb'])
 
 // Gender ORDERS a proposal and never restricts one. Locked down because a
@@ -802,9 +894,9 @@ eq('a missing level capability blocks and names itself',
 // Every position explains itself.
 eq('reasons name the gender match',
    proposalReasons(pStu(), pInst({ gender: 'female' })), ['same gender (F)'])
-eq('reasons name a non-default tier',
-   proposalReasons(pStu(), pInst({ tier: 'strong' })), ['strong'])
-eq('solid tier is not noise', proposalReasons(pStu(), pInst()), [])
+eq('reasons name the instructor rank',
+   proposalReasons(pStu(), pInst({ instructor_rank: 3 })), ['ranked #3'])
+eq('no rank merged (non-admin) is not noise', proposalReasons(pStu(), pInst()), [])
 eq('fallback is stated',
    proposalReasons(pStu(), pInst({ assignability: 'fallback_only' })), ['fallback only'])
 

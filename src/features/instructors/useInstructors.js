@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import {
-  INSTRUCTOR_COLUMNS,
-  loadTiers,
-  mergeTiers,
-  saveTier,
-  splitTierPatch,
-} from './tierAccess'
+import { INSTRUCTOR_COLUMNS, loadRanks, mergeRanks, saveRankOrder } from './rankAccess'
 
 const EMPTY = []
 
@@ -28,15 +22,16 @@ export function useInstructors(centerId) {
     const token = ++requestRef.current
     setLoading(true)
 
-    // tier is column-revoked, so the select names its columns and the tier
-    // values come from the admin-only view (empty for instructor sessions).
-    const [instRes, tiers] = await Promise.all([
+    // instructor_rank carries no client grant, so the select names its
+    // columns and rank values come from the admin-only view (empty for
+    // instructor sessions).
+    const [instRes, ranks] = await Promise.all([
       supabase
         .from('instructors')
         .select(INSTRUCTOR_COLUMNS)
         .eq('center_id', centerId)
         .order('name'),
-      loadTiers().catch(() => new Map()),
+      loadRanks().catch(() => new Map()),
     ])
 
     if (token !== requestRef.current) return
@@ -46,7 +41,7 @@ export function useInstructors(centerId) {
       return
     }
 
-    setSnapshot({ centerId, instructors: mergeTiers(instRes.data ?? EMPTY, tiers) })
+    setSnapshot({ centerId, instructors: mergeRanks(instRes.data ?? EMPTY, ranks) })
     setError(null)
     setLoading(false)
   }, [centerId])
@@ -72,31 +67,43 @@ export function useInstructors(centerId) {
   const createInstructor = useCallback(
     (values) =>
       run(async () => {
-        // tier cannot ride along on the insert — the column grant excludes
-        // it — so the row is created first and tier set through the RPC.
-        const { tier, rest } = splitTierPatch(values)
         const { data, error } = await supabase
           .from('instructors')
-          .insert({ ...rest, center_id: centerId })
+          .insert({ ...values, center_id: centerId })
           .select('id')
           .single()
-        if (error || !tier) return { error }
-        return saveTier(data.id, tier)
+        if (error) return { error }
+        // A new instructor defaults to LAST in the center's rank order. The
+        // RPC needs the complete order, so send everyone in their current
+        // order with the new id appended.
+        const ordered = [...snapshot.instructors]
+          .sort((a, b) => (a.instructor_rank ?? 999) - (b.instructor_rank ?? 999))
+          .map((i) => i.id)
+        return saveRankOrder(centerId, [...ordered, data.id])
       }),
-    [run, centerId],
+    [run, centerId, snapshot.instructors],
   )
 
   const updateInstructor = useCallback(
-    (id, patch) =>
-      run(async () => {
-        const { tier, rest } = splitTierPatch(patch)
-        if (Object.keys(rest).length > 0) {
-          const { error } = await supabase.from('instructors').update(rest).eq('id', id)
-          if (error) return { error }
-        }
-        return tier ? saveTier(id, tier) : { error: null }
-      }),
+    (id, patch) => run(() => supabase.from('instructors').update(patch).eq('id', id)),
     [run],
+  )
+
+  /** The ranking editor's write: the whole center order, 1..N, immediately. */
+  const reorderInstructors = useCallback(
+    (orderedIds) =>
+      run(async () => {
+        // Optimistic: repaint the list in the new order before the round trip.
+        setSnapshot((prev) => ({
+          ...prev,
+          instructors: prev.instructors.map((i) => {
+            const at = orderedIds.indexOf(i.id)
+            return at === -1 ? i : { ...i, instructor_rank: at + 1 }
+          }),
+        }))
+        return saveRankOrder(centerId, orderedIds)
+      }),
+    [run, centerId],
   )
 
   return {
@@ -107,6 +114,7 @@ export function useInstructors(centerId) {
     refetch: load,
     createInstructor,
     updateInstructor,
+    reorderInstructors,
     dismissError: () => setError(null),
   }
 }

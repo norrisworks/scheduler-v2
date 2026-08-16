@@ -190,7 +190,7 @@ export default function RankingsMatrix() {
                     key={i.id}
                     style={{ width: CELL, minWidth: CELL }}
                     className="sticky top-0 z-20 border-b border-zinc-200 bg-zinc-50 p-1 align-bottom"
-                    title={`${i.name} · ${i.tier}${isFallbackOnly(i) ? ' · fallback only' : ''}`}
+                    title={`${i.name}${i.instructor_rank ? ` · ranked #${i.instructor_rank}` : ''}${isFallbackOnly(i) ? ' · fallback only' : ''}`}
                   >
                     <span
                       className="mx-auto flex h-6 w-6 items-center justify-center rounded text-[10px] font-bold"

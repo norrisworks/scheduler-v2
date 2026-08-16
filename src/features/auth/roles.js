@@ -15,9 +15,9 @@
  *
  * Center pinning is a UI restriction only for now — RLS still allows any
  * authenticated user to read any center's rows. The exception is
- * instructors.tier, which IS database-enforced: the column is revoked from
- * clients, readable only through the instructor_tiers view (empty for
- * instructor JWTs) and writable only through the set_instructor_tier RPC.
+ * instructors.instructor_rank, which IS database-enforced: the column is revoked from
+ * clients, readable only through the instructor_ranks view (empty for
+ * instructor JWTs) and writable only through set_instructor_rank_order.
  *
  * Note this role is about which centers a LOGIN may see. It is unrelated to
  * the `instructors` table, which is staff records for assignment.

@@ -4,11 +4,12 @@ export { INSTRUCTOR_PALETTE }
 
 /**
  * Three clean axes replace the overlapping flags v1 accumulated:
- *   can_teach_*   — hard capability filter (unchanged)
- *   assignability — replaces priority + last_resort
- *   tier          — strength judgment, the default sort when seeding rankings
- * `priority`, `last_resort`, `prefers_behind` and `preferred` have been
- * DROPPED from the database — any code that reaches for them is a bug.
+ *   can_teach_*     — hard capability filter (unchanged)
+ *   assignability   — replaces priority + last_resort
+ *   instructor_rank — the owner's ordinal ranking (replaces tier), edited by
+ *                     dragging the Instructors list, confidential like tier was
+ * `priority`, `last_resort`, `prefers_behind`, `preferred` and `tier` have
+ * been DROPPED from the database — any code that reaches for them is a bug.
  */
 export const ASSIGNABILITY_OPTIONS = [
   { value: 'normal', label: 'Normal', hint: 'Considered in the usual phases' },
@@ -18,15 +19,6 @@ export const ASSIGNABILITY_OPTIONS = [
     hint: 'Held to the final phase, and only if ranked for that student',
   },
 ]
-
-export const TIER_OPTIONS = [
-  { value: 'strong', label: 'Strong' },
-  { value: 'solid', label: 'Solid' },
-  { value: 'developing', label: 'Developing' },
-]
-
-/** Seeding order: strong first. */
-export const TIER_ORDER = { strong: 0, solid: 1, developing: 2 }
 
 export { GENDER_OPTIONS } from '../../lib/gender'
 

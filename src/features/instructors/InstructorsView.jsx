@@ -20,16 +20,33 @@ export default function InstructorsView() {
     error,
     createInstructor,
     updateInstructor,
+    reorderInstructors,
     dismissError,
   } = useInstructors(centerId)
 
   const [selectedId, setSelectedId] = useState(null)
   const [adding, setAdding] = useState(false)
-  const [showInactive, setShowInactive] = useState(false)
+  const [dragIndex, setDragIndex] = useState(null)
 
   const selected = instructors.find((i) => i.id === selectedId) ?? null
-  const visible = instructors.filter((i) => showInactive || i.active)
+  // This list IS the ranking editor, so it always shows everyone: the rank
+  // order spans the whole center, inactive instructors included (muted).
+  const visible = [...instructors].sort(
+    (a, b) => (a.instructor_rank ?? 999) - (b.instructor_rank ?? 999) || a.name.localeCompare(b.name),
+  )
   const activeCount = instructors.filter((i) => i.active).length
+
+  function drop(index) {
+    if (dragIndex === null || dragIndex === index) {
+      setDragIndex(null)
+      return
+    }
+    const next = [...visible]
+    const [moved] = next.splice(dragIndex, 1)
+    next.splice(index, 0, moved)
+    setDragIndex(null)
+    reorderInstructors(next.map((i) => i.id))
+  }
 
   if (!isAdmin) {
     return (
@@ -59,15 +76,9 @@ export default function InstructorsView() {
           </p>
         </div>
 
-        <label className="ml-4 flex items-center gap-1.5 text-xs text-zinc-600">
-          <input
-            type="checkbox"
-            checked={showInactive}
-            onChange={(e) => setShowInactive(e.target.checked)}
-            className="h-4 w-4 rounded border-zinc-300 accent-brand-500"
-          />
-          Show inactive
-        </label>
+        <p className="ml-4 text-[11px] text-zinc-400">
+          Drag to rank — 1 is your best. The order saves as you drop.
+        </p>
 
         <button
           type="button"
@@ -100,11 +111,16 @@ export default function InstructorsView() {
             </p>
           ) : (
             <ul className="divide-y divide-zinc-200">
-              {visible.map((instructor) => (
+              {visible.map((instructor, index) => (
                 <InstructorRow
                   key={instructor.id}
                   instructor={instructor}
+                  rank={index + 1}
                   selected={instructor.id === selectedId}
+                  dragging={dragIndex === index}
+                  onDragStart={() => setDragIndex(index)}
+                  onDrop={() => drop(index)}
+                  onDragEnd={() => setDragIndex(null)}
                   onSelect={() => {
                     setAdding(false)
                     setSelectedId(instructor.id === selectedId ? null : instructor.id)
@@ -160,22 +176,42 @@ export default function InstructorsView() {
   )
 }
 
-function InstructorRow({ instructor, selected, onSelect }) {
+function InstructorRow({
+  instructor,
+  rank,
+  selected,
+  dragging,
+  onDragStart,
+  onDrop,
+  onDragEnd,
+  onSelect,
+}) {
   const warnings = instructorWarnings(instructor)
   const capabilities = capabilityString(instructor)
 
   return (
-    <li>
+    <li
+      draggable
+      onDragStart={onDragStart}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      className={dragging ? 'bg-brand-100' : ''}
+    >
       <button
         type="button"
         onClick={onSelect}
         aria-pressed={selected}
         className={
-          'flex w-full items-center gap-3 px-4 py-2.5 text-left transition ' +
+          'flex w-full cursor-grab items-center gap-3 px-4 py-2.5 text-left transition active:cursor-grabbing ' +
           (selected ? 'bg-brand-50' : 'hover:bg-zinc-50') +
           (instructor.active ? '' : ' opacity-50')
         }
       >
+        <span aria-hidden className="shrink-0 text-xs text-zinc-300">⋮⋮</span>
+        <span className="w-7 shrink-0 text-center text-sm font-bold tabular-nums text-zinc-400">
+          {rank}
+        </span>
         <span
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-[11px] font-bold"
           style={{ backgroundColor: instructor.color, color: readableTextOn(instructor.color) }}
@@ -186,18 +222,6 @@ function InstructorRow({ instructor, selected, onSelect }) {
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
             <span className="truncate text-sm font-medium text-zinc-900">{instructor.name}</span>
-            <span
-              className={
-                'shrink-0 rounded px-1 text-[10px] ' +
-                (instructor.tier === 'strong'
-                  ? 'bg-emerald-100 text-emerald-800'
-                  : instructor.tier === 'developing'
-                    ? 'bg-amber-100 text-amber-800'
-                    : 'bg-zinc-200 text-zinc-700')
-              }
-            >
-              {instructor.tier ?? 'solid'}
-            </span>
             {isFallbackOnly(instructor) && (
               <span className="shrink-0 rounded bg-zinc-200 px-1 text-[10px] text-zinc-700">
                 Fallback only

@@ -23,27 +23,13 @@ export default function DataHealthView() {
   const [open, setOpen] = useState(() => new Set())
   // A flagged row opens its editor right here; closing re-runs the checks in
   // place, so a fixed item drops off the list without a reload. The
-  // INSTRUCTOR editor is admin-only: it carries the tier field, which is the
-  // owner's private evaluation.
+  // INSTRUCTOR editor stays admin-only — staff records are the owner's.
   const [editing, setEditing] = useState(null) // { entity, id }
-  const [editingTier, setEditingTier] = useState(null)
 
   const editingInstructor =
     editing?.entity === 'instructor' && isAdmin
       ? instructors.find((i) => i.id === editing.id)
       : null
-
-  // tier lives behind the admin-only view, not on the health list's rows.
-  useEffect(() => {
-    setEditingTier(null)
-    if (!editingInstructor) return
-    supabase
-      .from('instructor_tiers')
-      .select('tier')
-      .eq('instructor_id', editingInstructor.id)
-      .maybeSingle()
-      .then(({ data }) => setEditingTier(data?.tier ?? null))
-  }, [editingInstructor])
 
   const canEdit = (entity) => entity === 'student' || (entity === 'instructor' && isAdmin)
 
@@ -174,8 +160,8 @@ export default function DataHealthView() {
           </div>
           <div className="min-h-0 flex-1 overflow-auto p-4">
             <InstructorForm
-              key={`${editingInstructor.id}:${editingTier ?? ''}`}
-              instructor={editingTier ? { ...editingInstructor, tier: editingTier } : editingInstructor}
+              key={editingInstructor.id}
+              instructor={editingInstructor}
               onPatch={(patch) => patchInstructor(editingInstructor.id, patch)}
               onCancel={closeEditor}
             />

@@ -1,5 +1,4 @@
 import { CAPABILITY_FLAG } from '../day/levels'
-import { TIER_ORDER } from '../instructors/instructorFields'
 import { genderLabel, sameGender } from '../../lib/gender'
 import { isFallbackOnly } from './rankings'
 
@@ -10,17 +9,21 @@ import { isFallbackOnly } from './rankings'
  * to be overridden before saving.
  *
  * The sort inputs, in priority order:
- *   1. tier      — strong before solid before developing
- *   2. gender    — same gender as the student sorts higher
- *   3. name      — so the result is stable and reproducible
+ *   1. instructor_rank — the owner's ordinal ranking, 1 first
+ *   2. gender          — same gender as the student sorts higher
+ *   3. name            — so the result is stable and reproducible
  * Fallback-only instructors sort last regardless, matching how they are used.
+ *
+ * instructor_rank is only present on instructor objects in admin sessions
+ * (merged from the admin-only view); non-admin surfaces get their ordering
+ * from the server RPC instead, so this client sort is the ADMIN path.
  */
 export const PROPOSAL_SORTS = [
-  { key: 'tier', label: 'Tier', hint: 'Strong first' },
+  { key: 'rank', label: 'Instructor rank', hint: 'Rank 1 first' },
   { key: 'gender', label: 'Same gender', hint: 'Matches the student' },
 ]
 
-const tierRank = (instructor) => TIER_ORDER[instructor.tier] ?? TIER_ORDER.solid
+const rankOf = (instructor) => instructor.instructor_rank ?? Number.MAX_SAFE_INTEGER
 
 export { sameGender }
 
@@ -53,7 +56,7 @@ export function ineligibleForStudentReason(student, instructor) {
  */
 export function proposalReasons(student, instructor, { useGender = true } = {}) {
   const reasons = []
-  if (instructor.tier && instructor.tier !== 'solid') reasons.push(instructor.tier)
+  if (instructor.instructor_rank) reasons.push(`ranked #${instructor.instructor_rank}`)
   if (useGender && sameGender(student, instructor)) {
     reasons.push(`same gender (${genderLabel(instructor.gender)})`)
   }
@@ -61,7 +64,7 @@ export function proposalReasons(student, instructor, { useGender = true } = {}) 
   return reasons
 }
 
-export function proposeRanking(student, instructors, { useGender = true, useTier = true } = {}) {
+export function proposeRanking(student, instructors, { useGender = true, useRank = true } = {}) {
   const eligible = eligibleForStudent(student, instructors)
 
   const sorted = [...eligible].sort((a, b) => {
@@ -70,9 +73,9 @@ export function proposeRanking(student, instructors, { useGender = true, useTier
     const fb = isFallbackOnly(b) ? 1 : 0
     if (fa !== fb) return fa - fb
 
-    if (useTier) {
-      const t = tierRank(a) - tierRank(b)
-      if (t !== 0) return t
+    if (useRank) {
+      const r = rankOf(a) - rankOf(b)
+      if (r !== 0) return r
     }
     if (useGender) {
       const ga = sameGender(student, a) ? 0 : 1

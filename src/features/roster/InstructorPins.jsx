@@ -6,7 +6,7 @@ import { capabilityString } from '../instructors/instructorFields'
 import { isFallbackOnly } from '../assign/rankings'
 import { ineligibleForStudentReason, moveEntry } from '../assign/proposeRanking'
 import { placeAtRank } from '../assign/rankOrder'
-import { fetchProposedOrder } from '../instructors/tierAccess'
+import { fetchProposedOrder } from '../instructors/rankAccess'
 import { genderLabel, sameGender } from '../../lib/gender'
 
 /**
@@ -31,7 +31,7 @@ export default function InstructorPins({ studentId, student }) {
     const [instRes, rankRes] = await Promise.all([
       supabase
         .from('instructors')
-        // No tier: it is the owner's private evaluation, column-revoked at
+        // No instructor_rank: the owner's private ranking is column-revoked at
         // the database, and this editor is open to instructor accounts.
         .select(
           'id, name, color, gender, assignability, active, can_teach_elementary, can_teach_middle, can_teach_high',
@@ -143,8 +143,8 @@ export default function InstructorPins({ studentId, student }) {
           type="button"
           disabled={saving}
           onClick={async () => {
-            // Ordered server-side so tier can shape the proposal without the
-            // value ever reaching this surface.
+            // Ordered server-side so instructor_rank can shape the proposal
+            // without the value ever reaching this surface.
             try {
               const order = await fetchProposedOrder(centerId, student)
               const byId = new Map(instructors.map((i) => [i.id, i]))
