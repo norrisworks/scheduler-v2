@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ACADEMIC_OPTIONS,
   CERTAINTY_OPTIONS,
@@ -7,6 +7,8 @@ import {
   LEVEL_OPTIONS,
   emptyToNull,
 } from './studentFields'
+
+const TEXT_DEBOUNCE_MS = 500
 
 const FIELDS = [
   'name', 'grade', 'level', 'school', 'gender', 'radius_account',
@@ -23,47 +25,69 @@ function toForm(student) {
   return form
 }
 
+/** One field's form value -> the value the row stores. */
+function normalizeField(key, value) {
+  if (key === 'name') return value.trim()
+  if (key === 'default_duration') return value === '' ? null : Number(value)
+  if (typeof value === 'boolean') return value
+  return emptyToNull(typeof value === 'string' ? value.trim() : value)
+}
+
+/**
+ * No Save button — the same rule as the instructor form and the rankings
+ * cells. Selects and checkboxes write on change; free text debounces half a
+ * second; anything still pending flushes when the drawer closes or switches
+ * to another student.
+ */
 export default function StudentAttributes({ student, saving, onSave }) {
   const [form, setForm] = useState(() => toForm(student))
-  const [dirty, setDirty] = useState(false)
+  // key -> {timer, write} so unmount can FLUSH pending text, not discard it.
+  const pending = useRef(new Map())
 
-  // Reset when a different student is opened, or the record is refetched.
+  // Reset only when a DIFFERENT student is opened. Same-student refetches
+  // (each autosave triggers one) must not stomp fields still being typed in.
   useEffect(() => {
     setForm(toForm(student))
-    setDirty(false)
-  }, [student])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [student.id])
 
-  function set(key, value) {
+  useEffect(() => {
+    const bag = pending.current
+    return () => {
+      for (const { timer, write } of bag.values()) {
+        clearTimeout(timer)
+        write()
+      }
+      bag.clear()
+    }
+  }, [student.id])
+
+  function set(key, value, { text = false } = {}) {
     setForm((prev) => ({ ...prev, [key]: value }))
-    setDirty(true)
-  }
 
-  async function submit(e) {
-    e.preventDefault()
-    const ok = await onSave({
-      name: form.name.trim(),
-      grade: emptyToNull(form.grade),
-      level: emptyToNull(form.level),
-      school: emptyToNull(form.school),
-      gender: emptyToNull(form.gender),
-      radius_account: emptyToNull(form.radius_account),
-      academic_status: emptyToNull(form.academic_status),
-      enrollment_status: emptyToNull(form.enrollment_status),
-      slot_certainty: emptyToNull(form.slot_certainty),
-      default_duration: form.default_duration === '' ? null : Number(form.default_duration),
-      needs_schoolwork: form.needs_schoolwork,
-      first_day: form.first_day,
-      active: form.active,
-    })
-    if (ok) setDirty(false)
+    const write = () => {
+      pending.current.delete(key)
+      // A blank name is never written — the field stays editable, the row
+      // keeps its last real name.
+      if (key === 'name' && !value.trim()) return
+      onSave({ [key]: normalizeField(key, value) })
+    }
+
+    const existing = pending.current.get(key)
+    if (existing) clearTimeout(existing.timer)
+    if (text) {
+      pending.current.set(key, { write, timer: setTimeout(write, TEXT_DEBOUNCE_MS) })
+    } else {
+      write()
+    }
   }
 
   return (
-    <form onSubmit={submit} className="space-y-3">
+    <div className="space-y-3">
       <Field label="Name">
         <input
           value={form.name}
-          onChange={(e) => set('name', e.target.value)}
+          onChange={(e) => set('name', e.target.value, { text: true })}
           required
           className={inputClass}
         />
@@ -71,7 +95,11 @@ export default function StudentAttributes({ student, saving, onSave }) {
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="Grade">
-          <input value={form.grade} onChange={(e) => set('grade', e.target.value)} className={inputClass} />
+          <input
+            value={form.grade}
+            onChange={(e) => set('grade', e.target.value, { text: true })}
+            className={inputClass}
+          />
         </Field>
         <Field label="Level">
           <Select value={form.level} onChange={(v) => set('level', v)} options={LEVEL_OPTIONS} />
@@ -94,7 +122,11 @@ export default function StudentAttributes({ student, saving, onSave }) {
           <Select value={form.gender} onChange={(v) => set('gender', v)} options={GENDER_OPTIONS} />
         </Field>
         <Field label="School">
-          <input value={form.school} onChange={(e) => set('school', e.target.value)} className={inputClass} />
+          <input
+            value={form.school}
+            onChange={(e) => set('school', e.target.value, { text: true })}
+            className={inputClass}
+          />
         </Field>
         <Field label="Default duration (min)">
           <input
@@ -102,7 +134,7 @@ export default function StudentAttributes({ student, saving, onSave }) {
             min="15"
             step="15"
             value={form.default_duration}
-            onChange={(e) => set('default_duration', e.target.value)}
+            onChange={(e) => set('default_duration', e.target.value, { text: true })}
             className={inputClass}
           />
         </Field>
@@ -111,7 +143,7 @@ export default function StudentAttributes({ student, saving, onSave }) {
       <Field label="Radius account" hint="Used to match rows on the Radius import">
         <input
           value={form.radius_account}
-          onChange={(e) => set('radius_account', e.target.value)}
+          onChange={(e) => set('radius_account', e.target.value, { text: true })}
           className={inputClass}
         />
       </Field>
@@ -133,14 +165,10 @@ export default function StudentAttributes({ student, saving, onSave }) {
         <Check label="Active" checked={form.active} onChange={(v) => set('active', v)} />
       </div>
 
-      <button
-        type="submit"
-        disabled={!dirty || saving}
-        className="w-full rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:opacity-40"
-      >
-        {saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
-      </button>
-    </form>
+      <p className="text-right text-[11px] text-zinc-400">
+        {saving ? 'Saving…' : 'Every change saves as you make it.'}
+      </p>
+    </div>
   )
 }
 

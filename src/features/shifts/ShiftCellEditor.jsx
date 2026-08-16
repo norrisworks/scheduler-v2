@@ -1,18 +1,26 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { formatDateShort } from '../../lib/dates'
 import { validateShift } from './weekShifts'
 
 const inputClass =
   'w-full rounded-lg border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200'
 
+const TEXT_DEBOUNCE_MS = 500
+
 /**
- * Add, change or delete one shift. Rendered at the view root so the grid's
- * scroll containers can't clip it.
+ * Add or change one shift. Rendered at the view root so the grid's scroll
+ * containers can't clip it.
+ *
+ * An EXISTING shift saves as the times change (debounced, validated) — no
+ * Save button, same rule as every other editor. Only creating a shift keeps
+ * a button, because there is no row to write into until it is pressed.
  */
 export default function ShiftCellEditor({ cell, saving, onSave, onDelete, onClose }) {
   const [start, setStart] = useState(cell.start)
   const [end, setEnd] = useState(cell.end)
   const [error, setError] = useState(null)
+  const isNew = !cell.shift
+  const pending = useRef(null)
 
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
@@ -20,7 +28,44 @@ export default function ShiftCellEditor({ cell, saving, onSave, onDelete, onClos
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  async function submit(e) {
+  // Flush a pending edit when the popover closes.
+  useEffect(
+    () => () => {
+      if (pending.current) {
+        clearTimeout(pending.current.timer)
+        pending.current.write()
+      }
+    },
+    [],
+  )
+
+  function write(nextStart, nextEnd) {
+    pending.current = null
+    const problem = validateShift(nextStart, nextEnd)
+    if (problem) {
+      setError(problem)
+      return
+    }
+    setError(null)
+    onSave({
+      id: cell.shift.id,
+      instructor_id: cell.instructor.id,
+      date: cell.date,
+      start: nextStart,
+      end: nextEnd,
+    })
+  }
+
+  function change(nextStart, nextEnd) {
+    setStart(nextStart)
+    setEnd(nextEnd)
+    if (isNew) return
+    if (pending.current) clearTimeout(pending.current.timer)
+    const doWrite = () => write(nextStart, nextEnd)
+    pending.current = { write: doWrite, timer: setTimeout(doWrite, TEXT_DEBOUNCE_MS) }
+  }
+
+  async function create(e) {
     e.preventDefault()
     const problem = validateShift(start, end)
     if (problem) {
@@ -28,7 +73,7 @@ export default function ShiftCellEditor({ cell, saving, onSave, onDelete, onClos
       return
     }
     const ok = await onSave({
-      id: cell.shift?.id ?? null,
+      id: null,
       instructor_id: cell.instructor.id,
       date: cell.date,
       start,
@@ -54,7 +99,7 @@ export default function ShiftCellEditor({ cell, saving, onSave, onDelete, onClos
           <span className="ml-1 font-normal text-zinc-500">{formatDateShort(cell.date)}</span>
         </p>
 
-        <form onSubmit={submit} className="space-y-2">
+        <form onSubmit={create} className="space-y-2">
           <label className="block">
             <span className="mb-1 block text-[11px] font-medium text-zinc-600">Start</span>
             <input
@@ -62,7 +107,7 @@ export default function ShiftCellEditor({ cell, saving, onSave, onDelete, onClos
               step="900"
               autoFocus
               value={start}
-              onChange={(e) => setStart(e.target.value)}
+              onChange={(e) => change(e.target.value, end)}
               className={inputClass}
             />
           </label>
@@ -72,7 +117,7 @@ export default function ShiftCellEditor({ cell, saving, onSave, onDelete, onClos
               type="time"
               step="900"
               value={end}
-              onChange={(e) => setEnd(e.target.value)}
+              onChange={(e) => change(start, e.target.value)}
               className={inputClass}
             />
           </label>
@@ -94,20 +139,32 @@ export default function ShiftCellEditor({ cell, saving, onSave, onDelete, onClos
                 Delete
               </button>
             )}
-            <button
-              type="button"
-              onClick={onClose}
-              className="ml-auto rounded-lg border border-zinc-300 px-2 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-lg bg-brand-500 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-600 disabled:opacity-40"
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </button>
+            {isNew ? (
+              <>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="ml-auto rounded-lg border border-zinc-300 px-2 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="rounded-lg bg-brand-500 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-600 disabled:opacity-40"
+                >
+                  {saving ? 'Adding…' : 'Add shift'}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={onClose}
+                className="ml-auto rounded-lg border border-zinc-300 px-2 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+              >
+                {saving ? 'Saving…' : 'Done'}
+              </button>
+            )}
           </div>
         </form>
       </div>

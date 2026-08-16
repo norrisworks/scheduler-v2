@@ -73,11 +73,15 @@ export default function InstructorForm({
     })
   }, [instructor, defaultColor])
 
-  // Flush anything still pending if the panel closes or switches instructor.
+  // FLUSH anything still pending when the panel closes or switches
+  // instructor — a keystroke made just before closing must still land.
   useEffect(() => {
     const pending = timers.current
     return () => {
-      for (const timer of pending.values()) clearTimeout(timer)
+      for (const { timer, write } of pending.values()) {
+        clearTimeout(timer)
+        write()
+      }
       pending.clear()
     }
   }, [instructor?.id])
@@ -86,12 +90,15 @@ export default function InstructorForm({
     setForm((prev) => ({ ...prev, [key]: value }))
     if (isNew) return
 
-    const write = () => onPatch?.({ [key]: normalizeField(key, value) })
+    const write = () => {
+      timers.current.delete(key)
+      onPatch?.({ [key]: normalizeField(key, value) })
+    }
     const existing = timers.current.get(key)
-    if (existing) clearTimeout(existing)
+    if (existing) clearTimeout(existing.timer)
 
     if (text) {
-      timers.current.set(key, setTimeout(write, TEXT_DEBOUNCE_MS))
+      timers.current.set(key, { write, timer: setTimeout(write, TEXT_DEBOUNCE_MS) })
     } else {
       write()
     }

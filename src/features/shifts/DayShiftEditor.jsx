@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useCenter } from '../centers/CenterProvider'
 import { formatDateLong } from '../../lib/dates'
@@ -15,6 +15,20 @@ export default function DayShiftEditor({ date, instructors, shiftByInstructor, o
   const [error, setError] = useState(null)
   // instructorId -> { start, end } while a row is being edited.
   const [drafts, setDrafts] = useState(new Map())
+  // instructorId -> {timer, write}: existing shifts autosave on a short
+  // debounce, and anything pending flushes when the modal closes.
+  const pending = useRef(new Map())
+
+  useEffect(() => {
+    const bag = pending.current
+    return () => {
+      for (const { timer, write } of bag.values()) {
+        clearTimeout(timer)
+        write()
+      }
+      bag.clear()
+    }
+  }, [])
 
   const draftFor = (instructor) => {
     const existing = drafts.get(instructor.id)
@@ -25,12 +39,25 @@ export default function DayShiftEditor({ date, instructors, shiftByInstructor, o
       : { start: DEFAULT_START, end: DEFAULT_END }
   }
 
-  const setDraft = (instructorId, patch) => {
+  const setDraft = (instructor, patch) => {
+    const next = { ...draftFor(instructor), ...patch }
     setDrafts((prev) => {
-      const next = new Map(prev)
-      next.set(instructorId, { ...draftFor({ id: instructorId }), ...patch })
-      return next
+      const map = new Map(prev)
+      map.set(instructor.id, next)
+      return map
     })
+    // An EXISTING shift saves as the times change — no Save button, same rule
+    // as every other editor. A new shift still needs its Add press.
+    if (shiftByInstructor.has(instructor.id)) {
+      const bag = pending.current
+      const existing = bag.get(instructor.id)
+      if (existing) clearTimeout(existing.timer)
+      const write = () => {
+        bag.delete(instructor.id)
+        saveShift(instructor, next)
+      }
+      bag.set(instructor.id, { write, timer: setTimeout(write, 500) })
+    }
   }
 
   async function write(fn) {
@@ -46,8 +73,8 @@ export default function DayShiftEditor({ date, instructors, shiftByInstructor, o
     return true
   }
 
-  async function saveShift(instructor) {
-    const draft = draftFor(instructor)
+  async function saveShift(instructor, draftOverride = null) {
+    const draft = draftOverride ?? draftFor(instructor)
     const problem = validateShift(draft.start, draft.end)
     if (problem) {
       setError(problem)
@@ -107,7 +134,6 @@ export default function DayShiftEditor({ date, instructors, shiftByInstructor, o
                   {list.map((instructor) => {
                     const shift = shiftByInstructor.get(instructor.id)
                     const draft = draftFor(instructor)
-                    const dirty = drafts.has(instructor.id)
                     return (
                       <li
                         key={instructor.id}
@@ -116,11 +142,13 @@ export default function DayShiftEditor({ date, instructors, shiftByInstructor, o
                         <span className="min-w-0 flex-1 truncate text-sm text-zinc-800">
                           {instructor.name}
                         </span>
+                        {/* Existing shifts save as the times change; only a
+                            NEW shift needs its Add press. */}
                         <input
                           type="time"
                           step="900"
                           value={draft.start}
-                          onChange={(e) => setDraft(instructor.id, { start: e.target.value })}
+                          onChange={(e) => setDraft(instructor, { start: e.target.value })}
                           aria-label={`Shift start for ${instructor.name}`}
                           className="rounded border border-zinc-300 px-1 py-0.5 text-xs"
                         />
@@ -129,36 +157,24 @@ export default function DayShiftEditor({ date, instructors, shiftByInstructor, o
                           type="time"
                           step="900"
                           value={draft.end}
-                          onChange={(e) => setDraft(instructor.id, { end: e.target.value })}
+                          onChange={(e) => setDraft(instructor, { end: e.target.value })}
                           aria-label={`Shift end for ${instructor.name}`}
                           className="rounded border border-zinc-300 px-1 py-0.5 text-xs"
                         />
                         {shift ? (
-                          <>
-                            {dirty && (
-                              <button
-                                type="button"
-                                disabled={saving}
-                                onClick={() => saveShift(instructor)}
-                                className="rounded bg-brand-500 px-1.5 py-0.5 text-[11px] font-semibold text-white hover:bg-brand-600 disabled:opacity-40"
-                              >
-                                Save
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              disabled={saving}
-                              onClick={() =>
-                                write(() =>
-                                  supabase.from('instructor_shifts').delete().eq('id', shift.id),
-                                )
-                              }
-                              title="Remove this shift — use for a call-out"
-                              className="rounded px-1 text-xs text-zinc-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
-                            >
-                              ✕
-                            </button>
-                          </>
+                          <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() =>
+                              write(() =>
+                                supabase.from('instructor_shifts').delete().eq('id', shift.id),
+                              )
+                            }
+                            title="Remove this shift — use for a call-out"
+                            className="rounded px-1 text-xs text-zinc-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+                          >
+                            ✕
+                          </button>
                         ) : (
                           <button
                             type="button"
