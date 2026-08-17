@@ -90,12 +90,11 @@ export default function SessionCard({
     style: {
       ...style,
       backgroundColor: instructor ? `${instructor.color}20` : '#f3f4f6',
-      // Flat blocks: tinted fill + one left stripe, NEVER a full border —
-      // v1's full red first-day border made cards read as raised chips, so
-      // first day now colors the stripe itself instead.
-      borderLeft: `3px solid ${
-        student?.first_day ? BRAND_RED : instructor?.color || '#d1d5db'
-      }`,
+      // A normal card is a flat rectangle: tinted instructor fill and text,
+      // nothing else — no stripe, no border, no shadow, no radius. The ONE
+      // exception is a first-day student, whose full brand-red border is the
+      // deliberate v1 signal (owner's call, restored after being removed).
+      ...(student?.first_day ? { border: `3px solid ${BRAND_RED}` } : null),
       ...(ring ? { outline: ring, outlineOffset: '-2px' } : null),
     },
   }
