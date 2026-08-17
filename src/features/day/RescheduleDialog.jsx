@@ -73,11 +73,9 @@ export default function RescheduleDialog({ session, onClose, onDone }) {
         </label>
         <label className="block">
           <span className="mb-1 block text-[11px] font-medium text-zinc-600">New time</span>
-          <input
-            type="time"
-            step="900"
+          <TimeSelect
             value={time}
-            onChange={(e) => setTime(e.target.value)}
+            onChange={setTime}
             className="w-full rounded-lg border border-zinc-300 px-2 py-1.5 text-sm"
           />
         </label>

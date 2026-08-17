@@ -156,12 +156,9 @@ export default function AddSessionDialog({ centerId, date, onClose, onCreated })
 
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-zinc-600">Start time</span>
-            <input
-              type="time"
-              step="900"
-              required
+            <TimeSelect
               value={form.start_time}
-              onChange={(e) => setForm({ ...form, start_time: e.target.value })}
+              onChange={(t) => setForm({ ...form, start_time: t })}
               className={inputClass}
             />
           </label>

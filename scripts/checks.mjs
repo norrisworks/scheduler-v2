@@ -20,7 +20,7 @@ import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } f
 import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent } from '../src/features/imports/radiusImport.js'
 import { planStudentImport, planStudentImportByCenter } from '../src/features/imports/studentImport.js'
 import { buildChecks } from '../src/features/health/checks.js'
-import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime , formatStampDate } from '../src/lib/dates.js'
+import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime , formatStampDate, TIME_CHOICES } from '../src/lib/dates.js'
 import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, gaugeCellClass, slotChipClass } from '../src/features/day/load.js'
 import { genderLabel, normalizeGender as normalizeGenderValue } from '../src/lib/gender.js'
 
@@ -1521,6 +1521,14 @@ const noColumn = planStudentImportByCenter(
 eq('a file without a Center column falls back to the selected center',
    noColumn.centers.map((c) => c.center.name), ['Montgomeryville'])
 eq('and says so', noColumn.centers[0].fromColumn, false)
+
+// ---- time choices: the only times the app lets anyone pick
+eq('choices run 9am to 8pm on the half hour',
+   [TIME_CHOICES[0], TIME_CHOICES[TIME_CHOICES.length - 1], TIME_CHOICES.length],
+   ['09:00', '20:00', 23])
+eq('the common session times are all present',
+   ['14:00', '15:30', '16:00', '18:30'].every((t) => TIME_CHOICES.includes(t)), true)
+eq('nothing off the half hour', TIME_CHOICES.every((t) => ['00', '30'].includes(t.slice(3))), true)
 
 // ---- note timestamps render as the ET day they happened
 // 11:30pm ET on Aug 3 is already Aug 4 in UTC; the note must still say Aug 3.

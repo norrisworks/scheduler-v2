@@ -1,18 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { formatDateShort } from '../../lib/dates'
+import TimeSelect from '../../components/TimeSelect'
 import { validateShift } from './weekShifts'
 
 const inputClass =
   'w-full rounded-lg border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200'
 
-const TEXT_DEBOUNCE_MS = 500
-
 /**
  * Add or change one shift. Rendered at the view root so the grid's scroll
  * containers can't clip it.
  *
- * An EXISTING shift saves as the times change (debounced, validated) — no
- * Save button, same rule as every other editor. Only creating a shift keeps
+ * An EXISTING shift saves as the times change (validated) — no Save button,
+ * same rule as every other editor. Only creating a shift keeps
  * a button, because there is no row to write into until it is pressed.
  */
 export default function ShiftCellEditor({ cell, saving, onSave, onDelete, onClose }) {
@@ -20,7 +19,6 @@ export default function ShiftCellEditor({ cell, saving, onSave, onDelete, onClos
   const [end, setEnd] = useState(cell.end)
   const [error, setError] = useState(null)
   const isNew = !cell.shift
-  const pending = useRef(null)
 
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
@@ -28,19 +26,7 @@ export default function ShiftCellEditor({ cell, saving, onSave, onDelete, onClos
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  // Flush a pending edit when the popover closes.
-  useEffect(
-    () => () => {
-      if (pending.current) {
-        clearTimeout(pending.current.timer)
-        pending.current.write()
-      }
-    },
-    [],
-  )
-
   function write(nextStart, nextEnd) {
-    pending.current = null
     const problem = validateShift(nextStart, nextEnd)
     if (problem) {
       setError(problem)
@@ -56,13 +42,13 @@ export default function ShiftCellEditor({ cell, saving, onSave, onDelete, onClos
     })
   }
 
+  // A select commits a whole value per change, so existing shifts save
+  // immediately — no debounce needed anymore.
   function change(nextStart, nextEnd) {
     setStart(nextStart)
     setEnd(nextEnd)
     if (isNew) return
-    if (pending.current) clearTimeout(pending.current.timer)
-    const doWrite = () => write(nextStart, nextEnd)
-    pending.current = { write: doWrite, timer: setTimeout(doWrite, TEXT_DEBOUNCE_MS) }
+    write(nextStart, nextEnd)
   }
 
   async function create(e) {
@@ -102,24 +88,16 @@ export default function ShiftCellEditor({ cell, saving, onSave, onDelete, onClos
         <form onSubmit={create} className="space-y-2">
           <label className="block">
             <span className="mb-1 block text-[11px] font-medium text-zinc-600">Start</span>
-            <input
-              type="time"
-              step="900"
+            <TimeSelect
               autoFocus
               value={start}
-              onChange={(e) => change(e.target.value, end)}
+              onChange={(t) => change(t, end)}
               className={inputClass}
             />
           </label>
           <label className="block">
             <span className="mb-1 block text-[11px] font-medium text-zinc-600">End</span>
-            <input
-              type="time"
-              step="900"
-              value={end}
-              onChange={(e) => change(start, e.target.value)}
-              className={inputClass}
-            />
+            <TimeSelect value={end} onChange={(t) => change(start, t)} className={inputClass} />
           </label>
 
           {error && <p className="rounded bg-red-50 px-2 py-1 text-[11px] text-red-700">{error}</p>}

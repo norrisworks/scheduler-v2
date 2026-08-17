@@ -73,6 +73,20 @@ export function startOfWeek(iso) {
 
 /** e.g. 'Mon, Aug 10' */
 /**
+ * Every time the app lets you pick, as 'HH:MM' on 30-minute steps across the
+ * center's plausible hours. Sessions and shifts only ever land on the half
+ * hour, so free-typed minutes were nothing but a way to make mistakes.
+ */
+export function timeChoices(start = '09:00', end = '20:00') {
+  const out = []
+  for (let m = timeToMinutes(start); m <= timeToMinutes(end); m += 30) {
+    out.push(minutesToTime(m).slice(0, 5))
+  }
+  return out
+}
+export const TIME_CHOICES = timeChoices()
+
+/**
  * A real timestamp (not a date-only ISO) shown as the center-local day it
  * happened: 'Aug 3', with the year added once it isn't this year. Used on
  * notes, where the whole point of the date is making stale ones look stale.

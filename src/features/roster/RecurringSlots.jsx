@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { todayISO } from '../../lib/dates'
+import TimeSelect from '../../components/TimeSelect'
 import { DAYS } from './studentFields'
-
-const TIME_DEBOUNCE_MS = 500
 
 const inputClass =
   'rounded-lg border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200'
@@ -62,7 +61,13 @@ export default function RecurringSlots({ slots, saving, defaultDuration, onAdd, 
                     </option>
                   ))}
                 </select>
-                <SlotTime slot={slot} saving={saving} onUpdate={onUpdate} />
+                <TimeSelect
+                  value={slot.start_time.slice(0, 5)}
+                  disabled={saving}
+                  onChange={(t) => onUpdate(slot.id, { start_time: `${t}:00` })}
+                  aria-label="Slot start time"
+                  className="shrink-0 rounded border border-slate-200 bg-transparent px-1 py-0.5 text-sm"
+                />
                 <span className="shrink-0 text-xs text-slate-400">{slot.duration}m</span>
                 {slot.effective_until && (
                   <span className="truncate text-xs text-slate-400">
@@ -114,12 +119,9 @@ export default function RecurringSlots({ slots, saving, defaultDuration, onAdd, 
         </label>
         <label>
           <span className="mb-1 block text-xs font-medium text-slate-600">Start</span>
-          <input
-            type="time"
-            step="900"
-            required
+          <TimeSelect
             value={draft.start_time}
-            onChange={(e) => setDraft({ ...draft, start_time: e.target.value })}
+            onChange={(t) => setDraft({ ...draft, start_time: t })}
             className={inputClass}
           />
         </label>
@@ -137,45 +139,4 @@ export default function RecurringSlots({ slots, saving, defaultDuration, onAdd, 
   )
 }
 
-/** Time input with the app-standard debounce; a pending edit flushes on unmount. */
-function SlotTime({ slot, saving, onUpdate }) {
-  const [value, setValue] = useState(slot.start_time.slice(0, 5))
-  const pending = useRef(null)
-
-  useEffect(() => {
-    setValue(slot.start_time.slice(0, 5))
-  }, [slot.start_time])
-
-  useEffect(
-    () => () => {
-      if (pending.current) {
-        clearTimeout(pending.current.timer)
-        pending.current.write()
-      }
-    },
-    [],
-  )
-
-  function change(next) {
-    setValue(next)
-    if (pending.current) clearTimeout(pending.current.timer)
-    const write = () => {
-      pending.current = null
-      if (next && `${next}:00` !== slot.start_time) onUpdate(slot.id, { start_time: `${next}:00` })
-    }
-    pending.current = { write, timer: setTimeout(write, TIME_DEBOUNCE_MS) }
-  }
-
-  return (
-    <input
-      type="time"
-      step="900"
-      value={value}
-      disabled={saving}
-      onChange={(e) => change(e.target.value)}
-      aria-label="Slot start time"
-      className="shrink-0 rounded border border-slate-200 bg-transparent px-1 py-0.5 text-sm"
-    />
-  )
-}
 

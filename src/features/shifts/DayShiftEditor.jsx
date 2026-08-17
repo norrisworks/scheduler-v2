@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useCenter } from '../centers/CenterProvider'
 import { formatDateLong } from '../../lib/dates'
+import TimeSelect from '../../components/TimeSelect'
 import { DEFAULT_END, DEFAULT_START, validateShift } from './weekShifts'
 
 /**
@@ -13,22 +14,9 @@ export default function DayShiftEditor({ date, instructors, shiftByInstructor, o
   const { centerId } = useCenter()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
-  // instructorId -> { start, end } while a row is being edited.
+  // instructorId -> { start, end } while a row is being edited. Selects
+  // commit whole values, so existing shifts save immediately on change.
   const [drafts, setDrafts] = useState(new Map())
-  // instructorId -> {timer, write}: existing shifts autosave on a short
-  // debounce, and anything pending flushes when the modal closes.
-  const pending = useRef(new Map())
-
-  useEffect(() => {
-    const bag = pending.current
-    return () => {
-      for (const { timer, write } of bag.values()) {
-        clearTimeout(timer)
-        write()
-      }
-      bag.clear()
-    }
-  }, [])
 
   const draftFor = (instructor) => {
     const existing = drafts.get(instructor.id)
@@ -48,16 +36,7 @@ export default function DayShiftEditor({ date, instructors, shiftByInstructor, o
     })
     // An EXISTING shift saves as the times change — no Save button, same rule
     // as every other editor. A new shift still needs its Add press.
-    if (shiftByInstructor.has(instructor.id)) {
-      const bag = pending.current
-      const existing = bag.get(instructor.id)
-      if (existing) clearTimeout(existing.timer)
-      const write = () => {
-        bag.delete(instructor.id)
-        saveShift(instructor, next)
-      }
-      bag.set(instructor.id, { write, timer: setTimeout(write, 500) })
-    }
+    if (shiftByInstructor.has(instructor.id)) saveShift(instructor, next)
   }
 
   async function write(fn) {
@@ -144,20 +123,16 @@ export default function DayShiftEditor({ date, instructors, shiftByInstructor, o
                         </span>
                         {/* Existing shifts save as the times change; only a
                             NEW shift needs its Add press. */}
-                        <input
-                          type="time"
-                          step="900"
+                        <TimeSelect
                           value={draft.start}
-                          onChange={(e) => setDraft(instructor, { start: e.target.value })}
+                          onChange={(t) => setDraft(instructor, { start: t })}
                           aria-label={`Shift start for ${instructor.name}`}
                           className="rounded border border-zinc-300 px-1 py-0.5 text-xs"
                         />
                         <span className="text-xs text-zinc-400">–</span>
-                        <input
-                          type="time"
-                          step="900"
+                        <TimeSelect
                           value={draft.end}
-                          onChange={(e) => setDraft(instructor, { end: e.target.value })}
+                          onChange={(t) => setDraft(instructor, { end: t })}
                           aria-label={`Shift end for ${instructor.name}`}
                           className="rounded border border-zinc-300 px-1 py-0.5 text-xs"
                         />

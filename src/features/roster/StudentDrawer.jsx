@@ -78,6 +78,10 @@ export default function StudentDrawer({ studentId, onClose, onChanged }) {
     if (!ok) return false
     const { result, error } = await materializeSessions(centerId)
     setSlotEffect(error ? { error } : { text: describeMaterialize(result) })
+    // The upcoming-sessions list shows the rows this just moved — without
+    // this bump it kept showing the old times until the drawer reopened,
+    // which read exactly like the propagation not firing.
+    setSessionsRefresh((n) => n + 1)
     return true
   }
 
