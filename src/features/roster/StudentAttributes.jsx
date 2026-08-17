@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useAuth } from '../auth/AuthProvider'
 import {
   ACADEMIC_OPTIONS,
   CERTAINTY_OPTIONS,
@@ -40,6 +41,8 @@ function normalizeField(key, value) {
  * to another student.
  */
 export default function StudentAttributes({ student, saving, onSave }) {
+  // Instructor-role accounts read student details; only admins edit them.
+  const { isAdmin } = useAuth()
   const [form, setForm] = useState(() => toForm(student))
   // key -> {timer, write} so unmount can FLUSH pending text, not discard it.
   const pending = useRef(new Map())
@@ -83,7 +86,7 @@ export default function StudentAttributes({ student, saving, onSave }) {
   }
 
   return (
-    <div className="space-y-3">
+    <fieldset disabled={!isAdmin} className="space-y-3">
       <Field label="Name">
         <input
           value={form.name}
@@ -166,9 +169,9 @@ export default function StudentAttributes({ student, saving, onSave }) {
       </div>
 
       <p className="text-right text-[11px] text-zinc-400">
-        {saving ? 'Saving…' : 'Every change saves as you make it.'}
+        {!isAdmin ? 'Read-only — instructor accounts cannot edit students.' : saving ? 'Saving…' : 'Every change saves as you make it.'}
       </p>
-    </div>
+    </fieldset>
   )
 }
 

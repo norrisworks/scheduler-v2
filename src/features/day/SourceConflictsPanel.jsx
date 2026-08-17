@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../../lib/supabase'
 import { formatDateShort, formatTimeMeridiem } from '../../lib/dates'
 import { DAYS } from '../roster/studentFields'
@@ -26,6 +27,9 @@ export default function SourceConflictsPanel({
   // key -> studentId after a cross-day cancel, driving the "permanent
   // change?" follow-up so the same conflict isn't re-resolved every week.
   const [justCancelled, setJustCancelled] = useState({})
+  // Resolving conflicts is a scheduling decision — admin-only. Instructors
+  // still SEE the panel: a double-booked student matters on the floor.
+  const { isAdmin } = useAuth()
 
   if (conflicts.length === 0 && crossDay.length === 0) return null
 
@@ -128,6 +132,7 @@ export default function SourceConflictsPanel({
               Radius: <span className="font-medium">{times(c.radius)}</span>
               {' · '}standing slot: <span className="font-medium">{times(c.recurring)}</span>
             </span>
+            {isAdmin && (
             <span className="ml-auto flex shrink-0 gap-1.5">
               <button
                 type="button"
@@ -148,6 +153,7 @@ export default function SourceConflictsPanel({
                 Keep both
               </button>
             </span>
+            )}
           </li>
         ))}
       </ul>
@@ -175,6 +181,7 @@ export default function SourceConflictsPanel({
                     {' '}that week. This may be a moved session — or a legitimate extra
                     (makeups and swaps are common).
                   </span>
+                  {isAdmin && (
                   <span className="ml-auto flex shrink-0 gap-1.5">
                     <button
                       type="button"
@@ -204,6 +211,7 @@ export default function SourceConflictsPanel({
                       Never ask
                     </button>
                   </span>
+                  )}
                 </div>
               </li>
             ))}

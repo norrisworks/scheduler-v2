@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useCenter } from '../centers/CenterProvider'
+import { useAuth } from '../auth/AuthProvider'
 import CreateStudentDialog from './CreateStudentDialog'
 import { formatTimeMeridiem } from '../../lib/dates'
 import Spinner from '../../components/Spinner'
@@ -23,6 +24,7 @@ const LEVEL_DOT = {
 
 export default function RosterView() {
   const { centerId } = useCenter()
+  const { isAdmin } = useAuth()
   const { students, loading, error, refetch, createStudent, dismissError } = useRoster(centerId)
 
   const [query, setQuery] = useState('')
@@ -117,6 +119,7 @@ export default function RosterView() {
           >
             Refresh
           </button>
+          {isAdmin && (
           <button
             type="button"
             onClick={() => setAdding(true)}
@@ -124,6 +127,7 @@ export default function RosterView() {
           >
             Add student
           </button>
+          )}
         </div>
       </div>
 

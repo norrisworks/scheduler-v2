@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useAuth } from '../auth/AuthProvider'
 import { formatTime } from '../../lib/dates'
 import { STATUSES } from './levels'
 import { ACADEMIC_STATUS, BRAND_RED, SLOT_CERTAINTY } from './studentOptions'
@@ -32,6 +33,9 @@ export default function SessionCard({
   onStatusMenu,
 }) {
   const [dragOver, setDragOver] = useState(false)
+  // Instructor-role accounts are read-only on assignments; the card stays
+  // clickable to OPEN the student, nothing else.
+  const { isAdmin } = useAuth()
 
   const student = session.student
   const status = STATUSES[session.status] ?? STATUSES.scheduled
@@ -41,6 +45,7 @@ export default function SessionCard({
   const noteText = [session.notes, ...notes.map((n) => n.body)].filter(Boolean).join(' · ')
 
   function handleDragOver(e) {
+    if (!isAdmin) return
     if (!e.dataTransfer.types.includes(INSTRUCTOR_DRAG_TYPE)) return
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
@@ -48,6 +53,7 @@ export default function SessionCard({
   }
 
   function handleDrop(e) {
+    if (!isAdmin) return
     if (!e.dataTransfer.types.includes(INSTRUCTOR_DRAG_TYPE)) return
     e.preventDefault()
     setDragOver(false)
@@ -58,7 +64,7 @@ export default function SessionCard({
   // Armed instructor turns clicks into assignments (tablet path, where HTML5
   // drag never fires). Otherwise a click opens the student, as in v1.
   function handleClick() {
-    if (armedInstructor) onAssign(session.id, armedInstructor.id)
+    if (armedInstructor && isAdmin) onAssign(session.id, armedInstructor.id)
     else onOpenStudent(session.student_id, session.id)
   }
 
@@ -125,7 +131,7 @@ export default function SessionCard({
       </span>
     )
 
-  const unassignButton = instructor && (
+  const unassignButton = instructor && isAdmin && (
     <button
       type="button"
       onClick={(e) => {

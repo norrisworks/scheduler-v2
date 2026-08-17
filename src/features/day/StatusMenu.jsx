@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../../lib/supabase'
 import { BINDER_STATUSES } from '../binder/BinderPrepView'
 
@@ -12,6 +13,8 @@ import { BINDER_STATUSES } from '../binder/BinderPrepView'
  */
 export default function StatusMenu({ menu, onStatusChange, onUnassign, onReschedule, onClose }) {
   const [binder, setBinder] = useState(null)
+  // Instructor-role accounts get the binder info only — no status actions.
+  const { isAdmin } = useAuth()
 
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
@@ -39,7 +42,7 @@ export default function StatusMenu({ menu, onStatusChange, onUnassign, onResched
   // Radius owns attendance, so completed / no-show are never set here — the
   // status column still carries them when the import writes them, but the
   // only status this UI touches is cancelled.
-  const items = [
+  const items = !isAdmin ? [] : [
     cancelled
       ? { key: 'restore', label: 'Restore to schedule', run: () => onStatusChange(session.id, 'scheduled') }
       : { key: 'cancel', label: 'Cancel', run: () => onStatusChange(session.id, 'cancelled') },

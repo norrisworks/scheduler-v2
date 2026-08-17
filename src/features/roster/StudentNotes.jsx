@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useAuth } from '../auth/AuthProvider'
 import { formatStampDate } from '../../lib/dates'
 import { NOTE_TYPES, NOTE_TYPE_STYLE } from './studentFields'
 
@@ -11,6 +12,8 @@ const inputClass =
  * Operational context only — Radius/DWP stays the instructional record.
  */
 export default function StudentNotes({ notes, saving, onAdd, onUpdate, onDelete }) {
+  // Instructors read notes; writing them is admin-only.
+  const { isAdmin } = useAuth()
   const [body, setBody] = useState('')
   const [type, setType] = useState('heads_up')
   const [pinned, setPinned] = useState(true)
@@ -29,6 +32,7 @@ export default function StudentNotes({ notes, saving, onAdd, onUpdate, onDelete 
 
   return (
     <div className="space-y-3">
+      {isAdmin && (
       <form onSubmit={submit} className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
         <textarea
           value={body}
@@ -63,6 +67,7 @@ export default function StudentNotes({ notes, saving, onAdd, onUpdate, onDelete 
           </button>
         </div>
       </form>
+      )}
 
       {visible.length === 0 ? (
         <p className="px-1 py-3 text-center text-xs text-slate-400">No notes yet.</p>
@@ -96,6 +101,7 @@ export default function StudentNotes({ notes, saving, onAdd, onUpdate, onDelete 
                   {note.author_email ? ` · ${note.author_email.split('@')[0]}` : ''}
                 </span>
 
+                {isAdmin && (
                 <div className="ml-auto flex items-center gap-1">
                   <IconButton
                     disabled={saving}
@@ -115,6 +121,7 @@ export default function StudentNotes({ notes, saving, onAdd, onUpdate, onDelete 
                     ✕
                   </IconButton>
                 </div>
+                )}
               </div>
               {/* Readable type, deliberately — v1 rendered notes at 8px. */}
               <p className="text-sm leading-snug whitespace-pre-wrap text-slate-800">{note.body}</p>

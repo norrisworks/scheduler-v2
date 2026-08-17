@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useAuth } from '../auth/AuthProvider'
 import { formatTimeMeridiem } from '../../lib/dates'
 import { readableTextOn } from '../../lib/colors'
 import { peakConcurrent } from './shiftCoverage'
@@ -38,6 +39,8 @@ export default function InstructorSidebar({
   // reachable behind a disclosure — Workstream coverage is partial, and
   // someone who is physically here still has to be assignable.
   const [showOffShift, setShowOffShift] = useState(false)
+  // Instructor-role accounts see the gauges but get none of the assign tools.
+  const { isAdmin } = useAuth()
   const [confirmingClear, setConfirmingClear] = useState(false)
 
   const stats = useMemo(() => {
@@ -120,7 +123,7 @@ export default function InstructorSidebar({
       </div>
 
       {/* v1 put auto-assign here, next to the load gauges it rebalances. */}
-      {algorithms.length > 0 && (
+      {isAdmin && algorithms.length > 0 && (
         <div className="border-b border-zinc-200 px-3 py-2.5">
           <div className="flex gap-2">
             {algorithms.map((a) => (
@@ -231,7 +234,7 @@ export default function InstructorSidebar({
             stats={stats.get(instructor.id)}
             slots={axis.slots}
             armed={armedInstructorId === instructor.id}
-            onArm={onArm}
+            onArm={isAdmin ? onArm : null}
             onDragStateChange={onDragStateChange}
           />
         ))}
@@ -254,7 +257,7 @@ export default function InstructorSidebar({
                   stats={stats.get(instructor.id)}
                   slots={axis.slots}
                   armed={armedInstructorId === instructor.id}
-                  onArm={onArm}
+                  onArm={isAdmin ? onArm : null}
                   onDragStateChange={onDragStateChange}
                 />
               ))}
@@ -299,14 +302,15 @@ function InstructorRow({ instructor, shift, stats, slots, armed, onArm, onDragSt
 
   return (
     <div
-      draggable
+      draggable={Boolean(onArm)}
       onDragStart={(e) => {
+        if (!onArm) return
         e.dataTransfer.setData(INSTRUCTOR_DRAG_TYPE, instructor.id)
         e.dataTransfer.effectAllowed = 'move'
         onDragStateChange?.(true)
       }}
       onDragEnd={() => onDragStateChange?.(false)}
-      onClick={() => onArm(armed ? null : instructor.id)}
+      onClick={() => onArm?.(armed ? null : instructor.id)}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {

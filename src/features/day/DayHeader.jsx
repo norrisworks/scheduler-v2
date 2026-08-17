@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { useAuth } from '../auth/AuthProvider'
 import { addDays, formatDateLong, todayISO } from '../../lib/dates'
 
 export default function DayHeader({
@@ -15,6 +16,7 @@ export default function DayHeader({
   materializing,
   onAddSession,
 }) {
+  const { isAdmin } = useAuth()
   const today = todayISO()
   const pickerRef = useRef(null)
 
@@ -133,6 +135,7 @@ export default function DayHeader({
       )}
 
       <div className="flex items-center gap-2">
+        {isAdmin && (
         <button
           type="button"
           onClick={onAddSession}
@@ -140,6 +143,8 @@ export default function DayHeader({
         >
           + Session
         </button>
+        )}
+        {isAdmin && (
         <button
           type="button"
           onClick={() => onMaterialize()}
@@ -149,6 +154,7 @@ export default function DayHeader({
         >
           {materializing ? 'Generating…' : 'Generate'}
         </button>
+        )}
         <button
           type="button"
           onClick={() => onRefresh()}

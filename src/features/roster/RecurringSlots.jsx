@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useAuth } from '../auth/AuthProvider'
 import { todayISO } from '../../lib/dates'
 import TimeSelect from '../../components/TimeSelect'
 import { DAYS } from './studentFields'
@@ -12,6 +13,7 @@ const inputClass =
  * future sessions that haven't been hand-edited (step 4).
  */
 export default function RecurringSlots({ slots, saving, defaultDuration, onAdd, onUpdate, onDelete }) {
+  const { isAdmin } = useAuth()
   const [draft, setDraft] = useState({ day_of_week: 1, start_time: '16:00' })
 
   async function add(e) {
@@ -50,7 +52,7 @@ export default function RecurringSlots({ slots, saving, defaultDuration, onAdd, 
                     never cancel-and-recreate. */}
                 <select
                   value={slot.day_of_week}
-                  disabled={saving}
+                  disabled={saving || !isAdmin}
                   onChange={(e) => onUpdate(slot.id, { day_of_week: Number(e.target.value) })}
                   aria-label="Slot day"
                   className="shrink-0 rounded border border-slate-200 bg-transparent px-1 py-0.5 text-sm font-semibold"
@@ -63,7 +65,7 @@ export default function RecurringSlots({ slots, saving, defaultDuration, onAdd, 
                 </select>
                 <TimeSelect
                   value={slot.start_time.slice(0, 5)}
-                  disabled={saving}
+                  disabled={saving || !isAdmin}
                   onChange={(t) => onUpdate(slot.id, { start_time: `${t}:00` })}
                   aria-label="Slot start time"
                   className="shrink-0 rounded border border-slate-200 bg-transparent px-1 py-0.5 text-sm"
@@ -75,6 +77,7 @@ export default function RecurringSlots({ slots, saving, defaultDuration, onAdd, 
                   </span>
                 )}
                 <div className="ml-auto flex shrink-0 items-center gap-1">
+                  {isAdmin && (<>
                   {!slot.effective_until && (
                     <button
                       type="button"
@@ -95,6 +98,7 @@ export default function RecurringSlots({ slots, saving, defaultDuration, onAdd, 
                   >
                     ✕
                   </button>
+                  </>)}
                 </div>
               </li>
             )
@@ -102,6 +106,7 @@ export default function RecurringSlots({ slots, saving, defaultDuration, onAdd, 
         </ul>
       )}
 
+      {isAdmin && (
       <form onSubmit={add} className="flex flex-wrap items-end gap-2 border-t border-slate-200 pt-3">
         <label className="flex-1">
           <span className="mb-1 block text-xs font-medium text-slate-600">Day</span>
@@ -135,6 +140,7 @@ export default function RecurringSlots({ slots, saving, defaultDuration, onAdd, 
           Add slot
         </button>
       </form>
+      )}
     </div>
   )
 }

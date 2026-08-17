@@ -12,7 +12,7 @@ import { RANK_TIEBREAK, RANK_GATED_CAP, NEW_STUDENT_PREFERENCE } from '../src/fe
 import { rescheduleRows, validateReschedule } from '../src/features/day/reschedule.js'
 import { findSourceConflicts, planSourceConflicts, findCrossDayConflicts, planCrossDayConflicts } from '../src/features/day/sourceConflicts.js'
 import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessage } from '../src/features/assign/algorithms.js'
-import { buildGroups } from '../src/features/day/TransposedGrid.jsx'
+import { buildGroups } from '../src/features/day/rowGrouping.js'
 import { proposeRanking, ineligibleForStudentReason, proposalReasons, sameGender, eligibleForStudent, moveEntry } from '../src/features/assign/proposeRanking.js'
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
 import { generateDisplayName, violatesNamingConvention, staleGradeInName, displayNameShape, nearlySameFirstName, isPlaceholderName } from '../src/features/imports/namingConvention.js'

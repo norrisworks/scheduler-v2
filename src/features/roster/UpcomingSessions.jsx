@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../../lib/supabase'
 import { useCenter } from '../centers/CenterProvider'
 import { formatDateShort, formatTimeMeridiem, todayISO } from '../../lib/dates'
@@ -22,6 +23,8 @@ const EXTENDED_DAYS = 60
  */
 export default function UpcomingSessions({ studentId, slots = [], refreshKey = 0 }) {
   const { centerId } = useCenter()
+  // Instructor-role accounts read the list; scheduling actions are admin-only.
+  const { isAdmin } = useAuth()
   const [sessions, setSessions] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -107,6 +110,7 @@ export default function UpcomingSessions({ studentId, slots = [], refreshKey = 0
                     the student record and applied to every session. */}
                 <span className="text-xs text-zinc-400"> · {session.duration ?? 60}m</span>
               </span>
+              {isAdmin && (<>
               <button
                 type="button"
                 disabled={saving}
@@ -123,6 +127,7 @@ export default function UpcomingSessions({ studentId, slots = [], refreshKey = 0
               >
                 Cancel
               </button>
+              </>)}
             </li>
           ))}
         </ul>
@@ -130,7 +135,7 @@ export default function UpcomingSessions({ studentId, slots = [], refreshKey = 0
 
       {/* Not a cap being lifted — sessions further out don't exist as rows
           yet. This makes them exist, then the list shows them like any other. */}
-      {slots.length > 0 && (
+      {isAdmin && slots.length > 0 && (
         <div className="flex items-center gap-2 pt-0.5">
           <p className="flex-1 text-[11px] leading-snug text-zinc-400">
             Sessions are generated {MATERIALIZE_DAYS} days ahead, so this is every session that

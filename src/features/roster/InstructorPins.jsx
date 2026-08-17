@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../../lib/supabase'
 import { readableTextOn } from '../../lib/colors'
 import { useCenter } from '../centers/CenterProvider'
@@ -20,6 +21,9 @@ import { genderLabel, sameGender } from '../../lib/gender'
  */
 export default function InstructorPins({ studentId, student }) {
   const { centerId } = useCenter()
+  // Instructor-role accounts READ the ranking; every edit affordance is
+  // admin-only (and the database rejects their writes regardless).
+  const { isAdmin } = useAuth()
   const [instructors, setInstructors] = useState([])
   const [ranked, setRanked] = useState([])
   const [loading, setLoading] = useState(true)
@@ -139,6 +143,7 @@ export default function InstructorPins({ studentId, student }) {
           Auto-assign uses this list and nothing else, in this order. Drag to reorder.
         </p>
         {saving && <span className="text-[10px] text-zinc-400">Saving…</span>}
+        {isAdmin && (
         <button
           type="button"
           disabled={saving}
@@ -158,6 +163,7 @@ export default function InstructorPins({ studentId, student }) {
         >
           {ranked.length === 0 ? 'Rank everyone' : 'Re-propose order'}
         </button>
+        )}
       </div>
 
       {ranked.length === 0 && (
@@ -172,8 +178,8 @@ export default function InstructorPins({ studentId, student }) {
         {ranked.map((instructor, index) => (
           <li
             key={instructor.id}
-            draggable
-            onDragStart={() => setDragIndex(index)}
+            draggable={isAdmin}
+            onDragStart={() => isAdmin && setDragIndex(index)}
             onDragOver={(e) => e.preventDefault()}
             onDrop={() => {
               if (dragIndex !== null && dragIndex !== index) {
@@ -193,7 +199,7 @@ export default function InstructorPins({ studentId, student }) {
               min="1"
               step="1"
               value={index + 1}
-              disabled={saving}
+              disabled={saving || !isAdmin}
               aria-label={`Rank for ${instructor.name}`}
               onChange={(e) => {
                 const n = Number(e.target.value)
@@ -215,6 +221,7 @@ export default function InstructorPins({ studentId, student }) {
                 {isFallbackOnly(instructor) ? ' · fallback only' : ''}
               </span>
             </span>
+            {isAdmin && (
             <button
               type="button"
               disabled={saving}
@@ -225,11 +232,12 @@ export default function InstructorPins({ studentId, student }) {
             >
               ×
             </button>
+            )}
           </li>
         ))}
       </ol>
 
-      {unranked.length > 0 && (
+      {isAdmin && unranked.length > 0 && (
         <div>
           <p className="mb-1 px-1 text-[10px] font-semibold tracking-wide text-zinc-400 uppercase">
             Not ranked — type a position, or click to add last
