@@ -1,6 +1,4 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../../lib/supabase'
-import { todayISO } from '../../lib/dates'
 import Spinner from '../../components/Spinner'
 import { useCenter } from '../centers/CenterProvider'
 import { describeMaterialize, materializeSessions } from '../materializer/materialize'
@@ -54,38 +52,18 @@ export default function StudentDrawer({ studentId, onClose, onChanged }) {
   }
 
   /**
-   * Duration is a STUDENT-level property, full stop. A changed default flows
-   * straight to the standing slots and every future scheduled session — no
-   * prompt, no per-session override anywhere.
+   * Duration is a STUDENT-level property, full stop. The propagation to
+   * standing slots and future scheduled sessions happens in the DATABASE
+   * (students_default_duration_propagation trigger), so it fires for every
+   * write path — this drawer, the importer, direct SQL — not just this one.
+   * The client's only job is to refresh what it is showing.
    */
   async function saveAttributes(patch) {
     const before = student?.default_duration ?? null
     const ok = await save(updateStudent, patch)
-    if (!ok) return ok
-
-    const minutes = patch.default_duration
-    if (minutes && minutes !== before) {
-      const today = todayISO()
-      const slotIds = slots
-        .filter((s) => s.duration !== minutes && (!s.effective_until || s.effective_until >= today))
-        .map((s) => s.id)
-      const writes = [
-        supabase
-          .from('sessions')
-          .update({ duration: minutes, updated_at: new Date().toISOString() })
-          .eq('student_id', studentId)
-          .gte('date', today)
-          .eq('status', 'scheduled'),
-      ]
-      if (slotIds.length > 0) {
-        writes.push(supabase.from('recurring_slots').update({ duration: minutes }).in('id', slotIds))
-      }
-      const results = await Promise.all(writes)
-      const failure = results.find((r) => r.error)
-      if (failure) setSlotEffect({ error: failure.error.message })
+    if (ok && patch.default_duration && patch.default_duration !== before) {
       setSessionsRefresh((n) => n + 1)
       await refetch()
-      onChanged()
     }
     return ok
   }
