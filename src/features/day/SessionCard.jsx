@@ -90,10 +90,12 @@ export default function SessionCard({
     style: {
       ...style,
       backgroundColor: instructor ? `${instructor.color}20` : '#f3f4f6',
-      borderLeft: `3px solid ${instructor?.color || '#d1d5db'}`,
-      // v1: a first-day student gets a full brand-red border, which
-      // deliberately replaces the instructor stripe.
-      ...(student?.first_day ? { border: `3px solid ${BRAND_RED}` } : null),
+      // Flat blocks: tinted fill + one left stripe, NEVER a full border —
+      // v1's full red first-day border made cards read as raised chips, so
+      // first day now colors the stripe itself instead.
+      borderLeft: `3px solid ${
+        student?.first_day ? BRAND_RED : instructor?.color || '#d1d5db'
+      }`,
       ...(ring ? { outline: ring, outlineOffset: '-2px' } : null),
     },
   }
@@ -146,7 +148,7 @@ export default function SessionCard({
       <div
         {...wrapperProps}
         className={
-          'group absolute flex cursor-pointer flex-col justify-center gap-px overflow-hidden rounded-lg px-1.5 transition-all ' +
+          'group absolute flex cursor-pointer flex-col justify-center gap-px overflow-hidden px-1.5 transition-all ' +
           (status.muted ? 'opacity-60' : '')
         }
       >
@@ -203,7 +205,7 @@ export default function SessionCard({
       className={
         // Flat by design: fill + instructor stripe carry the identity, no
         // shadow or raised depth.
-        'group absolute flex cursor-pointer flex-col overflow-hidden rounded-lg p-1.5 transition-all ' +
+        'group absolute flex cursor-pointer flex-col overflow-hidden p-1.5 transition-all ' +
         (status.muted ? 'opacity-60' : '')
       }
     >
