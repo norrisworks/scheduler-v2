@@ -23,6 +23,8 @@ import { buildChecks } from '../src/features/health/checks.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime , formatStampDate, TIME_CHOICES } from '../src/lib/dates.js'
 import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, gaugeCellClass, slotChipClass } from '../src/features/day/load.js'
 import { genderLabel, normalizeGender as normalizeGenderValue } from '../src/lib/gender.js'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join as joinPath } from 'node:path'
 
 const checks = []
 const eq = (label, got, want) => checks.push([label, got, want, JSON.stringify(got) === JSON.stringify(want)])
@@ -1572,6 +1574,38 @@ const noColumn = planStudentImportByCenter(
 eq('a file without a Center column falls back to the selected center',
    noColumn.centers.map((c) => c.center.name), ['Montgomeryville'])
 eq('and says so', noColumn.centers[0].fromColumn, false)
+
+// ---- every JSX component tag resolves to an import or local definition
+// A missing import builds fine (bundlers don't scope-check JSX identifiers)
+// and then throws ReferenceError AT RENDER — a blank white screen. This bug
+// shipped three times (TimeSelect in ShiftCellEditor, RescheduleDialog and
+// AddSessionDialog) before this check existed.
+{
+  // process.cwd() is the repo root when run via `npm run check`; the bundled
+  // file's own import.meta.url points into node_modules/.cache.
+  const src = joinPath(process.cwd(), 'src')
+  const files = readdirSync(src, { recursive: true })
+    .filter((f) => String(f).endsWith('.jsx'))
+  const missing = []
+  for (const rel of files) {
+    const text = readFileSync(joinPath(src, String(rel)), 'utf8')
+    const defined = new Set()
+    for (const m of text.matchAll(/import\s+([A-Za-z_$][\w$]*)\s*(?:,|\s+from)/g)) defined.add(m[1])
+    for (const m of text.matchAll(/import\s*(?:[A-Za-z_$][\w$]*\s*,\s*)?\{([^}]*)\}/g)) {
+      for (const part of m[1].split(',')) {
+        const name = part.split(' as ').pop().trim()
+        if (name) defined.add(name)
+      }
+    }
+    for (const m of text.matchAll(/import\s*\*\s*as\s+([A-Za-z_$][\w$]*)/g)) defined.add(m[1])
+    for (const m of text.matchAll(/(?:function|class)\s+([A-Z][\w$]*)/g)) defined.add(m[1])
+    for (const m of text.matchAll(/(?:const|let|var)\s+([A-Z][\w$]*)\s*=/g)) defined.add(m[1])
+    for (const m of text.matchAll(/<([A-Z][\w$]*)[\s/>]/g)) {
+      if (!defined.has(m[1])) missing.push(`${rel}: <${m[1]}>`)
+    }
+  }
+  eq('no JSX component is used without an import or local definition', missing, [])
+}
 
 // ---- time choices: the only times the app lets anyone pick
 eq('choices run 9am to 8pm on the half hour',

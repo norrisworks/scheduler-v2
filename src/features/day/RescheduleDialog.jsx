@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import Modal from '../../components/Modal'
+import TimeSelect from '../../components/TimeSelect'
 import { addDays, formatDateLong, formatTimeMeridiem, todayISO } from '../../lib/dates'
 import { rescheduleRows, validateReschedule } from './reschedule'
 
