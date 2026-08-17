@@ -72,6 +72,24 @@ export function startOfWeek(iso) {
 }
 
 /** e.g. 'Mon, Aug 10' */
+/**
+ * A real timestamp (not a date-only ISO) shown as the center-local day it
+ * happened: 'Aug 3', with the year added once it isn't this year. Used on
+ * notes, where the whole point of the date is making stale ones look stale.
+ */
+export function formatStampDate(timestamp, now = new Date()) {
+  const d = new Date(timestamp)
+  const sameYear =
+    new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric' }).format(d) ===
+    new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric' }).format(now)
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    month: 'short',
+    day: 'numeric',
+    ...(sameYear ? null : { year: 'numeric' }),
+  }).format(d)
+}
+
 export function formatDateShort(iso) {
   return new Intl.DateTimeFormat('en-US', {
     timeZone: 'UTC',

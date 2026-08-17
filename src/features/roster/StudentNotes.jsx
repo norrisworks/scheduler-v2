@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { formatStampDate } from '../../lib/dates'
 import { NOTE_TYPES, NOTE_TYPE_STYLE } from './studentFields'
 
 const inputClass =
@@ -88,6 +89,12 @@ export default function StudentNotes({ notes, saving, onAdd, onUpdate, onDelete 
                   <span className="text-[10px] font-medium text-brand-600">pinned</span>
                 )}
                 {note.resolved && <span className="text-[10px] text-slate-400">resolved</span>}
+                {/* The point of timestamped notes: a stale one should LOOK
+                    stale. Date always; author when the row has one. */}
+                <span className="text-[10px] text-slate-400">
+                  {formatStampDate(note.created_at)}
+                  {note.author_email ? ` · ${note.author_email.split('@')[0]}` : ''}
+                </span>
 
                 <div className="ml-auto flex items-center gap-1">
                   <IconButton

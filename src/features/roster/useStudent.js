@@ -25,7 +25,7 @@ export function useStudent(studentId) {
     const token = ++requestRef.current
     setLoading(true)
 
-    const [studentRes, slotRes, noteRes] = await Promise.all([
+    const [studentRes, slotRes, noteRes, authorRes] = await Promise.all([
       supabase.from('students').select('*').eq('id', studentId).single(),
       supabase
         .from('recurring_slots')
@@ -38,6 +38,9 @@ export function useStudent(studentId) {
         .select('*')
         .eq('student_id', studentId)
         .order('created_at', { ascending: false }),
+      // id -> email for the handful of staff accounts, so a note can say who
+      // wrote it. Non-fatal: a failure just leaves notes authorless.
+      supabase.from('note_authors').select('id, email'),
     ])
 
     if (token !== requestRef.current) return
@@ -49,11 +52,15 @@ export function useStudent(studentId) {
       return
     }
 
+    const authorById = new Map((authorRes.data ?? []).map((a) => [a.id, a.email]))
     setSnapshot({
       id: studentId,
       student: studentRes.data,
       slots: slotRes.data ?? EMPTY,
-      notes: noteRes.data ?? EMPTY,
+      notes: (noteRes.data ?? EMPTY).map((n) => ({
+        ...n,
+        author_email: authorById.get(n.author_id) ?? null,
+      })),
     })
     setError(null)
     setLoading(false)

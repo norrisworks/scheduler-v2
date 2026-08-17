@@ -20,7 +20,7 @@ import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } f
 import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent } from '../src/features/imports/radiusImport.js'
 import { planStudentImport, planStudentImportByCenter } from '../src/features/imports/studentImport.js'
 import { buildChecks } from '../src/features/health/checks.js'
-import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime } from '../src/lib/dates.js'
+import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime , formatStampDate } from '../src/lib/dates.js'
 import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, gaugeCellClass, slotChipClass } from '../src/features/day/load.js'
 import { genderLabel, normalizeGender as normalizeGenderValue } from '../src/lib/gender.js'
 
@@ -1521,6 +1521,15 @@ const noColumn = planStudentImportByCenter(
 eq('a file without a Center column falls back to the selected center',
    noColumn.centers.map((c) => c.center.name), ['Montgomeryville'])
 eq('and says so', noColumn.centers[0].fromColumn, false)
+
+// ---- note timestamps render as the ET day they happened
+// 11:30pm ET on Aug 3 is already Aug 4 in UTC; the note must still say Aug 3.
+eq('a late-evening ET stamp keeps its ET day',
+   formatStampDate('2026-08-04T03:30:00Z', new Date('2026-08-16T12:00:00Z')), 'Aug 3')
+eq('same year omits the year',
+   formatStampDate('2026-02-01T12:00:00Z', new Date('2026-08-16T12:00:00Z')), 'Feb 1')
+eq('an old note wears its year',
+   formatStampDate('2025-11-20T12:00:00Z', new Date('2026-08-16T12:00:00Z')), 'Nov 20, 2025')
 
 // ---- dates: always America/New_York, never toISOString
 // 9pm ET on Aug 9 is already Aug 10 in UTC. v1 showed tomorrow after 8pm.
