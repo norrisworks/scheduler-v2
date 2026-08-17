@@ -6,6 +6,7 @@ import Spinner from '../../components/Spinner'
 import Modal from '../../components/Modal'
 import StudentDrawer from '../roster/StudentDrawer'
 import InstructorForm from '../instructors/InstructorForm'
+import SourceConflictsPanel from '../day/SourceConflictsPanel'
 import { useDataHealth } from './useDataHealth'
 
 const SEVERITY = {
@@ -18,7 +19,7 @@ const SEVERITY = {
 export default function DataHealthView() {
   const { center, centerId } = useCenter()
   const { isAdmin } = useAuth()
-  const { checks, students, instructors, loading, error, refetch, patchInstructor } =
+  const { checks, sourceConflicts, students, instructors, loading, error, refetch, patchInstructor } =
     useDataHealth(centerId)
   const [open, setOpen] = useState(() => new Set())
   // A flagged row opens its editor right here; closing re-runs the checks in
@@ -70,6 +71,10 @@ export default function DataHealthView() {
       {error && (
         <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</p>
       )}
+
+      {/* Duplicate sessions across every upcoming day, resolvable in place —
+          never something that requires a database query to find. */}
+      <SourceConflictsPanel conflicts={sourceConflicts} showDates onChanged={refetch} />
 
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {loading && checks.length === 0 ? (

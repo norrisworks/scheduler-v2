@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useCenter } from '../centers/CenterProvider'
+import { supabase } from '../../lib/supabase'
 import { centerNowTime, formatTimeMeridiem, timeToMinutes, todayISO } from '../../lib/dates'
 import Spinner from '../../components/Spinner'
 import { useDaySchedule } from './useDaySchedule'
 import { buildTimeAxis } from './timeGrid'
 import { buildSlotStats, occupiesFloor } from './load'
+import { conflictKey, findSourceConflicts } from './sourceConflicts'
+import SourceConflictsPanel from './SourceConflictsPanel'
 import DayHeader from './DayHeader'
 import ScheduleGrid from './ScheduleGrid'
 import TransposedGrid from './TransposedGrid'
@@ -99,6 +102,26 @@ export default function DayView() {
   const [editingRankings, setEditingRankings] = useState(null) // an explanation row
   const [editingShifts, setEditingShifts] = useState(false)
 
+  // Radius-vs-standing-slot duplicates for this date. Dismissals are the
+  // recorded "keep both" answers; conflicts never resolve themselves.
+  const [dismissedConflicts, setDismissedConflicts] = useState(() => new Set())
+  const loadDismissals = useCallback(async () => {
+    if (!centerId || !date) return
+    const { data } = await supabase
+      .from('session_conflict_dismissals')
+      .select('student_id, date')
+      .eq('center_id', centerId)
+      .eq('date', date)
+    setDismissedConflicts(new Set((data ?? []).map((d) => conflictKey(d.student_id, d.date))))
+  }, [centerId, date])
+  useEffect(() => {
+    loadDismissals()
+  }, [loadDismissals])
+  const sourceConflicts = useMemo(
+    () => findSourceConflicts(sessions, dismissedConflicts),
+    [sessions, dismissedConflicts],
+  )
+
   // Cancelled and no-show sessions come off the grid entirely and out of every
   // count. They're still reachable in the strip under the grid.
   const gridSessions = useMemo(() => sessions.filter(occupiesFloor), [sessions])
@@ -173,6 +196,14 @@ export default function DayView() {
         onMaterialize={materialize}
         materializing={materializing}
         onAddSession={() => setAddingSession(true)}
+      />
+
+      <SourceConflictsPanel
+        conflicts={sourceConflicts}
+        onChanged={async () => {
+          await refetch()
+          await loadDismissals()
+        }}
       />
 
       {assignError && (

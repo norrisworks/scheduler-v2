@@ -10,6 +10,7 @@ import { ineligibleReason, buildCandidates, isFallbackOnly, unrankedStudents, ex
 import { placeAtRank } from '../src/features/assign/rankOrder.js'
 import { RANK_TIEBREAK, RANK_GATED_CAP, NEW_STUDENT_PREFERENCE } from '../src/features/assign/algorithmFlags.js'
 import { rescheduleRows, validateReschedule } from '../src/features/day/reschedule.js'
+import { findSourceConflicts, planSourceConflicts } from '../src/features/day/sourceConflicts.js'
 import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessage } from '../src/features/assign/algorithms.js'
 import { buildGroups } from '../src/features/day/TransposedGrid.jsx'
 import { proposeRanking, ineligibleForStudentReason, proposalReasons, sameGender, eligibleForStudent, moveEntry } from '../src/features/assign/proposeRanking.js'
@@ -647,6 +648,63 @@ eq('new-student on: an OLD student is untouched',
    autoAssignBalanced({ sessions: newSess, unassigned: newSess, instructors: flagInst,
      rankIndex: margin1, existing: new Map(), rankSeq: seqForNew, newStudentIds: new Set(),
      flags: { ...OFF, newPref: true } }).made[0].instructorId, 'fa')
+
+// ---- source conflicts: the moved-in-Radius duplicate
+// A family moves their time in Radius; the import writes the radius session
+// and the old recurring one stays. Detection only — resolution is always a
+// person clicking, never automatic.
+const cSess = (over = {}) => ({
+  id: 'x', student_id: 'stA', center_id: 'c1', date: '2026-08-20',
+  start_time: '16:00:00', duration: 60, status: 'scheduled', source: 'recurring',
+  student: { name: 'Ava B' }, ...over,
+})
+const dupPair = [
+  cSess({ id: 'rec1' }),
+  cSess({ id: 'rad1', source: 'radius', start_time: '17:00:00' }),
+]
+eq('a radius + recurring pair on one day is a conflict',
+   findSourceConflicts(dupPair).map((c) => c.key), ['stA|2026-08-20'])
+eq('the conflict carries both sides in time order',
+   findSourceConflicts(dupPair).map((c) => [c.radius[0].id, c.recurring[0].id])[0],
+   ['rad1', 'rec1'])
+eq('a dismissed pair ("keep both") is not a conflict',
+   findSourceConflicts(dupPair, new Set(['stA|2026-08-20'])).length, 0)
+eq('a lone recurring session is not a conflict',
+   findSourceConflicts([cSess()]).length, 0)
+eq('a cancelled recurring session is not a conflict',
+   findSourceConflicts([cSess({ status: 'cancelled' }), dupPair[1]]).length, 0)
+eq('manual sessions never conflict',
+   findSourceConflicts([cSess({ source: 'manual' }), dupPair[1]]).length, 0)
+eq('different days do not conflict',
+   findSourceConflicts([cSess(), cSess({ id: 'r2', source: 'radius', date: '2026-08-21' })]).length, 0)
+eq('conflicts sort by date then name',
+   findSourceConflicts([
+     ...dupPair,
+     cSess({ id: 'e1', student_id: 'stB', date: '2026-08-19', student: { name: 'Zed Q' } }),
+     cSess({ id: 'e2', student_id: 'stB', date: '2026-08-19', source: 'radius', student: { name: 'Zed Q' } }),
+   ]).map((c) => c.name), ['Zed Q', 'Ava B'])
+
+// The import-preview variant: conflicts the FILE is about to cause.
+const previewPlan = {
+  created: [{ student: { id: 'stA', name: 'Ava B' },
+              row: { date: '2026-08-20', startTime: '17:00:00', duration: 60, status: 'scheduled' } }],
+  updated: [],
+  unchanged: [],
+}
+eq('a planned radius row over an existing recurring session is flagged pre-commit',
+   planSourceConflicts(previewPlan, [cSess({ id: 'rec1' })]).map((c) => c.key),
+   ['stA|2026-08-20'])
+eq('the preview conflict shows the incoming time',
+   planSourceConflicts(previewPlan, [cSess()])[0].radius[0].start_time, '17:00:00')
+eq('a dismissed pair stays quiet in the preview too',
+   planSourceConflicts(previewPlan, [cSess()], new Set(['stA|2026-08-20'])).length, 0)
+eq('a cancelled file row causes no conflict',
+   planSourceConflicts({ ...previewPlan,
+     created: [{ student: { id: 'stA', name: 'Ava B' },
+                 row: { date: '2026-08-20', startTime: '17:00:00', status: 'cancelled' } }] },
+     [cSess()]).length, 0)
+eq('no recurring session, no conflict',
+   planSourceConflicts(previewPlan, [cSess({ source: 'manual' })]).length, 0)
 
 // ---- the unplaced report explains itself
 // Keira D's real Thursday: 4 rankings, all four instructors off shift. The

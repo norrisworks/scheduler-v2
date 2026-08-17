@@ -5,6 +5,7 @@ import { formatTimeMeridiem } from '../../lib/dates'
 import { parseTableFile } from './parseTable'
 import { nameKey } from './namingConvention'
 import { planRadiusImport } from './radiusImport'
+import { conflictKey, planSourceConflicts } from '../day/sourceConflicts'
 
 /**
  * Radius appointment import. Splits by the file's Center column, previews the
@@ -50,13 +51,20 @@ export default function RadiusImportView() {
         .filter(Boolean)
         .sort()
 
-      const sessionRes = dates.length
-        ? await supabase
-            .from('sessions')
-            .select('id, student_id, center_id, date, start_time, duration, status, source')
-            .gte('date', dates[0])
-            .lte('date', dates[dates.length - 1])
-        : { data: [] }
+      const [sessionRes, dismissRes] = dates.length
+        ? await Promise.all([
+            supabase
+              .from('sessions')
+              .select('id, student_id, center_id, date, start_time, duration, status, source')
+              .gte('date', dates[0])
+              .lte('date', dates[dates.length - 1]),
+            supabase
+              .from('session_conflict_dismissals')
+              .select('student_id, date')
+              .gte('date', dates[0])
+              .lte('date', dates[dates.length - 1]),
+          ])
+        : [{ data: [] }, { data: [] }]
       if (sessionRes.error) throw new Error(sessionRes.error.message)
 
       setRows(parsed)
@@ -64,6 +72,7 @@ export default function RadiusImportView() {
         centers: centerRes.data ?? [],
         students: studentRes.data ?? [],
         sessions: sessionRes.data ?? [],
+        dismissals: dismissRes.data ?? [],
       })
     } catch (err) {
       setError(err.message)
@@ -115,6 +124,33 @@ export default function RadiusImportView() {
     }
   }, [rows, reference, links])
 
+  // Duplicates this file would cause or keep: the incoming Radius session
+  // beside the standing-slot session already in the database. Decided HERE,
+  // before commit — nothing is ever auto-cancelled.
+  const conflictsByCenter = useMemo(() => {
+    if (!plan || !reference) return new Map()
+    const dismissed = new Set(
+      (reference.dismissals ?? []).map((d) => conflictKey(d.student_id, d.date)),
+    )
+    const out = new Map()
+    for (const center of plan.centers) {
+      const withLinked = {
+        ...center,
+        created: [...center.created, ...center.linked.map((l) => ({ ...l }))],
+      }
+      const found = planSourceConflicts(
+        withLinked,
+        reference.sessions.filter((s) => s.center_id === center.center.id),
+        dismissed,
+      )
+      if (found.length > 0) out.set(center.center.id, found)
+    }
+    return out
+  }, [plan, reference])
+  // conflict key -> 'cancel' | 'both' | undefined (= decide later, stays
+  // flagged on the day view and data health after import).
+  const [conflictChoices, setConflictChoices] = useState({})
+
   async function commit() {
     if (!plan) return
     setBusy(true)
@@ -149,6 +185,29 @@ export default function RadiusImportView() {
           updated += center.updated.length
         }
         flagged += center.flagged.length
+
+        // Apply the duplicate decisions made in the preview. 'Decide later'
+        // (no choice) leaves the pair flagged on the day view and data health.
+        for (const conflict of conflictsByCenter.get(center.center.id) ?? []) {
+          const choice = conflictChoices[conflict.key]
+          if (choice === 'cancel') {
+            const { error } = await supabase
+              .from('sessions')
+              .update({ status: 'cancelled', is_modified: true, updated_at: new Date().toISOString() })
+              .in('id', conflict.recurring.map((s) => s.id))
+            if (error) throw new Error(error.message)
+          } else if (choice === 'both') {
+            const { error } = await supabase.from('session_conflict_dismissals').upsert(
+              {
+                student_id: conflict.studentId,
+                center_id: center.center.id,
+                date: conflict.date,
+              },
+              { onConflict: 'student_id,date' },
+            )
+            if (error) throw new Error(error.message)
+          }
+        }
 
         // Remember manual links so the next import matches on its own.
         for (const { row, student } of center.linked) {
@@ -279,6 +338,55 @@ export default function RadiusImportView() {
                   <Stat n={c.flagged.length} label="flagged" tone="zinc" />
                 </span>
               </div>
+
+              {(conflictsByCenter.get(c.center.id) ?? []).length > 0 && (
+                <div className="border-b border-orange-200 bg-orange-50 p-3">
+                  <p className="text-xs font-semibold text-orange-900">
+                    Duplicate sessions this import would keep — decide now or later
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-orange-800">
+                    The file's Radius session lands on a day where the standing slot already made
+                    one. Nothing is cancelled unless you choose it; "decide later" leaves the pair
+                    flagged on the day view and Data health.
+                  </p>
+                  <ul className="mt-1.5 space-y-1">
+                    {(conflictsByCenter.get(c.center.id) ?? []).map((conflict) => (
+                      <li
+                        key={conflict.key}
+                        className="flex flex-wrap items-center gap-2 text-[11px] text-orange-900"
+                      >
+                        <span className="font-semibold">{conflict.name}</span>
+                        <span>{conflict.date}</span>
+                        <span>
+                          Radius{' '}
+                          <span className="font-medium">
+                            {conflict.radius.map((s) => formatTimeMeridiem(s.start_time)).join(', ')}
+                          </span>
+                          {' · '}standing slot{' '}
+                          <span className="font-medium">
+                            {conflict.recurring.map((s) => formatTimeMeridiem(s.start_time)).join(', ')}
+                          </span>
+                        </span>
+                        <select
+                          value={conflictChoices[conflict.key] ?? ''}
+                          onChange={(e) =>
+                            setConflictChoices((prev) => ({
+                              ...prev,
+                              [conflict.key]: e.target.value || undefined,
+                            }))
+                          }
+                          aria-label={`Resolution for ${conflict.name} on ${conflict.date}`}
+                          className="ml-auto shrink-0 rounded border border-orange-300 bg-white px-1.5 py-0.5 text-[11px]"
+                        >
+                          <option value="">Decide later</option>
+                          <option value="cancel">Keep Radius, cancel the standing-slot session</option>
+                          <option value="both">Keep both — genuine double session</option>
+                        </select>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {c.unmatched.some((r) => r.centerMismatch) && (
                 <div className="border-b border-red-200 bg-red-50 p-3">

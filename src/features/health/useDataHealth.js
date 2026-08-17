@@ -1,5 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { conflictKey, findSourceConflicts } from '../day/sourceConflicts'
 import { buildChecks } from './checks'
 
 const EMPTY = []
@@ -15,6 +16,8 @@ export function useDataHealth(centerId) {
     students: EMPTY,
     instructors: EMPTY,
     rankings: EMPTY,
+    sessions: EMPTY,
+    dismissals: EMPTY,
   })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -25,7 +28,7 @@ export function useDataHealth(centerId) {
     const token = ++requestRef.current
     setLoading(true)
 
-    const [studentRes, instructorRes, rankRes] = await Promise.all([
+    const [studentRes, instructorRes, rankRes, sessionRes, dismissRes] = await Promise.all([
       supabase
         .from('students')
         .select('id, name, grade, level, gender, school, slot_certainty, academic_status, default_duration, active')
@@ -41,6 +44,19 @@ export function useDataHealth(centerId) {
         .eq('active', true)
         .order('name'),
       supabase.from('instructor_rankings').select('student_id, instructor_id'),
+      // For the duplicate-session resolver: every upcoming scheduled session
+      // that could pair a radius row with a standing-slot row.
+      supabase
+        .from('sessions')
+        .select('id, student_id, center_id, date, start_time, duration, status, source, student:students(name)')
+        .eq('center_id', centerId)
+        .eq('status', 'scheduled')
+        .gte('date', new Date().toISOString().slice(0, 10))
+        .in('source', ['radius', 'recurring']),
+      supabase
+        .from('session_conflict_dismissals')
+        .select('student_id, date')
+        .eq('center_id', centerId),
     ])
 
     if (token !== requestRef.current) return
@@ -56,6 +72,8 @@ export function useDataHealth(centerId) {
       students: studentRes.data ?? EMPTY,
       instructors: instructorRes.data ?? EMPTY,
       rankings: rankRes.data ?? EMPTY,
+      sessions: sessionRes.data ?? EMPTY,
+      dismissals: dismissRes.data ?? EMPTY,
     })
     setError(null)
     setLoading(false)
@@ -73,6 +91,15 @@ export function useDataHealth(centerId) {
     () => buildChecks(students, instructors, isCurrent ? snapshot.rankings : EMPTY),
     [students, instructors, snapshot.rankings, isCurrent],
   )
+
+  // Radius-vs-standing-slot duplicates across every upcoming day.
+  const sourceConflicts = useMemo(() => {
+    if (!isCurrent) return []
+    const dismissed = new Set(
+      snapshot.dismissals.map((d) => conflictKey(d.student_id, d.date)),
+    )
+    return findSourceConflicts(snapshot.sessions, dismissed)
+  }, [snapshot.sessions, snapshot.dismissals, isCurrent])
 
   /**
    * Autosave patch for the instructor editor opened from a flagged row.
@@ -93,6 +120,7 @@ export function useDataHealth(centerId) {
 
   return {
     checks,
+    sourceConflicts,
     students,
     instructors,
     loading: loading || !isCurrent,
