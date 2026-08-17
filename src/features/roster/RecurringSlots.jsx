@@ -1,6 +1,8 @@
-import { useState } from 'react'
-import { formatTimeMeridiem, todayISO } from '../../lib/dates'
+import { useEffect, useRef, useState } from 'react'
+import { todayISO } from '../../lib/dates'
 import { DAYS } from './studentFields'
+
+const TIME_DEBOUNCE_MS = 500
 
 const inputClass =
   'rounded-lg border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200'
@@ -43,10 +45,24 @@ export default function RecurringSlots({ slots, saving, defaultDuration, onAdd, 
                   (ended ? 'bg-slate-50 text-slate-400' : 'bg-white text-slate-700')
                 }
               >
-                <span className="w-10 shrink-0 font-semibold">
-                  {DAYS.find((d) => d.value === slot.day_of_week)?.short ?? '—'}
-                </span>
-                <span className="shrink-0">{formatTimeMeridiem(slot.start_time)}</span>
+                {/* Day and time are editable IN PLACE and autosave; each
+                    change re-materializes this student's future unmodified
+                    sessions — which MOVE (same rows, assignments intact),
+                    never cancel-and-recreate. */}
+                <select
+                  value={slot.day_of_week}
+                  disabled={saving}
+                  onChange={(e) => onUpdate(slot.id, { day_of_week: Number(e.target.value) })}
+                  aria-label="Slot day"
+                  className="shrink-0 rounded border border-slate-200 bg-transparent px-1 py-0.5 text-sm font-semibold"
+                >
+                  {DAYS.map((d) => (
+                    <option key={d.value} value={d.value}>
+                      {d.short}
+                    </option>
+                  ))}
+                </select>
+                <SlotTime slot={slot} saving={saving} onUpdate={onUpdate} />
                 <span className="shrink-0 text-xs text-slate-400">{slot.duration}m</span>
                 {slot.effective_until && (
                   <span className="truncate text-xs text-slate-400">
@@ -120,3 +136,46 @@ export default function RecurringSlots({ slots, saving, defaultDuration, onAdd, 
     </div>
   )
 }
+
+/** Time input with the app-standard debounce; a pending edit flushes on unmount. */
+function SlotTime({ slot, saving, onUpdate }) {
+  const [value, setValue] = useState(slot.start_time.slice(0, 5))
+  const pending = useRef(null)
+
+  useEffect(() => {
+    setValue(slot.start_time.slice(0, 5))
+  }, [slot.start_time])
+
+  useEffect(
+    () => () => {
+      if (pending.current) {
+        clearTimeout(pending.current.timer)
+        pending.current.write()
+      }
+    },
+    [],
+  )
+
+  function change(next) {
+    setValue(next)
+    if (pending.current) clearTimeout(pending.current.timer)
+    const write = () => {
+      pending.current = null
+      if (next && `${next}:00` !== slot.start_time) onUpdate(slot.id, { start_time: `${next}:00` })
+    }
+    pending.current = { write, timer: setTimeout(write, TIME_DEBOUNCE_MS) }
+  }
+
+  return (
+    <input
+      type="time"
+      step="900"
+      value={value}
+      disabled={saving}
+      onChange={(e) => change(e.target.value)}
+      aria-label="Slot start time"
+      className="shrink-0 rounded border border-slate-200 bg-transparent px-1 py-0.5 text-sm"
+    />
+  )
+}
+
