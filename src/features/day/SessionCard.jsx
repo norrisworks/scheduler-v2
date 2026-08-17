@@ -146,7 +146,7 @@ export default function SessionCard({
       <div
         {...wrapperProps}
         className={
-          'group absolute flex cursor-pointer flex-col justify-center gap-px overflow-hidden rounded-lg px-1.5 shadow-sm transition-all ' +
+          'group absolute flex cursor-pointer flex-col justify-center gap-px overflow-hidden rounded-lg px-1.5 transition-all ' +
           (status.muted ? 'opacity-60' : '')
         }
       >
@@ -201,7 +201,9 @@ export default function SessionCard({
     <div
       {...wrapperProps}
       className={
-        'group absolute flex cursor-pointer flex-col overflow-hidden rounded-lg p-1.5 shadow-sm transition-all ' +
+        // Flat by design: fill + instructor stripe carry the identity, no
+        // shadow or raised depth.
+        'group absolute flex cursor-pointer flex-col overflow-hidden rounded-lg p-1.5 transition-all ' +
         (status.muted ? 'opacity-60' : '')
       }
     >
