@@ -5,7 +5,8 @@ import { formatTimeMeridiem } from '../../lib/dates'
 import { parseTableFile } from './parseTable'
 import { nameKey } from './namingConvention'
 import { planRadiusImport } from './radiusImport'
-import { conflictKey, planSourceConflicts } from '../day/sourceConflicts'
+import { conflictKey, planSourceConflicts, planCrossDayConflicts } from '../day/sourceConflicts'
+import { DAYS } from '../roster/studentFields'
 
 /**
  * Radius appointment import. Splits by the file's Center column, previews the
@@ -51,7 +52,7 @@ export default function RadiusImportView() {
         .filter(Boolean)
         .sort()
 
-      const [sessionRes, dismissRes] = dates.length
+      const [sessionRes, dismissRes, slotDayRes] = dates.length
         ? await Promise.all([
             supabase
               .from('sessions')
@@ -63,8 +64,9 @@ export default function RadiusImportView() {
               .select('student_id, date')
               .gte('date', dates[0])
               .lte('date', dates[dates.length - 1]),
+            supabase.from('session_cross_day_dismissals').select('student_id, day_of_week'),
           ])
-        : [{ data: [] }, { data: [] }]
+        : [{ data: [] }, { data: [] }, { data: [] }]
       if (sessionRes.error) throw new Error(sessionRes.error.message)
 
       setRows(parsed)
@@ -73,6 +75,7 @@ export default function RadiusImportView() {
         students: studentRes.data ?? [],
         sessions: sessionRes.data ?? [],
         dismissals: dismissRes.data ?? [],
+        slotDayDismissals: slotDayRes.data ?? [],
       })
     } catch (err) {
       setError(err.message)
@@ -151,6 +154,30 @@ export default function RadiusImportView() {
   // flagged on the day view and data health after import).
   const [conflictChoices, setConflictChoices] = useState({})
 
+  // The cross-day question, asked at import time: a standing-slot session
+  // the file skipped while the same student has a file session elsewhere in
+  // the week. May be a move, may be a makeup — the file cannot tell.
+  const crossDayByCenter = useMemo(() => {
+    if (!plan || !reference) return new Map()
+    const dismissedKeys = new Set(
+      (reference.dismissals ?? []).map((d) => conflictKey(d.student_id, d.date)),
+    )
+    const dismissedSlotDays = new Set(
+      (reference.slotDayDismissals ?? []).map((d) => `${d.student_id}|${d.day_of_week}`),
+    )
+    const nameOf = new Map(reference.students.map((s) => [s.id, s.name]))
+    const out = new Map()
+    for (const center of plan.centers) {
+      const found = planCrossDayConflicts(center, { dismissedKeys, dismissedSlotDays }).map(
+        (c) => ({ ...c, name: c.name ?? nameOf.get(c.studentId) ?? 'Unknown' }),
+      )
+      if (found.length > 0) out.set(center.center.id, found)
+    }
+    return out
+  }, [plan, reference])
+  // key -> 'cancel' | 'both' | 'never' | undefined (= decide later).
+  const [crossDayChoices, setCrossDayChoices] = useState({})
+
   async function commit() {
     if (!plan) return
     setBusy(true)
@@ -204,6 +231,35 @@ export default function RadiusImportView() {
                 date: conflict.date,
               },
               { onConflict: 'student_id,date' },
+            )
+            if (error) throw new Error(error.message)
+          }
+        }
+
+        // Cross-day decisions. 'Decide later' leaves the pair flagged on the
+        // day view and data health — nothing is ever auto-removed.
+        for (const conflict of crossDayByCenter.get(center.center.id) ?? []) {
+          const choice = crossDayChoices[conflict.key]
+          if (choice === 'cancel') {
+            const { error } = await supabase
+              .from('sessions')
+              .update({ status: 'cancelled', is_modified: true, updated_at: new Date().toISOString() })
+              .in('id', conflict.recurring.map((s) => s.id))
+            if (error) throw new Error(error.message)
+          } else if (choice === 'both') {
+            const { error } = await supabase.from('session_conflict_dismissals').upsert(
+              { student_id: conflict.studentId, center_id: center.center.id, date: conflict.date },
+              { onConflict: 'student_id,date' },
+            )
+            if (error) throw new Error(error.message)
+          } else if (choice === 'never') {
+            const { error } = await supabase.from('session_cross_day_dismissals').upsert(
+              {
+                student_id: conflict.studentId,
+                center_id: center.center.id,
+                day_of_week: conflict.dayOfWeek,
+              },
+              { onConflict: 'student_id,day_of_week' },
             )
             if (error) throw new Error(error.message)
           }
@@ -385,6 +441,60 @@ export default function RadiusImportView() {
                       </li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              {(crossDayByCenter.get(c.center.id) ?? []).length > 0 && (
+                <div className="border-b border-orange-200 bg-orange-50 p-3">
+                  <p className="text-xs font-semibold text-orange-900">
+                    Standing-slot sessions the file skipped, with a same-week session elsewhere
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-orange-800">
+                    Each may be a MOVED session — or a legitimate extra (makeups and vacation swaps
+                    are common). Nothing is removed unless you choose it; "decide later" keeps both
+                    and leaves the pair flagged on the day view and Data health.
+                  </p>
+                  <ul className="mt-1.5 space-y-1">
+                    {(crossDayByCenter.get(c.center.id) ?? []).map((conflict) => (
+                      <li
+                        key={conflict.key}
+                        className="flex flex-wrap items-center gap-2 text-[11px] text-orange-900"
+                      >
+                        <span className="font-semibold">{conflict.name}</span>
+                        <span>
+                          slot {DAYS.find((d) => d.value === conflict.dayOfWeek)?.short}{' '}
+                          {conflict.date}{' '}
+                          {conflict.recurring.map((s) => formatTimeMeridiem(s.start_time)).join(', ')}{' '}
+                          not in file · file has{' '}
+                          <span className="font-medium">
+                            {conflict.radius
+                              .map((s) => `${s.date} ${formatTimeMeridiem(s.start_time)}`)
+                              .join(', ')}
+                          </span>
+                        </span>
+                        <select
+                          value={crossDayChoices[conflict.key] ?? ''}
+                          onChange={(e) =>
+                            setCrossDayChoices((prev) => ({
+                              ...prev,
+                              [conflict.key]: e.target.value || undefined,
+                            }))
+                          }
+                          aria-label={`Cross-day resolution for ${conflict.name}`}
+                          className="ml-auto shrink-0 rounded border border-orange-300 bg-white px-1.5 py-0.5 text-[11px]"
+                        >
+                          <option value="">Decide later — keep both for now</option>
+                          <option value="cancel">Moved — cancel the standing-slot session</option>
+                          <option value="both">Extra session — keep both (this week)</option>
+                          <option value="never">Never ask about this slot again</option>
+                        </select>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-1 text-[10px] text-orange-700">
+                    If a move is permanent, also edit the student's standing slot afterwards —
+                    otherwise the same question returns every week.
+                  </p>
                 </div>
               )}
 

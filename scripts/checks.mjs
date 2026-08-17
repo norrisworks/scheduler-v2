@@ -10,7 +10,7 @@ import { ineligibleReason, buildCandidates, isFallbackOnly, unrankedStudents, ex
 import { placeAtRank } from '../src/features/assign/rankOrder.js'
 import { RANK_TIEBREAK, RANK_GATED_CAP, NEW_STUDENT_PREFERENCE } from '../src/features/assign/algorithmFlags.js'
 import { rescheduleRows, validateReschedule } from '../src/features/day/reschedule.js'
-import { findSourceConflicts, planSourceConflicts } from '../src/features/day/sourceConflicts.js'
+import { findSourceConflicts, planSourceConflicts, findCrossDayConflicts, planCrossDayConflicts } from '../src/features/day/sourceConflicts.js'
 import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessage } from '../src/features/assign/algorithms.js'
 import { buildGroups } from '../src/features/day/TransposedGrid.jsx'
 import { proposeRanking, ineligibleForStudentReason, proposalReasons, sameGender, eligibleForStudent, moveEntry } from '../src/features/assign/proposeRanking.js'
@@ -683,6 +683,57 @@ eq('conflicts sort by date then name',
      cSess({ id: 'e1', student_id: 'stB', date: '2026-08-19', student: { name: 'Zed Q' } }),
      cSess({ id: 'e2', student_id: 'stB', date: '2026-08-19', source: 'radius', student: { name: 'Zed Q' } }),
    ]).map((c) => c.name), ['Zed Q', 'Ava B'])
+
+// ---- cross-day: the moved-slot pattern, always a question
+// The scenario: slots Tue+Thu, parent moves Tuesday to Monday in Radius. The
+// import creates Monday; Tuesday's recurring session stays (absence never
+// deletes). Same student, twice in one week, different days.
+const wk = (over = {}) => cSess(over) // same session fixture
+const tueThu = [
+  wk({ id: 'mon', student_id: 'stA', date: '2026-08-17', source: 'radius' }),   // created by import
+  wk({ id: 'tue', student_id: 'stA', date: '2026-08-18', source: 'recurring' }), // the stale slot
+  wk({ id: 'thu', student_id: 'stA', date: '2026-08-20', source: 'recurring' }),
+  wk({ id: 'thuR', student_id: 'stA', date: '2026-08-20', source: 'radius' }),   // Thu matched in file
+]
+eq('the skipped slot day is questioned; the matched day is not',
+   findCrossDayConflicts(tueThu).map((c) => c.key), ['stA|2026-08-18'])
+eq('the question carries both sides',
+   findCrossDayConflicts(tueThu).map((c) => [c.recurring[0].id, c.radius.map((r) => r.id)])[0],
+   ['tue', ['mon', 'thuR']])
+eq('no radius elsewhere in the week, no question',
+   findCrossDayConflicts([wk({ id: 'tue', date: '2026-08-18', source: 'recurring' })]).length, 0)
+eq('a different WEEK is never paired',
+   findCrossDayConflicts([
+     wk({ id: 'mon', date: '2026-08-24', source: 'radius' }),
+     wk({ id: 'tue', date: '2026-08-18', source: 'recurring' }),
+   ]).length, 0)
+eq('keep-both (this week) silences that date',
+   findCrossDayConflicts(tueThu, { dismissedKeys: new Set(['stA|2026-08-18']) }).length, 0)
+eq('never-ask silences the weekday permanently',
+   findCrossDayConflicts(tueThu, { dismissedSlotDays: new Set(['stA|2']) }).length, 0)
+eq('merged overlapping lists do not double-count the radius side',
+   findCrossDayConflicts([...tueThu, tueThu[0]]).map((c) => c.radius.length)[0], 2)
+eq('a cancelled recurring session is not questioned',
+   findCrossDayConflicts(tueThu.map((s) => (s.id === 'tue' ? { ...s, status: 'cancelled' } : s)))
+     .length, 0)
+
+// Import-preview variant: flagged (absent-from-file) + a file row same week.
+const crossPlan = {
+  flagged: [wk({ id: 'tue', student_id: 'stA', date: '2026-08-18', source: 'recurring' })],
+  created: [{ student: { id: 'stA', name: 'Ava B' },
+              row: { date: '2026-08-17', startTime: '16:00:00', status: 'scheduled' } }],
+  updated: [], unchanged: [], linked: [],
+}
+eq('the preview asks the same question before commit',
+   planCrossDayConflicts(crossPlan).map((c) => [c.key, c.radius[0].date])[0],
+   ['stA|2026-08-18', '2026-08-17'])
+eq('a cancelled file row does not pair',
+   planCrossDayConflicts({ ...crossPlan,
+     created: [{ student: { id: 'stA', name: 'Ava B' },
+                 row: { date: '2026-08-17', startTime: '16:00:00', status: 'cancelled' } }] })
+     .length, 0)
+eq('preview honors never-ask too',
+   planCrossDayConflicts(crossPlan, { dismissedSlotDays: new Set(['stA|2']) }).length, 0)
 
 // The import-preview variant: conflicts the FILE is about to cause.
 const previewPlan = {

@@ -19,8 +19,17 @@ const SEVERITY = {
 export default function DataHealthView() {
   const { center, centerId } = useCenter()
   const { isAdmin } = useAuth()
-  const { checks, sourceConflicts, students, instructors, loading, error, refetch, patchInstructor } =
-    useDataHealth(centerId)
+  const {
+    checks,
+    sourceConflicts,
+    crossDayConflicts,
+    students,
+    instructors,
+    loading,
+    error,
+    refetch,
+    patchInstructor,
+  } = useDataHealth(centerId)
   const [open, setOpen] = useState(() => new Set())
   // A flagged row opens its editor right here; closing re-runs the checks in
   // place, so a fixed item drops off the list without a reload. The
@@ -74,7 +83,13 @@ export default function DataHealthView() {
 
       {/* Duplicate sessions across every upcoming day, resolvable in place —
           never something that requires a database query to find. */}
-      <SourceConflictsPanel conflicts={sourceConflicts} showDates onChanged={refetch} />
+      <SourceConflictsPanel
+        conflicts={sourceConflicts}
+        crossDay={crossDayConflicts}
+        showDates
+        onEditStudent={(studentId) => setEditing({ entity: 'student', id: studentId })}
+        onChanged={refetch}
+      />
 
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {loading && checks.length === 0 ? (

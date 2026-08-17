@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useCenter } from '../centers/CenterProvider'
 import { supabase } from '../../lib/supabase'
-import { centerNowTime, formatTimeMeridiem, timeToMinutes, todayISO } from '../../lib/dates'
+import { addDays, centerNowTime, formatTimeMeridiem, timeToMinutes, todayISO } from '../../lib/dates'
 import Spinner from '../../components/Spinner'
 import { useDaySchedule } from './useDaySchedule'
 import { buildTimeAxis } from './timeGrid'
 import { buildSlotStats, occupiesFloor } from './load'
-import { conflictKey, findSourceConflicts } from './sourceConflicts'
+import { conflictKey, findSourceConflicts, findCrossDayConflicts, weekAnchorOf } from './sourceConflicts'
 import SourceConflictsPanel from './SourceConflictsPanel'
 import DayHeader from './DayHeader'
 import ScheduleGrid from './ScheduleGrid'
@@ -102,24 +102,63 @@ export default function DayView() {
   const [editingRankings, setEditingRankings] = useState(null) // an explanation row
   const [editingShifts, setEditingShifts] = useState(false)
 
-  // Radius-vs-standing-slot duplicates for this date. Dismissals are the
-  // recorded "keep both" answers; conflicts never resolve themselves.
-  const [dismissedConflicts, setDismissedConflicts] = useState(() => new Set())
-  const loadDismissals = useCallback(async () => {
+  // Radius-vs-standing-slot duplicates for this date, same-day and
+  // cross-day. Dismissals are recorded answers; conflicts never resolve
+  // themselves. Cross-day needs the whole week's radius sessions, since the
+  // pattern is "moved to a different day".
+  const [conflictContext, setConflictContext] = useState({
+    dismissed: new Set(),
+    slotDayDismissed: new Set(),
+    weekRadius: [],
+  })
+  const loadConflictContext = useCallback(async () => {
     if (!centerId || !date) return
-    const { data } = await supabase
-      .from('session_conflict_dismissals')
-      .select('student_id, date')
-      .eq('center_id', centerId)
-      .eq('date', date)
-    setDismissedConflicts(new Set((data ?? []).map((d) => conflictKey(d.student_id, d.date))))
+    const weekStart = weekAnchorOf(date)
+    const weekEnd = addDays(weekStart, 6)
+    const [dismissRes, slotDayRes, radiusRes] = await Promise.all([
+      supabase
+        .from('session_conflict_dismissals')
+        .select('student_id, date')
+        .eq('center_id', centerId)
+        .gte('date', weekStart)
+        .lte('date', weekEnd),
+      supabase
+        .from('session_cross_day_dismissals')
+        .select('student_id, day_of_week')
+        .eq('center_id', centerId),
+      supabase
+        .from('sessions')
+        .select('id, student_id, center_id, date, start_time, duration, status, source')
+        .eq('center_id', centerId)
+        .eq('source', 'radius')
+        .eq('status', 'scheduled')
+        .gte('date', weekStart)
+        .lte('date', weekEnd),
+    ])
+    setConflictContext({
+      dismissed: new Set((dismissRes.data ?? []).map((d) => conflictKey(d.student_id, d.date))),
+      slotDayDismissed: new Set(
+        (slotDayRes.data ?? []).map((d) => `${d.student_id}|${d.day_of_week}`),
+      ),
+      weekRadius: radiusRes.data ?? [],
+    })
   }, [centerId, date])
   useEffect(() => {
-    loadDismissals()
-  }, [loadDismissals])
+    loadConflictContext()
+  }, [loadConflictContext])
   const sourceConflicts = useMemo(
-    () => findSourceConflicts(sessions, dismissedConflicts),
-    [sessions, dismissedConflicts],
+    () => findSourceConflicts(sessions, conflictContext.dismissed),
+    [sessions, conflictContext.dismissed],
+  )
+  const crossDayConflicts = useMemo(
+    () =>
+      findCrossDayConflicts([...sessions, ...conflictContext.weekRadius], {
+        dismissedKeys: conflictContext.dismissed,
+        dismissedSlotDays: conflictContext.slotDayDismissed,
+        // Only surface pairs whose questionable session is on the date being
+        // viewed — the other days' rows show up on their own days.
+      }).filter((c) => c.date === date),
+    [sessions, conflictContext, date],
   )
 
   // Cancelled and no-show sessions come off the grid entirely and out of every
@@ -200,9 +239,11 @@ export default function DayView() {
 
       <SourceConflictsPanel
         conflicts={sourceConflicts}
+        crossDay={crossDayConflicts}
+        onEditStudent={(studentId) => setOpenStudent({ studentId })}
         onChanged={async () => {
           await refetch()
-          await loadDismissals()
+          await loadConflictContext()
         }}
       />
 

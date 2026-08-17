@@ -1,6 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { conflictKey, findSourceConflicts } from '../day/sourceConflicts'
+import { conflictKey, findSourceConflicts, findCrossDayConflicts } from '../day/sourceConflicts'
 import { buildChecks } from './checks'
 
 const EMPTY = []
@@ -18,6 +18,7 @@ export function useDataHealth(centerId) {
     rankings: EMPTY,
     sessions: EMPTY,
     dismissals: EMPTY,
+    slotDayDismissals: EMPTY,
   })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -28,7 +29,7 @@ export function useDataHealth(centerId) {
     const token = ++requestRef.current
     setLoading(true)
 
-    const [studentRes, instructorRes, rankRes, sessionRes, dismissRes] = await Promise.all([
+    const [studentRes, instructorRes, rankRes, sessionRes, dismissRes, slotDayRes] = await Promise.all([
       supabase
         .from('students')
         .select('id, name, grade, level, gender, school, slot_certainty, academic_status, default_duration, active')
@@ -57,6 +58,10 @@ export function useDataHealth(centerId) {
         .from('session_conflict_dismissals')
         .select('student_id, date')
         .eq('center_id', centerId),
+      supabase
+        .from('session_cross_day_dismissals')
+        .select('student_id, day_of_week')
+        .eq('center_id', centerId),
     ])
 
     if (token !== requestRef.current) return
@@ -74,6 +79,7 @@ export function useDataHealth(centerId) {
       rankings: rankRes.data ?? EMPTY,
       sessions: sessionRes.data ?? EMPTY,
       dismissals: dismissRes.data ?? EMPTY,
+      slotDayDismissals: slotDayRes.data ?? EMPTY,
     })
     setError(null)
     setLoading(false)
@@ -92,14 +98,24 @@ export function useDataHealth(centerId) {
     [students, instructors, snapshot.rankings, isCurrent],
   )
 
-  // Radius-vs-standing-slot duplicates across every upcoming day.
-  const sourceConflicts = useMemo(() => {
-    if (!isCurrent) return []
+  // Radius-vs-standing-slot duplicates across every upcoming day, same-day
+  // and cross-day.
+  const conflictSets = useMemo(() => {
+    if (!isCurrent) return { sameDate: [], crossDay: [] }
     const dismissed = new Set(
       snapshot.dismissals.map((d) => conflictKey(d.student_id, d.date)),
     )
-    return findSourceConflicts(snapshot.sessions, dismissed)
-  }, [snapshot.sessions, snapshot.dismissals, isCurrent])
+    const slotDays = new Set(
+      snapshot.slotDayDismissals.map((d) => `${d.student_id}|${d.day_of_week}`),
+    )
+    return {
+      sameDate: findSourceConflicts(snapshot.sessions, dismissed),
+      crossDay: findCrossDayConflicts(snapshot.sessions, {
+        dismissedKeys: dismissed,
+        dismissedSlotDays: slotDays,
+      }),
+    }
+  }, [snapshot.sessions, snapshot.dismissals, snapshot.slotDayDismissals, isCurrent])
 
   /**
    * Autosave patch for the instructor editor opened from a flagged row.
@@ -120,7 +136,8 @@ export function useDataHealth(centerId) {
 
   return {
     checks,
-    sourceConflicts,
+    sourceConflicts: conflictSets.sameDate,
+    crossDayConflicts: conflictSets.crossDay,
     students,
     instructors,
     loading: loading || !isCurrent,

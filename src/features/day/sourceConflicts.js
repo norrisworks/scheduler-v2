@@ -45,6 +45,126 @@ export function findSourceConflicts(sessions, dismissedKeys = new Set()) {
   return conflicts.sort((a, b) => a.date.localeCompare(b.date) || (a.name ?? '').localeCompare(b.name ?? ''))
 }
 
+import { addDays, dayOfWeek } from '../../lib/dates'
+
+/** Sunday-anchored week, matching the materializer's pairing. */
+export const weekAnchorOf = (dateISO) => addDays(dateISO, -dayOfWeek(dateISO))
+
+/**
+ * The CROSS-DAY pattern: the parent moves Tuesday to Monday in Radius, the
+ * import creates Monday, and Tuesday's standing-slot session stays (absence
+ * never deletes — rule one is always err toward keeping). The student is on
+ * the week twice on different days.
+ *
+ * This is a QUESTION, never a conclusion: the same shape is also a makeup or
+ * a vacation swap, which are common. Detection only — every resolution is a
+ * person choosing.
+ *
+ * A conflict is one scheduled recurring-source session R where, in R's week,
+ * the student has ≥1 scheduled radius-source session on a DIFFERENT date and
+ * none on R's own date (same-date pairs are the other conflict type).
+ *
+ * dismissedKeys: `${studentId}|${date}` — "keep both, this week".
+ * dismissedSlotDays: `${studentId}|${dayOfWeek}` — "never ask about this slot".
+ */
+export function findCrossDayConflicts(
+  sessions,
+  { dismissedKeys = new Set(), dismissedSlotDays = new Set() } = {},
+) {
+  const radiusByStudentWeek = new Map()
+  const radiusDates = new Set()
+  const seenIds = new Set()
+  for (const s of sessions) {
+    if (s.source !== 'radius' || s.status !== 'scheduled') continue
+    // Callers may merge overlapping lists (today's sessions + the week's
+    // radius rows) — the same row must not count twice.
+    if (s.id != null) {
+      if (seenIds.has(s.id)) continue
+      seenIds.add(s.id)
+    }
+    radiusDates.add(`${s.student_id}|${s.date}`)
+    const wk = `${s.student_id}|${weekAnchorOf(s.date)}`
+    radiusByStudentWeek.set(wk, [...(radiusByStudentWeek.get(wk) ?? []), s])
+  }
+
+  const conflicts = []
+  for (const s of sessions) {
+    if (s.source !== 'recurring' || s.status !== 'scheduled') continue
+    if (radiusDates.has(`${s.student_id}|${s.date}`)) continue
+    const sameWeek = (radiusByStudentWeek.get(`${s.student_id}|${weekAnchorOf(s.date)}`) ?? []).filter(
+      (x) => x.date !== s.date,
+    )
+    if (sameWeek.length === 0) continue
+    const key = conflictKey(s.student_id, s.date)
+    if (dismissedKeys.has(key)) continue
+    if (dismissedSlotDays.has(`${s.student_id}|${dayOfWeek(s.date)}`)) continue
+    conflicts.push({
+      key,
+      studentId: s.student_id,
+      date: s.date,
+      dayOfWeek: dayOfWeek(s.date),
+      name: s.student?.name ?? null,
+      centerId: s.center_id ?? null,
+      recurring: [s],
+      radius: [...sameWeek].sort((a, b) => a.date.localeCompare(b.date)),
+    })
+  }
+  return conflicts.sort(
+    (a, b) => a.date.localeCompare(b.date) || (a.name ?? '').localeCompare(b.name ?? ''),
+  )
+}
+
+/**
+ * Import-preview variant of the cross-day pattern: a recurring session the
+ * plan FLAGGED (in-window but absent from the file) whose student has a file
+ * row elsewhere in the same week. Same shape as findCrossDayConflicts, with
+ * the radius side as {date, start_time} stubs from the file.
+ */
+export function planCrossDayConflicts(
+  centerPlan,
+  { dismissedKeys = new Set(), dismissedSlotDays = new Set() } = {},
+) {
+  const fileByStudentWeek = new Map()
+  for (const entry of [
+    ...(centerPlan.created ?? []),
+    ...(centerPlan.linked ?? []),
+    ...(centerPlan.updated ?? []),
+    ...(centerPlan.unchanged ?? []),
+  ]) {
+    if (!entry.row || entry.row.status !== 'scheduled') continue
+    const wk = `${entry.student.id}|${weekAnchorOf(entry.row.date)}`
+    fileByStudentWeek.set(wk, [
+      ...(fileByStudentWeek.get(wk) ?? []),
+      { date: entry.row.date, start_time: entry.row.startTime, duration: entry.row.duration ?? 60 },
+    ])
+  }
+
+  const conflicts = []
+  for (const s of centerPlan.flagged ?? []) {
+    if (s.source !== 'recurring' || s.status !== 'scheduled') continue
+    const sameWeek = (fileByStudentWeek.get(`${s.student_id}|${weekAnchorOf(s.date)}`) ?? []).filter(
+      (x) => x.date !== s.date,
+    )
+    if (sameWeek.length === 0) continue
+    const key = conflictKey(s.student_id, s.date)
+    if (dismissedKeys.has(key)) continue
+    if (dismissedSlotDays.has(`${s.student_id}|${dayOfWeek(s.date)}`)) continue
+    conflicts.push({
+      key,
+      studentId: s.student_id,
+      date: s.date,
+      dayOfWeek: dayOfWeek(s.date),
+      name: s.student?.name ?? null,
+      centerId: s.center_id ?? null,
+      recurring: [s],
+      radius: [...sameWeek].sort((a, b) => a.date.localeCompare(b.date)),
+    })
+  }
+  return conflicts.sort(
+    (a, b) => a.date.localeCompare(b.date) || (a.name ?? '').localeCompare(b.name ?? ''),
+  )
+}
+
 /**
  * The import-preview variant: conflicts the FILE is about to cause (or keep).
  * Any row the plan will create/update/keep as a radius session whose
