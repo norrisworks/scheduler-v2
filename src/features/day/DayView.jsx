@@ -110,12 +110,13 @@ export default function DayView() {
     dismissed: new Set(),
     slotDayDismissed: new Set(),
     weekRadius: [],
+    slotCounts: new Map(),
   })
   const loadConflictContext = useCallback(async () => {
     if (!centerId || !date) return
     const weekStart = weekAnchorOf(date)
     const weekEnd = addDays(weekStart, 6)
-    const [dismissRes, slotDayRes, radiusRes] = await Promise.all([
+    const [dismissRes, slotDayRes, radiusRes, slotRes] = await Promise.all([
       supabase
         .from('session_conflict_dismissals')
         .select('student_id, date')
@@ -134,13 +135,25 @@ export default function DayView() {
         .eq('status', 'scheduled')
         .gte('date', weekStart)
         .lte('date', weekEnd),
+      // Standing-slot counts feed the count gate: a "moved?" question is
+      // only asked when the week's radius sessions equal the slot count.
+      supabase
+        .from('recurring_slots')
+        .select('student_id, effective_until, students!inner(center_id)')
+        .eq('students.center_id', centerId),
     ])
+    const slotCounts = new Map()
+    for (const slot of slotRes.data ?? []) {
+      if (slot.effective_until && slot.effective_until < weekStart) continue
+      slotCounts.set(slot.student_id, (slotCounts.get(slot.student_id) ?? 0) + 1)
+    }
     setConflictContext({
       dismissed: new Set((dismissRes.data ?? []).map((d) => conflictKey(d.student_id, d.date))),
       slotDayDismissed: new Set(
         (slotDayRes.data ?? []).map((d) => `${d.student_id}|${d.day_of_week}`),
       ),
       weekRadius: radiusRes.data ?? [],
+      slotCounts,
     })
   }, [centerId, date])
   useEffect(() => {
@@ -155,6 +168,7 @@ export default function DayView() {
       findCrossDayConflicts([...sessions, ...conflictContext.weekRadius], {
         dismissedKeys: conflictContext.dismissed,
         dismissedSlotDays: conflictContext.slotDayDismissed,
+        slotCounts: conflictContext.slotCounts,
         // Only surface pairs whose questionable session is on the date being
         // viewed — the other days' rows show up on their own days.
       }).filter((c) => c.date === date),

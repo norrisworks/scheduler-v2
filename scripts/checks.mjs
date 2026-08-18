@@ -697,45 +697,75 @@ const tueThu = [
   wk({ id: 'thu', student_id: 'stA', date: '2026-08-20', source: 'recurring' }),
   wk({ id: 'thuR', student_id: 'stA', date: '2026-08-20', source: 'radius' }),   // Thu matched in file
 ]
+// stA has TWO standing slots; the file carries TWO radius sessions that week
+// (moved Mon + matched Thu) — counts equal, so the question may be asked.
+const twoSlots = { slotCounts: new Map([['stA', 2]]) }
 eq('the skipped slot day is questioned; the matched day is not',
-   findCrossDayConflicts(tueThu).map((c) => c.key), ['stA|2026-08-18'])
+   findCrossDayConflicts(tueThu, twoSlots).map((c) => c.key), ['stA|2026-08-18'])
 eq('the question carries both sides',
-   findCrossDayConflicts(tueThu).map((c) => [c.recurring[0].id, c.radius.map((r) => r.id)])[0],
+   findCrossDayConflicts(tueThu, twoSlots).map((c) => [c.recurring[0].id, c.radius.map((r) => r.id)])[0],
    ['tue', ['mon', 'thuR']])
+eq('the evidence is attached: same time and duration strengthen the story',
+   findCrossDayConflicts(tueThu, twoSlots).map((c) => [c.sameTime, c.sameDuration])[0],
+   [true, true])
 eq('no radius elsewhere in the week, no question',
-   findCrossDayConflicts([wk({ id: 'tue', date: '2026-08-18', source: 'recurring' })]).length, 0)
+   findCrossDayConflicts([wk({ id: 'tue', date: '2026-08-18', source: 'recurring' })], twoSlots).length, 0)
 eq('a different WEEK is never paired',
    findCrossDayConflicts([
      wk({ id: 'mon', date: '2026-08-24', source: 'radius' }),
      wk({ id: 'tue', date: '2026-08-18', source: 'recurring' }),
-   ]).length, 0)
+   ], twoSlots).length, 0)
 eq('keep-both (this week) silences that date',
-   findCrossDayConflicts(tueThu, { dismissedKeys: new Set(['stA|2026-08-18']) }).length, 0)
+   findCrossDayConflicts(tueThu, { ...twoSlots, dismissedKeys: new Set(['stA|2026-08-18']) }).length, 0)
 eq('never-ask silences the weekday permanently',
-   findCrossDayConflicts(tueThu, { dismissedSlotDays: new Set(['stA|2']) }).length, 0)
+   findCrossDayConflicts(tueThu, { ...twoSlots, dismissedSlotDays: new Set(['stA|2']) }).length, 0)
 eq('merged overlapping lists do not double-count the radius side',
-   findCrossDayConflicts([...tueThu, tueThu[0]]).map((c) => c.radius.length)[0], 2)
+   findCrossDayConflicts([...tueThu, tueThu[0]], twoSlots).map((c) => c.radius.length)[0], 2)
 eq('a cancelled recurring session is not questioned',
-   findCrossDayConflicts(tueThu.map((s) => (s.id === 'tue' ? { ...s, status: 'cancelled' } : s)))
+   findCrossDayConflicts(tueThu.map((s) => (s.id === 'tue' ? { ...s, status: 'cancelled' } : s)), twoSlots)
      .length, 0)
 
-// Import-preview variant: flagged (absent-from-file) + a file row same week.
+// THE ISAAC M REGRESSION (2026-08-17, cost a real seat): slots Mon+Wed, the
+// file carried ONE added Thursday. Radius count (1) < slot count (2), so the
+// counts cannot support a move and NO question is asked.
+const isaac = [
+  wk({ id: 'imon', student_id: 'isaac', date: '2026-08-17', start_time: '16:30:00', source: 'recurring' }),
+  wk({ id: 'iwed', student_id: 'isaac', date: '2026-08-19', start_time: '15:30:00', source: 'recurring' }),
+  wk({ id: 'ithu', student_id: 'isaac', date: '2026-08-20', start_time: '16:30:00', source: 'radius' }),
+]
+eq('ISAAC: an added session is never presented as a possible move',
+   findCrossDayConflicts(isaac, { slotCounts: new Map([['isaac', 2]]) }).length, 0)
+eq('MORE radius sessions than slots is an addition, never a move',
+   findCrossDayConflicts([
+     ...tueThu,
+     wk({ id: 'fri', student_id: 'stA', date: '2026-08-21', source: 'radius' }),
+   ], twoSlots).length, 0)
+eq('an unknown slot count asks nothing — no counts, no accusation',
+   findCrossDayConflicts(tueThu, {}).length, 0)
+
+// Import-preview variant: flagged (absent-from-file) + file rows same week.
+// stA's two slots are Tue+Thu; the file carries moved Mon + matched Thu —
+// two file rows against two slots, so the preview may ask.
 const crossPlan = {
   flagged: [wk({ id: 'tue', student_id: 'stA', date: '2026-08-18', source: 'recurring' })],
   created: [{ student: { id: 'stA', name: 'Ava B' },
-              row: { date: '2026-08-17', startTime: '16:00:00', status: 'scheduled' } }],
+              row: { date: '2026-08-17', startTime: '16:00:00', status: 'scheduled' } },
+            { student: { id: 'stA', name: 'Ava B' },
+              row: { date: '2026-08-20', startTime: '16:00:00', status: 'scheduled' } }],
   updated: [], unchanged: [], linked: [],
 }
 eq('the preview asks the same question before commit',
-   planCrossDayConflicts(crossPlan).map((c) => [c.key, c.radius[0].date])[0],
+   planCrossDayConflicts(crossPlan, twoSlots).map((c) => [c.key, c.radius[0].date])[0],
    ['stA|2026-08-18', '2026-08-17'])
 eq('a cancelled file row does not pair',
    planCrossDayConflicts({ ...crossPlan,
      created: [{ student: { id: 'stA', name: 'Ava B' },
-                 row: { date: '2026-08-17', startTime: '16:00:00', status: 'cancelled' } }] })
-     .length, 0)
+                 row: { date: '2026-08-17', startTime: '16:00:00', status: 'cancelled' } }] },
+     twoSlots).length, 0)
 eq('preview honors never-ask too',
-   planCrossDayConflicts(crossPlan, { dismissedSlotDays: new Set(['stA|2']) }).length, 0)
+   planCrossDayConflicts(crossPlan, { ...twoSlots, dismissedSlotDays: new Set(['stA|2']) }).length, 0)
+eq('ISAAC in the preview: one file row against two slots asks nothing',
+   planCrossDayConflicts({ ...crossPlan, created: [crossPlan.created[0]] }, twoSlots).length, 0)
 
 // The import-preview variant: conflicts the FILE is about to cause.
 const previewPlan = {

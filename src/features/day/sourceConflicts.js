@@ -56,20 +56,33 @@ export const weekAnchorOf = (dateISO) => addDays(dateISO, -dayOfWeek(dateISO))
  * never deletes — rule one is always err toward keeping). The student is on
  * the week twice on different days.
  *
- * This is a QUESTION, never a conclusion: the same shape is also a makeup or
- * a vacation swap, which are common. Detection only — every resolution is a
- * person choosing.
+ * THE COUNT GATE (learned the hard way — Isaac M, 2026-08-17): "a recurring
+ * session is absent from the file and some radius session exists that week"
+ * does NOT imply a move; a makeup or added session produces the identical
+ * shape. Isaac had slots Mon+Wed, Radius carried one added Thursday, the
+ * detector called Monday "probably moved", and the cancelled student showed
+ * up with no seat. A move is only arithmetically possible when the week's
+ * radius sessions EQUAL the student's standing-slot count — each slot visit
+ * accounted for, just relocated. MORE radius sessions than slots is an
+ * addition; FEWER means Radius simply doesn't carry the student's full week
+ * (most families are not scheduling through Radius). Neither is flagged.
  *
- * A conflict is one scheduled recurring-source session R where, in R's week,
- * the student has ≥1 scheduled radius-source session on a DIFFERENT date and
- * none on R's own date (same-date pairs are the other conflict type).
+ * Even when the counts pass, this is a QUESTION for the family, never a
+ * conclusion — the caller's wording and button emphasis must keep it one.
  *
+ * slotCounts: studentId -> count of active standing slots. A student absent
+ * from the map is never flagged: no counts, no arithmetic, no accusation.
  * dismissedKeys: `${studentId}|${date}` — "keep both, this week".
  * dismissedSlotDays: `${studentId}|${dayOfWeek}` — "never ask about this slot".
+ *
+ * Each conflict carries evidence for the human: sameTime / sameDuration mark
+ * whether any of the week's radius sessions matches the flagged session's
+ * start time or length — a same-time same-length pair looks like a moved
+ * day; a mismatch weakens the story.
  */
 export function findCrossDayConflicts(
   sessions,
-  { dismissedKeys = new Set(), dismissedSlotDays = new Set() } = {},
+  { dismissedKeys = new Set(), dismissedSlotDays = new Set(), slotCounts = new Map() } = {},
 ) {
   const radiusByStudentWeek = new Map()
   const radiusDates = new Set()
@@ -91,10 +104,14 @@ export function findCrossDayConflicts(
   for (const s of sessions) {
     if (s.source !== 'recurring' || s.status !== 'scheduled') continue
     if (radiusDates.has(`${s.student_id}|${s.date}`)) continue
-    const sameWeek = (radiusByStudentWeek.get(`${s.student_id}|${weekAnchorOf(s.date)}`) ?? []).filter(
-      (x) => x.date !== s.date,
-    )
+    const weekRadius = radiusByStudentWeek.get(`${s.student_id}|${weekAnchorOf(s.date)}`) ?? []
+    const sameWeek = weekRadius.filter((x) => x.date !== s.date)
     if (sameWeek.length === 0) continue
+    // The count gate: a move is only possible when the week's radius
+    // sessions equal the standing-slot count. Anything else is an addition
+    // or an incompletely-tracked week — silence, not suspicion.
+    const slotCount = slotCounts.get(s.student_id)
+    if (slotCount === undefined || weekRadius.length !== slotCount) continue
     const key = conflictKey(s.student_id, s.date)
     if (dismissedKeys.has(key)) continue
     if (dismissedSlotDays.has(`${s.student_id}|${dayOfWeek(s.date)}`)) continue
@@ -107,6 +124,8 @@ export function findCrossDayConflicts(
       centerId: s.center_id ?? null,
       recurring: [s],
       radius: [...sameWeek].sort((a, b) => a.date.localeCompare(b.date)),
+      sameTime: sameWeek.some((x) => x.start_time === s.start_time),
+      sameDuration: sameWeek.some((x) => (x.duration ?? 60) === (s.duration ?? 60)),
     })
   }
   return conflicts.sort(
@@ -122,7 +141,7 @@ export function findCrossDayConflicts(
  */
 export function planCrossDayConflicts(
   centerPlan,
-  { dismissedKeys = new Set(), dismissedSlotDays = new Set() } = {},
+  { dismissedKeys = new Set(), dismissedSlotDays = new Set(), slotCounts = new Map() } = {},
 ) {
   const fileByStudentWeek = new Map()
   for (const entry of [
@@ -142,10 +161,14 @@ export function planCrossDayConflicts(
   const conflicts = []
   for (const s of centerPlan.flagged ?? []) {
     if (s.source !== 'recurring' || s.status !== 'scheduled') continue
-    const sameWeek = (fileByStudentWeek.get(`${s.student_id}|${weekAnchorOf(s.date)}`) ?? []).filter(
-      (x) => x.date !== s.date,
-    )
+    const weekRows = fileByStudentWeek.get(`${s.student_id}|${weekAnchorOf(s.date)}`) ?? []
+    const sameWeek = weekRows.filter((x) => x.date !== s.date)
     if (sameWeek.length === 0) continue
+    // The same count gate as the live detector: file rows that week must
+    // EQUAL the standing-slot count, or this is an addition / an
+    // incompletely-tracked week, and no question is asked.
+    const slotCount = slotCounts.get(s.student_id)
+    if (slotCount === undefined || weekRows.length !== slotCount) continue
     const key = conflictKey(s.student_id, s.date)
     if (dismissedKeys.has(key)) continue
     if (dismissedSlotDays.has(`${s.student_id}|${dayOfWeek(s.date)}`)) continue
@@ -158,6 +181,8 @@ export function planCrossDayConflicts(
       centerId: s.center_id ?? null,
       recurring: [s],
       radius: [...sameWeek].sort((a, b) => a.date.localeCompare(b.date)),
+      sameTime: sameWeek.some((x) => x.start_time === s.start_time),
+      sameDuration: sameWeek.some((x) => (x.duration ?? 60) === (s.duration ?? 60)),
     })
   }
   return conflicts.sort(

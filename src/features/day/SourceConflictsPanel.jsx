@@ -161,8 +161,15 @@ export default function SourceConflictsPanel({
       {crossDay.length > 0 && (
         <>
           <p className={'text-sm font-semibold text-orange-900 ' + (conflicts.length > 0 ? 'mt-2' : '')}>
-            {crossDay.length} standing-slot session{crossDay.length === 1 ? '' : 's'} with a
-            same-week Radius session on a different day — moved, or an extra session?
+            {crossDay.length} standing session{crossDay.length === 1 ? '' : 's'} not listed in this
+            week's Radius file — verify with the family before cancelling anything.
+          </p>
+          {/* The app does NOT know. Absence from Radius is normal here. */}
+          <p className="mt-0.5 text-[11px] text-orange-800">
+            A session missing from a Radius file is <span className="font-semibold">not</span>{' '}
+            cancelled — most families aren't scheduling through Radius yet. These are flagged only
+            because the week's Radius sessions happen to equal this student's standing-slot count,
+            which is what a moved day would also look like.
           </p>
           <ul className="mt-1.5 space-y-1.5">
             {crossDay.map((c) => (
@@ -170,36 +177,31 @@ export default function SourceConflictsPanel({
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-semibold">{c.name ?? 'Unknown'}</span>
                   <span>
-                    standing slot {dayShort(c.dayOfWeek)} {formatDateShort(c.date)}{' '}
-                    <span className="font-medium">{times(c.recurring)}</span> is not in Radius, but
-                    Radius has{' '}
+                    Radius doesn't list {dayShort(c.dayOfWeek)} {formatDateShort(c.date)}{' '}
+                    <span className="font-medium">{times(c.recurring)}</span>; it lists{' '}
                     <span className="font-medium">
                       {c.radius
                         .map((s) => `${formatDateShort(s.date)} ${formatTimeMeridiem(s.start_time)}`)
                         .join(', ')}
                     </span>
-                    {' '}that week. This may be a moved session — or a legitimate extra
-                    (makeups and swaps are common).
+                    {' '}that week{c.sameTime && c.sameDuration
+                      ? ' (same time and length — consistent with a moved day)'
+                      : c.sameTime
+                        ? ' (same time, different length)'
+                        : ' (different time — weaker evidence of a move)'}
+                    .
                   </span>
                   {isAdmin && (
                   <span className="ml-auto flex shrink-0 gap-1.5">
-                    <button
-                      type="button"
-                      disabled={busy === c.key}
-                      onClick={() => cancelCrossDay(c)}
-                      title="Treat it as moved — cancel the standing-slot session"
-                      className="rounded bg-orange-600 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-orange-700 disabled:opacity-40"
-                    >
-                      Cancel {dayShort(c.dayOfWeek)} session
-                    </button>
+                    {/* Keeping is the default answer, visually and morally. */}
                     <button
                       type="button"
                       disabled={busy === c.key}
                       onClick={() => keepBothWeek(c)}
-                      title="A real extra session this week — keep it and stop asking for this week"
-                      className="rounded border border-orange-300 bg-white px-2 py-0.5 text-[11px] font-medium text-orange-800 hover:bg-orange-100 disabled:opacity-40"
+                      title="Keep the session — the safe default when unsure"
+                      className="rounded bg-orange-600 px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-orange-700 disabled:opacity-40"
                     >
-                      Keep both
+                      Keep it
                     </button>
                     <button
                       type="button"
@@ -209,6 +211,15 @@ export default function SourceConflictsPanel({
                       className="rounded border border-orange-300 bg-white px-2 py-0.5 text-[11px] font-medium text-orange-800 hover:bg-orange-100 disabled:opacity-40"
                     >
                       Never ask
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy === c.key}
+                      onClick={() => cancelCrossDay(c)}
+                      title="Only after the family confirms the day moved — cancels the standing-slot session"
+                      className="rounded border border-orange-300 bg-white px-2 py-0.5 text-[11px] text-orange-700 hover:bg-orange-100 disabled:opacity-40"
+                    >
+                      Family confirmed the move — cancel {dayShort(c.dayOfWeek)}
                     </button>
                   </span>
                   )}

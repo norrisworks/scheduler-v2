@@ -52,7 +52,7 @@ export default function RadiusImportView() {
         .filter(Boolean)
         .sort()
 
-      const [sessionRes, dismissRes, slotDayRes] = dates.length
+      const [sessionRes, dismissRes, slotDayRes, slotRes] = dates.length
         ? await Promise.all([
             supabase
               .from('sessions')
@@ -65,8 +65,9 @@ export default function RadiusImportView() {
               .gte('date', dates[0])
               .lte('date', dates[dates.length - 1]),
             supabase.from('session_cross_day_dismissals').select('student_id, day_of_week'),
+            supabase.from('recurring_slots').select('student_id, effective_until'),
           ])
-        : [{ data: [] }, { data: [] }, { data: [] }]
+        : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }]
       if (sessionRes.error) throw new Error(sessionRes.error.message)
 
       setRows(parsed)
@@ -76,6 +77,7 @@ export default function RadiusImportView() {
         sessions: sessionRes.data ?? [],
         dismissals: dismissRes.data ?? [],
         slotDayDismissals: slotDayRes.data ?? [],
+        slots: slotRes.data ?? [],
       })
     } catch (err) {
       setError(err.message)
@@ -166,9 +168,15 @@ export default function RadiusImportView() {
       (reference.slotDayDismissals ?? []).map((d) => `${d.student_id}|${d.day_of_week}`),
     )
     const nameOf = new Map(reference.students.map((s) => [s.id, s.name]))
+    const today = new Date().toISOString().slice(0, 10)
+    const slotCounts = new Map()
+    for (const slot of reference.slots ?? []) {
+      if (slot.effective_until && slot.effective_until < today) continue
+      slotCounts.set(slot.student_id, (slotCounts.get(slot.student_id) ?? 0) + 1)
+    }
     const out = new Map()
     for (const center of plan.centers) {
-      const found = planCrossDayConflicts(center, { dismissedKeys, dismissedSlotDays }).map(
+      const found = planCrossDayConflicts(center, { dismissedKeys, dismissedSlotDays, slotCounts }).map(
         (c) => ({ ...c, name: c.name ?? nameOf.get(c.studentId) ?? 'Unknown' }),
       )
       if (found.length > 0) out.set(center.center.id, found)
@@ -447,12 +455,15 @@ export default function RadiusImportView() {
               {(crossDayByCenter.get(c.center.id) ?? []).length > 0 && (
                 <div className="border-b border-orange-200 bg-orange-50 p-3">
                   <p className="text-xs font-semibold text-orange-900">
-                    Standing-slot sessions the file skipped, with a same-week session elsewhere
+                    Standing sessions not listed in this file — verify with the family before
+                    cancelling anything
                   </p>
                   <p className="mt-0.5 text-[11px] text-orange-800">
-                    Each may be a MOVED session — or a legitimate extra (makeups and vacation swaps
-                    are common). Nothing is removed unless you choose it; "decide later" keeps both
-                    and leaves the pair flagged on the day view and Data health.
+                    A session missing from a Radius file is <span className="font-semibold">not</span>{' '}
+                    cancelled — most families aren't scheduling through Radius yet. These are shown
+                    only because the file's sessions equal the student's standing-slot count that
+                    week, which is what a moved day would also look like. Keeping is the default;
+                    nothing is removed unless you choose it.
                   </p>
                   <ul className="mt-1.5 space-y-1">
                     {(crossDayByCenter.get(c.center.id) ?? []).map((conflict) => (
@@ -483,10 +494,10 @@ export default function RadiusImportView() {
                           aria-label={`Cross-day resolution for ${conflict.name}`}
                           className="ml-auto shrink-0 rounded border border-orange-300 bg-white px-1.5 py-0.5 text-[11px]"
                         >
-                          <option value="">Decide later — keep both for now</option>
-                          <option value="cancel">Moved — cancel the standing-slot session</option>
-                          <option value="both">Extra session — keep both (this week)</option>
-                          <option value="never">Never ask about this slot again</option>
+                          <option value="">Keep — decide later</option>
+                          <option value="both">Keep — confirmed with the family</option>
+                          <option value="never">Keep — never ask about this slot again</option>
+                          <option value="cancel">Family confirmed the move — cancel the standing session</option>
                         </select>
                       </li>
                     ))}

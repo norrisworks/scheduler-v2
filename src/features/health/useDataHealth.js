@@ -19,6 +19,7 @@ export function useDataHealth(centerId) {
     sessions: EMPTY,
     dismissals: EMPTY,
     slotDayDismissals: EMPTY,
+    slots: EMPTY,
   })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -29,7 +30,7 @@ export function useDataHealth(centerId) {
     const token = ++requestRef.current
     setLoading(true)
 
-    const [studentRes, instructorRes, rankRes, sessionRes, dismissRes, slotDayRes] = await Promise.all([
+    const [studentRes, instructorRes, rankRes, sessionRes, dismissRes, slotDayRes, slotRes] = await Promise.all([
       supabase
         .from('students')
         .select('id, name, grade, level, gender, school, slot_certainty, academic_status, default_duration, active')
@@ -62,6 +63,10 @@ export function useDataHealth(centerId) {
         .from('session_cross_day_dismissals')
         .select('student_id, day_of_week')
         .eq('center_id', centerId),
+      supabase
+        .from('recurring_slots')
+        .select('student_id, effective_until, students!inner(center_id)')
+        .eq('students.center_id', centerId),
     ])
 
     if (token !== requestRef.current) return
@@ -80,6 +85,7 @@ export function useDataHealth(centerId) {
       sessions: sessionRes.data ?? EMPTY,
       dismissals: dismissRes.data ?? EMPTY,
       slotDayDismissals: slotDayRes.data ?? EMPTY,
+      slots: slotRes.data ?? EMPTY,
     })
     setError(null)
     setLoading(false)
@@ -108,14 +114,21 @@ export function useDataHealth(centerId) {
     const slotDays = new Set(
       snapshot.slotDayDismissals.map((d) => `${d.student_id}|${d.day_of_week}`),
     )
+    const today = new Date().toISOString().slice(0, 10)
+    const slotCounts = new Map()
+    for (const slot of snapshot.slots) {
+      if (slot.effective_until && slot.effective_until < today) continue
+      slotCounts.set(slot.student_id, (slotCounts.get(slot.student_id) ?? 0) + 1)
+    }
     return {
       sameDate: findSourceConflicts(snapshot.sessions, dismissed),
       crossDay: findCrossDayConflicts(snapshot.sessions, {
         dismissedKeys: dismissed,
         dismissedSlotDays: slotDays,
+        slotCounts,
       }),
     }
-  }, [snapshot.sessions, snapshot.dismissals, snapshot.slotDayDismissals, isCurrent])
+  }, [snapshot.sessions, snapshot.dismissals, snapshot.slotDayDismissals, snapshot.slots, isCurrent])
 
   /**
    * Autosave patch for the instructor editor opened from a flagged row.
