@@ -6,9 +6,10 @@ import { useCenter } from '../centers/CenterProvider'
 import { capabilityString } from '../instructors/instructorFields'
 import { isFallbackOnly } from '../assign/rankings'
 import { ineligibleForStudentReason, moveEntry } from '../assign/proposeRanking'
-import { placeAtRank } from '../assign/rankOrder'
+import { placeAtRank, visibleRanking } from '../assign/rankOrder'
 import { fetchProposedOrder } from '../instructors/rankAccess'
 import { genderLabel, sameGender } from '../../lib/gender'
+import QueryError from '../../components/QueryError'
 
 /**
  * This student's rankings — the only thing auto-assign reads. Ranked
@@ -18,6 +19,12 @@ import { genderLabel, sameGender } from '../../lib/gender'
  * The order is editable here, at any time, on any student: drag a row, type a
  * number, add anyone eligible, remove anyone. Seeding is a starting point, not
  * the only moment the list can be built.
+ *
+ * Displayed ranks are the STORED ranks, gaps and all. Inactive instructors are
+ * hidden but keep their numbers, so a student whose list runs 1,2,3,4,7,8,10…
+ * reads exactly that here and in the matrix. Renumbering the survivors 1..N
+ * for display made the two screens disagree about the same student. Saving
+ * still renumbers — that is a write, and writes are contiguous by design.
  */
 export default function InstructorPins({ studentId, student }) {
   const { centerId } = useCenter()
@@ -25,10 +32,15 @@ export default function InstructorPins({ studentId, student }) {
   // admin-only (and the database rejects their writes regardless).
   const { isAdmin } = useAuth()
   const [instructors, setInstructors] = useState([])
+  // [{ instructor, rank }] in rank order. rank is what the database holds.
   const [ranked, setRanked] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState(null)
+  // Kept apart on purpose: loadError REPLACES the list, because an empty list
+  // we could not load is not an empty list. saveError annotates the list that
+  // is still on screen.
+  const [loadError, setLoadError] = useState(null)
+  const [saveError, setSaveError] = useState(null)
   const [dragIndex, setDragIndex] = useState(null)
 
   const load = async () => {
@@ -50,14 +62,20 @@ export default function InstructorPins({ studentId, student }) {
         .order('rank'),
     ])
     if (instRes.error || rankRes.error) {
-      setError((instRes.error ?? rankRes.error).message)
+      setLoadError(instRes.error ?? rankRes.error)
+      setInstructors([])
+      setRanked([])
     } else {
       const byId = new Map((instRes.data ?? []).map((i) => [i.id, i]))
+      setLoadError(null)
       setInstructors(instRes.data ?? [])
+      // Inactive instructors drop out of the list but NOT out of the
+      // numbering: the ranks they hold stay behind as the gaps you see.
       setRanked(
-        (rankRes.data ?? [])
-          .map((r) => byId.get(r.instructor_id))
-          .filter(Boolean),
+        visibleRanking(rankRes.data, (id) => byId.has(id)).map((e) => ({
+          instructor: byId.get(e.instructorId),
+          rank: e.rank,
+        })),
       )
     }
     setLoading(false)
@@ -74,23 +92,26 @@ export default function InstructorPins({ studentId, student }) {
    * anyone dropped deleted outright. Renumbering on every change is what keeps
    * the ranks contiguous no matter how the list was edited.
    */
-  async function persist(next) {
+  async function persist(nextInstructors) {
     const previous = ranked
+    const next = nextInstructors.map((instructor, index) => ({ instructor, rank: index + 1 }))
     setRanked(next)
     setSaving(true)
-    setError(null)
+    setSaveError(null)
 
-    const nextIds = new Set(next.map((i) => i.id))
-    const removed = previous.filter((i) => !nextIds.has(i.id)).map((i) => i.id)
+    const nextIds = new Set(next.map((e) => e.instructor.id))
+    const removed = previous
+      .filter((e) => !nextIds.has(e.instructor.id))
+      .map((e) => e.instructor.id)
 
     const writes = []
     if (next.length > 0) {
       writes.push(
         supabase.from('instructor_rankings').upsert(
-          next.map((instructor, index) => ({
+          next.map((e) => ({
             student_id: studentId,
-            instructor_id: instructor.id,
-            rank: index + 1,
+            instructor_id: e.instructor.id,
+            rank: e.rank,
             updated_at: new Date().toISOString(),
           })),
           { onConflict: 'student_id,instructor_id' },
@@ -111,12 +132,14 @@ export default function InstructorPins({ studentId, student }) {
     const failure = results.find((r) => r.error)
     setSaving(false)
     if (failure) {
-      setError(failure.error.message)
+      setSaveError(failure.error)
       setRanked(previous)
     }
   }
 
-  const rankedIds = useMemo(() => new Set(ranked.map((i) => i.id)), [ranked])
+  const reorder = (from, to) => persist(moveEntry(ranked, from, to).map((e) => e.instructor))
+
+  const rankedIds = useMemo(() => new Set(ranked.map((e) => e.instructor.id)), [ranked])
   const rest = instructors.filter((i) => !rankedIds.has(i.id))
   // Every eligible instructor is ALWAYS on screen — ranked with a number,
   // unranked as an empty row. A new hire must never be simply absent here.
@@ -125,9 +148,9 @@ export default function InstructorPins({ studentId, student }) {
 
   /** Insert an unranked instructor at a 1-based position (or the end). */
   const addAt = (instructor, rank) => {
-    const byId = new Map([...ranked, instructor].map((i) => [i.id, i]))
+    const byId = new Map([...ranked.map((e) => e.instructor), instructor].map((i) => [i.id, i]))
     const next = placeAtRank(
-      ranked.map((i) => ({ instructorId: i.id })),
+      ranked.map((e) => ({ instructorId: e.instructor.id })),
       instructor.id,
       rank ?? ranked.length + 1,
     )
@@ -135,6 +158,21 @@ export default function InstructorPins({ studentId, student }) {
   }
 
   if (loading) return <p className="py-3 text-center text-xs text-zinc-400">Loading instructors…</p>
+
+  // A failed fetch is NOT an empty ranking list. Rendering "no rankings" here
+  // while the matrix behind showed a full row is the bug this guard exists for.
+  if (loadError) {
+    return (
+      <QueryError
+        error={loadError}
+        compact
+        onRetry={() => {
+          setLoading(true)
+          load()
+        }}
+      />
+    )
+  }
 
   return (
     <div className="space-y-2">
@@ -144,25 +182,25 @@ export default function InstructorPins({ studentId, student }) {
         </p>
         {saving && <span className="text-[10px] text-zinc-400">Saving…</span>}
         {isAdmin && (
-        <button
-          type="button"
-          disabled={saving}
-          onClick={async () => {
-            // Ordered server-side so instructor_rank can shape the proposal
-            // without the value ever reaching this surface.
-            try {
-              const order = await fetchProposedOrder(centerId, student)
-              const byId = new Map(instructors.map((i) => [i.id, i]))
-              await persist(order.map((o) => byId.get(o.instructorId)).filter(Boolean))
-            } catch (err) {
-              setError(err.message)
-            }
-          }}
-          className="shrink-0 rounded border border-zinc-300 px-1.5 py-0.5 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-40"
-          title="Rank every instructor who can teach this student, best fit first"
-        >
-          {ranked.length === 0 ? 'Rank everyone' : 'Re-propose order'}
-        </button>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={async () => {
+              // Ordered server-side so instructor_rank can shape the proposal
+              // without the value ever reaching this surface.
+              try {
+                const order = await fetchProposedOrder(centerId, student)
+                const byId = new Map(instructors.map((i) => [i.id, i]))
+                await persist(order.map((o) => byId.get(o.instructorId)).filter(Boolean))
+              } catch (err) {
+                setSaveError(err)
+              }
+            }}
+            className="shrink-0 rounded border border-zinc-300 px-1.5 py-0.5 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-40"
+            title="Rank every instructor who can teach this student, best fit first"
+          >
+            {ranked.length === 0 ? 'Rank everyone' : 'Re-propose order'}
+          </button>
         )}
       </div>
 
@@ -172,69 +210,84 @@ export default function InstructorPins({ studentId, student }) {
         </p>
       )}
 
-      {error && <p className="rounded bg-red-50 px-2 py-1 text-xs text-red-700">{error}</p>}
+      {saveError && <QueryError error={saveError} compact onRetry={() => setSaveError(null)} />}
 
       <ol className="space-y-1">
-        {ranked.map((instructor, index) => (
-          <li
-            key={instructor.id}
-            draggable={isAdmin}
-            onDragStart={() => isAdmin && setDragIndex(index)}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={() => {
-              if (dragIndex !== null && dragIndex !== index) {
-                persist(moveEntry(ranked, dragIndex, index))
-              }
-              setDragIndex(null)
-            }}
-            onDragEnd={() => setDragIndex(null)}
-            className={
-              'flex cursor-grab items-center gap-2 rounded-lg border px-2 py-1.5 active:cursor-grabbing ' +
-              (dragIndex === index ? 'border-brand-400 bg-brand-100' : 'border-brand-200 bg-brand-50')
-            }
-          >
-            <span aria-hidden className="shrink-0 text-xs text-zinc-300">⋮⋮</span>
-            <input
-              type="number"
-              min="1"
-              step="1"
-              value={index + 1}
-              disabled={saving || !isAdmin}
-              aria-label={`Rank for ${instructor.name}`}
-              onChange={(e) => {
-                const n = Number(e.target.value)
-                if (!Number.isFinite(n) || n < 1) return
-                persist(moveEntry(ranked, index, Math.min(n, ranked.length) - 1))
+        {ranked.map((entry, index) => {
+          const instructor = entry.instructor
+          return (
+            <li
+              key={instructor.id}
+              draggable={isAdmin}
+              onDragStart={() => isAdmin && setDragIndex(index)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => {
+                if (dragIndex !== null && dragIndex !== index) reorder(dragIndex, index)
+                setDragIndex(null)
               }}
-              className="w-11 shrink-0 rounded border border-zinc-300 bg-white px-1 py-0.5 text-center text-xs tabular-nums"
-            />
-            <span
-              className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[9px] font-bold"
-              style={{ backgroundColor: instructor.color, color: readableTextOn(instructor.color) }}
+              onDragEnd={() => setDragIndex(null)}
+              className={
+                'flex cursor-grab items-center gap-2 rounded-lg border px-2 py-1.5 active:cursor-grabbing ' +
+                (dragIndex === index
+                  ? 'border-brand-400 bg-brand-100'
+                  : 'border-brand-200 bg-brand-50')
+              }
             >
-              {instructor.name.trim()[0]?.toUpperCase()}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm text-zinc-800">{instructor.name}</span>
-              <span className="block text-[10px] text-zinc-400">
-                {capabilityString(instructor) || 'no levels'} · {genderLabel(instructor.gender)}
-                {isFallbackOnly(instructor) ? ' · fallback only' : ''}
+              <span aria-hidden className="shrink-0 text-xs text-zinc-300">
+                ⋮⋮
               </span>
-            </span>
-            {isAdmin && (
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => persist(ranked.filter((i) => i.id !== instructor.id))}
-              aria-label={`Remove ${instructor.name}`}
-              title="Remove from this student's rankings"
-              className="shrink-0 rounded px-1 text-sm text-zinc-400 hover:bg-red-100 hover:text-red-700"
-            >
-              ×
-            </button>
-            )}
-          </li>
-        ))}
+              <input
+                type="number"
+                min="1"
+                step="1"
+                // The STORED rank, not the row's position. Typing a number
+                // still means "put this instructor at that position" — and
+                // because the save renumbers, the number typed is the number
+                // that comes back.
+                value={entry.rank}
+                disabled={saving || !isAdmin}
+                aria-label={`Rank for ${instructor.name}`}
+                onChange={(e) => {
+                  const n = Number(e.target.value)
+                  if (!Number.isFinite(n) || n < 1) return
+                  reorder(index, Math.min(n, ranked.length) - 1)
+                }}
+                className="w-11 shrink-0 rounded border border-zinc-300 bg-white px-1 py-0.5 text-center text-xs tabular-nums"
+              />
+              <span
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[9px] font-bold"
+                style={{ backgroundColor: instructor.color, color: readableTextOn(instructor.color) }}
+              >
+                {instructor.name.trim()[0]?.toUpperCase()}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-zinc-800">{instructor.name}</span>
+                <span className="block text-[10px] text-zinc-400">
+                  {capabilityString(instructor) || 'no levels'} · {genderLabel(instructor.gender)}
+                  {isFallbackOnly(instructor) ? ' · fallback only' : ''}
+                </span>
+              </span>
+              {isAdmin && (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() =>
+                    persist(
+                      ranked
+                        .filter((e) => e.instructor.id !== instructor.id)
+                        .map((e) => e.instructor),
+                    )
+                  }
+                  aria-label={`Remove ${instructor.name}`}
+                  title="Remove from this student's rankings"
+                  className="shrink-0 rounded px-1 text-sm text-zinc-400 hover:bg-red-100 hover:text-red-700"
+                >
+                  ×
+                </button>
+              )}
+            </li>
+          )
+        })}
       </ol>
 
       {isAdmin && unranked.length > 0 && (
@@ -307,7 +360,7 @@ export default function InstructorPins({ studentId, student }) {
         </p>
       )}
 
-      {ranked.some(isFallbackOnly) && (
+      {ranked.some((e) => isFallbackOnly(e.instructor)) && (
         <p className="text-[11px] leading-snug text-zinc-400">
           Fallback-only instructors are tried in the final phase, and only if ranked here.
         </p>

@@ -17,6 +17,23 @@
  * rank: 1-based target position, clamped into the list; null removes.
  * Returns [{instructorId, rank}] renumbered 1..N.
  */
+/**
+ * What an editor SHOWS: the stored rows, minus instructors that are no longer
+ * selectable, with their stored ranks left exactly as they are.
+ *
+ * The survivors are deliberately NOT renumbered. Inactive instructors keep
+ * their ranks, so a student stored 1,2,3,4,7,8,10 has real gaps at 5,6,9 —
+ * and squeezing the survivors down to 1..7 for display made the drawer and
+ * the matrix disagree about the same student. Display shows what is stored;
+ * only a WRITE renumbers.
+ */
+export function visibleRanking(rows, isVisible) {
+  return (rows ?? [])
+    .filter((row) => isVisible(row.instructor_id))
+    .map((row) => ({ instructorId: row.instructor_id, rank: row.rank }))
+    .sort((a, b) => a.rank - b.rank)
+}
+
 export function placeAtRank(entries, instructorId, rank) {
   const kept = entries.filter((e) => e.instructorId !== instructorId)
   if (rank !== null && rank !== undefined) {

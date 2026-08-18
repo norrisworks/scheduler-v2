@@ -7,7 +7,9 @@ import { emptyToNull, missingAttributes, GENDER_OPTIONS, normalizeEnrollmentStat
 import { capabilityString, instructorWarnings, nextColor, INSTRUCTOR_PALETTE, ASSIGNABILITY_OPTIONS, GENDER_OPTIONS as INSTRUCTOR_GENDER_OPTIONS } from '../src/features/instructors/instructorFields.js'
 import { weekDays, validateShift, shiftHours, totalHours, planCopyWeek, indexShifts, suggestTimes } from '../src/features/shifts/weekShifts.js'
 import { ineligibleReason, buildCandidates, isFallbackOnly, unrankedStudents, explainUnplaced } from '../src/features/assign/rankings.js'
-import { placeAtRank } from '../src/features/assign/rankOrder.js'
+import { placeAtRank, visibleRanking } from '../src/features/assign/rankOrder.js'
+import { BINDER_RESET, binderCounts, binderRows, binderStatusOf, isBinderReady } from '../src/features/binder/binderPrep.js'
+import { classifyQueryError, describeQueryError, CLOCK_SKEW, SESSION_EXPIRED, OFFLINE, UNKNOWN } from '../src/lib/queryError.js'
 import { RANK_TIEBREAK, RANK_GATED_CAP, NEW_STUDENT_PREFERENCE } from '../src/features/assign/algorithmFlags.js'
 import { rescheduleRows, validateReschedule } from '../src/features/day/reschedule.js'
 import { findSourceConflicts, planSourceConflicts, findCrossDayConflicts, planCrossDayConflicts, isRadiusConfirmed } from '../src/features/day/sourceConflicts.js'
@@ -1799,6 +1801,107 @@ eq('formatTimeMeridiem pm',  formatTimeMeridiem('18:30:00'), '6:30pm')
 eq('timeToMinutes',          timeToMinutes('18:30:00'), 1110)
 eq('minutesToTime roundtrip',minutesToTime(timeToMinutes('18:30:00')), '18:30:00')
 
+
+// ---- binder prep belongs to the STUDENT and survives a missed session
+// The bug: prep is physical work on a physical binder, but state lived on the
+// session, so a no-show threw it away and the next day read "not started".
+eq('binder absent reads not started',   binderStatusOf({}), 'not_started')
+eq('binder null reads not started',     binderStatusOf({ binder_status: null }), 'not_started')
+eq('unknown binder value is not ready', binderStatusOf({ binder_status: 'wat' }), 'not_started')
+eq('complete reads ready',              isBinderReady({ binder_status: 'complete' }), true)
+eq('in_progress is not ready',          isBinderReady({ binder_status: 'in_progress' }), false)
+eq('no student is not ready',           isBinderReady(null), false)
+// Reset clears the NOTE as well; a stale note on a fresh binder is a lie.
+eq('reset clears status and note',      BINDER_RESET, { binder_status: 'not_started', binder_note: null })
+
+const binderStudent = (id, name, status) => ({ id, name, binder_status: status })
+const binderSession = (start, student) => ({ id: start + student.id, start_time: start, duration: 60, student })
+const marionG = binderStudent('s1', 'Marion G', 'complete')
+const marcusF = binderStudent('s2', 'Marcus F', 'not_started')
+
+// One student, two visits, ONE binder: two independent controls would disagree.
+eq('two sessions collapse to one row',
+   binderRows([binderSession('15:30:00', marionG), binderSession('17:30:00', marionG)]).length, 1)
+eq('collapsed row keeps the earliest time',
+   binderRows([binderSession('17:30:00', marionG), binderSession('15:30:00', marionG)])[0].startTime, '15:30:00')
+eq('collapsed row counts the sessions',
+   binderRows([binderSession('17:30:00', marionG), binderSession('15:30:00', marionG)])[0].sessionCount, 2)
+eq('rows sort by time then name',
+   binderRows([binderSession('17:30:00', marcusF), binderSession('15:30:00', marionG)]).map((r) => r.student.name),
+   ['Marion G', 'Marcus F'])
+eq('counts are per student, not per session',
+   binderCounts(binderRows([binderSession('15:30:00', marionG), binderSession('17:30:00', marionG)])),
+   { not_started: 0, in_progress: 0, complete: 1 })
+eq('counts cover every status',
+   binderCounts(binderRows([binderSession('15:30:00', marionG), binderSession('16:00:00', marcusF)])),
+   { not_started: 1, in_progress: 0, complete: 1 })
+eq('a session with no student is skipped', binderRows([{ id: 'x', start_time: '15:30:00' }]).length, 0)
+eq('no sessions is no rows',               binderRows(null).length, 0)
+
+// ---- a failed query is NEVER an empty state
+// The bug: the rankings modal drew "No rankings, so auto-assign cannot place
+// this student" over a query that had failed auth, while the matrix behind it
+// showed a full row for the same student.
+eq('clock skew classified',      classifyQueryError({ message: 'JWT issued at future' }), CLOCK_SKEW)
+eq('clock skew from a string',   classifyQueryError('JWT issued at future'), CLOCK_SKEW)
+eq('clock skew named directly',  classifyQueryError({ message: 'clock skew detected' }), CLOCK_SKEW)
+eq('expiry is not skew',         classifyQueryError({ message: 'JWT expired' }), SESSION_EXPIRED)
+eq('network failure classified', classifyQueryError({ message: 'Failed to fetch' }), OFFLINE)
+eq('other errors are unknown',   classifyQueryError({ message: 'permission denied for table students' }), UNKNOWN)
+eq('no error classifies as null',classifyQueryError(null), null)
+eq('no error describes as null', describeQueryError(null), null)
+// Skew and expiry are the two a plain retry cannot clear, so both offer a remint.
+eq('skew offers a session refresh',    describeQueryError({ message: 'JWT issued at future' }).refreshSession, true)
+eq('expiry offers a session refresh',  describeQueryError({ message: 'JWT expired' }).refreshSession, true)
+eq('offline does not remint',          describeQueryError({ message: 'Failed to fetch' }).refreshSession, false)
+eq('unknown does not remint',          describeQueryError({ message: 'boom' }).refreshSession, false)
+// The message has to send the owner to the clock, not to the JWT.
+eq('skew names the clock',       describeQueryError({ message: 'JWT issued at future' }).title.includes('clock'), true)
+eq('skew keeps the raw text',    describeQueryError({ message: 'JWT issued at future' }).raw, 'JWT issued at future')
+eq('every failure can be retried', describeQueryError({ message: 'boom' }).canRetry, true)
+
+// ---- the rankings popup shows STORED ranks, gaps and all (Marcus F, real data)
+// Stored 1..15; 5, 6, 9 and 12 belong to inactive instructors. The popup used
+// to hide those four and renumber the survivors 1..11, so it disagreed with
+// the matrix grid, which shows the true values.
+const marcusRanks = [
+  { instructor_id: 'kieran', rank: 1 },   { instructor_id: 'alavi', rank: 2 },
+  { instructor_id: 'brian', rank: 3 },    { instructor_id: 'michael', rank: 4 },
+  { instructor_id: 'aaryan', rank: 5 },   { instructor_id: 'caleb', rank: 6 },
+  { instructor_id: 'caroline', rank: 7 }, { instructor_id: 'elizabeth', rank: 8 },
+  { instructor_id: 'janean', rank: 9 },   { instructor_id: 'sydney', rank: 10 },
+  { instructor_id: 'hasan', rank: 11 },   { instructor_id: 'josh', rank: 12 },
+  { instructor_id: 'sharmin', rank: 13 }, { instructor_id: 'allie', rank: 14 },
+  { instructor_id: 'will', rank: 15 },
+]
+const inactiveInstructors = new Set(['aaryan', 'caleb', 'janean', 'josh'])
+const stillActive = (id) => !inactiveInstructors.has(id)
+
+eq('popup shows the stored ranks with their gaps',
+   visibleRanking(marcusRanks, stillActive).map((e) => e.rank),
+   [1, 2, 3, 4, 7, 8, 10, 11, 13, 14, 15])
+eq('hidden instructors are dropped, not renumbered over',
+   visibleRanking(marcusRanks, stillActive).length, 11)
+eq('the survivors are the right people',
+   visibleRanking(marcusRanks, stillActive).map((e) => e.instructorId),
+   ['kieran', 'alavi', 'brian', 'michael', 'caroline', 'elizabeth', 'sydney', 'hasan', 'sharmin', 'allie', 'will'])
+// Popup and matrix read the same source, so they cannot disagree.
+eq('popup rank matches the stored rank for every survivor',
+   visibleRanking(marcusRanks, stillActive).every(
+     (e) => e.rank === marcusRanks.find((r) => r.instructor_id === e.instructorId).rank),
+   true)
+eq('an all-active list has no gaps to show',
+   visibleRanking(marcusRanks, () => true).map((e) => e.rank),
+   [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
+eq('out-of-order rows still display in rank order',
+   visibleRanking([{ instructor_id: 'b', rank: 8 }, { instructor_id: 'a', rank: 3 }], () => true).map((e) => e.rank),
+   [3, 8])
+// Reordering is a WRITE, and writes stay contiguous — that part does renumber.
+eq('a write renumbers the gaps away',
+   placeAtRank(visibleRanking(marcusRanks, stillActive), 'will', 1).map((e) => e.rank),
+   [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+eq('a write puts the moved instructor where asked',
+   placeAtRank(visibleRanking(marcusRanks, stillActive), 'will', 1)[0].instructorId, 'will')
 let failed = 0
 for (const [label, got, want, ok] of checks) {
   if (!ok) { failed++; console.log(`FAIL ${label}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`) }

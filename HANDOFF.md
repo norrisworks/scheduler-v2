@@ -103,6 +103,36 @@ anchor). **Never call `toISOString()` for dates.**
 10. **Roles**: only an explicit `role: "admin"` claim is admin; absent or
     unknown resolves to instructor (least privilege). Center pinning is
     UI-only; `instructor_rank` is the one DB-enforced secret.
+11. **Binder prep is per STUDENT, never per session** (2026-08-18, Kieran's
+    reasoning): prep is physical work on a physical binder, so it persists
+    until that binder is actually used. Per-session state meant a no-show
+    wasted the prep — the next day read "not started". Reset is
+    ATTENDANCE-driven and never time-driven: trigger
+    `sessions_reset_binder_on_attendance_ins/_upd` clears status and note when
+    a session TRANSITIONS to `completed` (the Attended value Radius writes), so
+    it fires on every path. A passed date, a cancellation and a no-show all
+    leave prep alone — checks cover each. Because attendance depends on the
+    import being run, there is a manual Reset on the student (drawer) and per
+    row in the binder view. The instructor RLS carve-out moved to `students`
+    (`students_instructor_binder_only`), and it FREEZES EVERYTHING EXCEPT the
+    binder columns rather than enumerating frozen ones — a column added later
+    is protected by default, which the sessions version was not. `students` was
+    added to the realtime publication so the day-view tick stays live.
+12. **A failed query is NEVER an empty state.** The rankings modal rendered
+    "No rankings, so auto-assign cannot place this student" over a query that
+    had failed auth, while the matrix behind it showed a full row for the same
+    student. Every list now renders `components/QueryError.jsx` INSTEAD of its
+    empty state when the load failed. `lib/queryError.js` classifies the cause;
+    "JWT issued at future" means THIS MACHINE'S CLOCK IS AHEAD, and is named as
+    such rather than shown raw. Skew and expiry offer a session remint, with
+    one automatic attempt per page load (module-scoped flag — auto-retrying a
+    genuinely wrong clock would loop).
+13. **Ranking editors display STORED ranks, gaps and all** (`visibleRanking`
+    in `rankOrder.js`). Inactive instructors are hidden but keep their numbers,
+    so Marcus F reads 1,2,3,4,7,8,10,11,13,14,15 in both the popup and the
+    matrix. The popup used to renumber survivors 1..11, so the two screens
+    disagreed. Reordering still renumbers on save — that is a WRITE, and writes
+    stay contiguous.
 
 ## Importers (all preview-first; never commit on the owner's behalf)
 
@@ -143,10 +173,10 @@ anchor). **Never call `toISOString()` for dates.**
   to the button, in the sidebar), Reassign all (clears auto-placed only;
   manual placements immovable and count toward load), unplaced panel with
   per-student reasons.
-- Binder prep (`/binder`): binder_status/binder_note on the SESSION (resets
-  naturally, history preserved). Defaults to tomorrow. Cards show a tiny
+- Binder prep (`/binder`): binder_status/binder_note on the STUDENT (see
+  decision 11). Defaults to tomorrow, one row per student. Cards show a tiny
   ✓/✗ only; the note never renders on cards (the day query doesn't even
-  select it) — only in the binder view and the session's ⋯ menu.
+  select it) — only in the binder view, the student drawer, and the ⋯ menu.
 - Session cards are flat (no shadows); instructor stripe + first-day red
   border + selection outline are identity/state, not depth.
 - Cancelled strip below the grid is cancelled-only.
@@ -174,6 +204,12 @@ anchor). **Never call `toISOString()` for dates.**
 ## Open items
 
 - **Vercel deploy** is the owner's; repo is ready (`vercel.json` SPA rewrite).
+- **Binder cleanup migration is DELIBERATELY UNAPPLIED.** `sessions.binder_status`
+  / `binder_note`, the `sessions_instructor_binder_only` trigger and the
+  `instructor_binder_update` policy on `sessions` are all still in place, dead
+  but harmless, because the deployed bundle still writes them. Ship the client
+  first, then drop them — migrating first is exactly how the owner got locked
+  out during the instructor_rank work. SQL is in decision 11's commit message.
 - **A Radius appointments import was previewed but intentionally left
   uncommitted** earlier (MV 27 new / 16 updated / 4 unmatched; BB rows held on
   a center mismatch that Radius support is fixing — all three disputed
