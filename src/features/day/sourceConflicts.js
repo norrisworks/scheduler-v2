@@ -213,7 +213,12 @@ export function planCrossDayConflicts(
 /**
  * The import-preview variant: conflicts the FILE is about to cause (or keep).
  * Any row the plan will create/update/keep as a radius session whose
- * (student, date) also has a scheduled recurring session in the database.
+ * (student, date) also has a scheduled recurring session in the database AT A
+ * DIFFERENT TIME. A file row at an existing session's exact time IS that
+ * session — the unique index on (student_id, date, start_time) makes two
+ * sessions at one time impossible — so it is a match the import will record
+ * as confirmed, never a duplicate. Pairing by date alone used to make every
+ * matched-unchanged row conflict with itself (17 of 20 rows in one preview).
  * Returns the same shape findSourceConflicts does, with the file rows in
  * `radius` as {start_time, duration} stubs when the session doesn't exist yet.
  */
@@ -224,9 +229,16 @@ export function planSourceConflicts(centerPlan, existingSessions, dismissedKeys 
     ...centerPlan.unchanged.map((u) => ({ student: u.student, row: u.row ?? null })),
   ].filter((e) => e.row && e.row.status === 'scheduled')
 
+  // Every (student, date, time) the file itself lists. A session on this
+  // list is file-confirmed — it can never sit on the "standing slot" side
+  // of a duplicate, or a double day the file fully lists would pair its own
+  // two sessions with each other.
+  const fileKeys = new Set(fileRows.map((e) => `${e.student.id}|${e.row.date}|${e.row.startTime}`))
+
   const recurringByPair = new Map()
   for (const s of existingSessions) {
     if (s.source !== 'recurring' || s.status !== 'scheduled') continue
+    if (fileKeys.has(`${s.student_id}|${s.date}|${s.start_time}`)) continue
     const key = conflictKey(s.student_id, s.date)
     recurringByPair.set(key, [...(recurringByPair.get(key) ?? []), s])
   }

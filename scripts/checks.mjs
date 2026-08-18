@@ -865,6 +865,35 @@ const previewPlan = {
 eq('a planned radius row over an existing recurring session is flagged pre-commit',
    planSourceConflicts(previewPlan, [cSess({ id: 'rec1' })]).map((c) => c.key),
    ['stA|2026-08-20'])
+
+// THE ARIYA P REGRESSION (2026-08-18, 17 of 20 preview rows): a file row at
+// an existing session's EXACT time is that session — the unique index on
+// (student_id, date, start_time) makes two sessions at one time impossible —
+// so it is a match, never a duplicate. Only a differing time conflicts.
+eq('ARIYA: a file row at the same time as its session is a match, not a duplicate',
+   planSourceConflicts(
+     { created: [], updated: [],
+       unchanged: [{ student: { id: 'stA', name: 'Ava B' },
+                     row: { date: '2026-08-20', startTime: '16:00:00', duration: 60, status: 'scheduled' } }] },
+     [cSess({ id: 'rec1' })]).length, 0)
+eq('a double day the file fully lists never pairs its own sessions',
+   planSourceConflicts(
+     { created: [], updated: [],
+       unchanged: [
+         { student: { id: 'stA', name: 'Ava B' },
+           row: { date: '2026-08-20', startTime: '16:00:00', duration: 60, status: 'scheduled' } },
+         { student: { id: 'stA', name: 'Ava B' },
+           row: { date: '2026-08-20', startTime: '17:00:00', duration: 60, status: 'scheduled' } },
+       ] },
+     [cSess({ id: 'rec1' }), cSess({ id: 'rec2', start_time: '17:00:00' })]).length, 0)
+eq('a matched row plus an unlisted session at another time is still a conflict',
+   planSourceConflicts(
+     { created: [], updated: [],
+       unchanged: [{ student: { id: 'stA', name: 'Ava B' },
+                     row: { date: '2026-08-20', startTime: '16:00:00', duration: 60, status: 'scheduled' } }] },
+     [cSess({ id: 'rec1' }), cSess({ id: 'rec2', start_time: '17:00:00' })])
+     .map((c) => [c.key, c.recurring.map((s) => s.id)])[0],
+   ['stA|2026-08-20', ['rec2']])
 eq('the preview conflict shows the incoming time',
    planSourceConflicts(previewPlan, [cSess()])[0].radius[0].start_time, '17:00:00')
 eq('a dismissed pair stays quiet in the preview too',
