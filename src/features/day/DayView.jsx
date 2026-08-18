@@ -111,12 +111,13 @@ export default function DayView() {
     slotDayDismissed: new Set(),
     weekRadius: [],
     slotCounts: new Map(),
+    coverage: [],
   })
   const loadConflictContext = useCallback(async () => {
     if (!centerId || !date) return
     const weekStart = weekAnchorOf(date)
     const weekEnd = addDays(weekStart, 6)
-    const [dismissRes, slotDayRes, radiusRes, slotRes] = await Promise.all([
+    const [dismissRes, slotDayRes, radiusRes, slotRes, coverRes] = await Promise.all([
       supabase
         .from('session_conflict_dismissals')
         .select('student_id, date')
@@ -127,20 +128,29 @@ export default function DayView() {
         .from('session_cross_day_dismissals')
         .select('student_id, day_of_week')
         .eq('center_id', centerId),
+      // The week's RADIUS-CONFIRMED sessions: created from a file, or
+      // matched by one (last_seen_in_radius) — source alone is not the
+      // signal.
       supabase
         .from('sessions')
-        .select('id, student_id, center_id, date, start_time, duration, status, source')
+        .select('id, student_id, center_id, date, start_time, duration, status, source, last_seen_in_radius')
         .eq('center_id', centerId)
-        .eq('source', 'radius')
+        .or('source.eq.radius,last_seen_in_radius.not.is.null')
         .eq('status', 'scheduled')
         .gte('date', weekStart)
         .lte('date', weekEnd),
       // Standing-slot counts feed the count gate: the informational notice
-      // only appears when the week's radius sessions equal the slot count.
+      // only appears when the week's confirmed sessions equal the slot count.
       supabase
         .from('recurring_slots')
         .select('student_id, effective_until, students!inner(center_id)')
         .eq('students.center_id', centerId),
+      // Coverage: which dates any committed Radius file actually spans.
+      supabase
+        .from('import_runs')
+        .select('date_from, date_to')
+        .eq('kind', 'radius_sessions')
+        .not('date_from', 'is', null),
     ])
     const slotCounts = new Map()
     for (const slot of slotRes.data ?? []) {
@@ -154,6 +164,7 @@ export default function DayView() {
       ),
       weekRadius: radiusRes.data ?? [],
       slotCounts,
+      coverage: coverRes.data ?? [],
     })
   }, [centerId, date])
   useEffect(() => {
@@ -169,6 +180,7 @@ export default function DayView() {
         dismissedKeys: conflictContext.dismissed,
         dismissedSlotDays: conflictContext.slotDayDismissed,
         slotCounts: conflictContext.slotCounts,
+        coverage: conflictContext.coverage,
         // Only surface pairs whose questionable session is on the date being
         // viewed — the other days' rows show up on their own days.
       }).filter((c) => c.date === date),

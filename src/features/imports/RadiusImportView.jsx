@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { formatTimeMeridiem } from '../../lib/dates'
 import { parseTableFile } from './parseTable'
 import { nameKey } from './namingConvention'
-import { planRadiusImport } from './radiusImport'
+import { planRadiusImport, radiusKeyOf, confirmationTargets } from './radiusImport'
 import { conflictKey, planSourceConflicts, planCrossDayConflicts } from '../day/sourceConflicts'
 import { DAYS } from '../roster/studentFields'
 
@@ -193,6 +193,9 @@ export default function RadiusImportView() {
       let created = 0
       let updated = 0
       let flagged = 0
+      // One timestamp for the whole commit: every matched row — created,
+      // linked, updated, or unchanged — is stamped as seen by this file.
+      const seenAt = new Date().toISOString()
 
       for (const center of plan.centers) {
         const writes = [
@@ -210,6 +213,8 @@ export default function RadiusImportView() {
               duration: row.duration,
               status: row.status,
               source: 'radius',
+              radius_key: radiusKeyOf(row),
+              last_seen_in_radius: seenAt,
             })),
             { onConflict: 'student_id,date,start_time' },
           )
@@ -218,6 +223,20 @@ export default function RadiusImportView() {
           updated += center.updated.length
         }
         flagged += center.flagged.length
+
+        // Matched-UNCHANGED rows: the file listed them, so they must carry
+        // the confirmation too — but never through the upsert, which would
+        // flip their source. Skipping these is the exact bug that broke the
+        // cross-day detector (2026-08-17).
+        for (const t of confirmationTargets(center).filter((t) => t.bucket === 'unchanged')) {
+          const { error } = await supabase
+            .from('sessions')
+            .update({ radius_key: t.radiusKey, last_seen_in_radius: seenAt })
+            .eq('student_id', t.studentId)
+            .eq('date', t.date)
+            .eq('start_time', t.startTime)
+          if (error) throw new Error(error.message)
+        }
 
         // Apply the duplicate decisions made in the preview. 'Decide later'
         // (no choice) leaves the pair flagged on the day view and data health.
@@ -253,10 +272,15 @@ export default function RadiusImportView() {
         }
       }
 
+      // The file's date range is what makes "not confirmed" meaningful: the
+      // detector only mentions dates some committed file actually covered.
+      const allDates = plan.centers.flatMap((c) => c.dates)
       await supabase.from('import_runs').insert({
         center_id: plan.centers[0]?.center.id ?? null,
         kind: 'radius_sessions',
         filename: fileName,
+        date_from: allDates.length ? allDates.reduce((a, b) => (a < b ? a : b)) : null,
+        date_to: allDates.length ? allDates.reduce((a, b) => (a > b ? a : b)) : null,
         rows_total: plan.totalRows,
         rows_created: created,
         rows_updated: updated,

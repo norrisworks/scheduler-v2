@@ -5,7 +5,7 @@ import { INSTRUCTOR_COLUMNS } from '../instructors/rankAccess'
 // binder_note is deliberately NOT selected: cards show a done/not-done tick
 // only, and the surest way to keep the note off them is to never load it here.
 const SESSION_SELECT = `
-  id, center_id, student_id, date, start_time, duration, status, source, notes, is_modified, binder_status,
+  id, center_id, student_id, date, start_time, duration, status, source, notes, is_modified, binder_status, last_seen_in_radius,
   student:students ( id, name, grade, level, gender, first_day,
                      needs_schoolwork, slot_certainty, academic_status,
                      enrollment_start_date ),

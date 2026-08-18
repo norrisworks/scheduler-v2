@@ -20,6 +20,7 @@ export function useDataHealth(centerId) {
     dismissals: EMPTY,
     slotDayDismissals: EMPTY,
     slots: EMPTY,
+    coverage: EMPTY,
   })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -30,7 +31,7 @@ export function useDataHealth(centerId) {
     const token = ++requestRef.current
     setLoading(true)
 
-    const [studentRes, instructorRes, rankRes, sessionRes, dismissRes, slotDayRes, slotRes] = await Promise.all([
+    const [studentRes, instructorRes, rankRes, sessionRes, dismissRes, slotDayRes, slotRes, coverRes] = await Promise.all([
       supabase
         .from('students')
         .select('id, name, grade, level, gender, school, slot_certainty, academic_status, default_duration, active')
@@ -50,7 +51,7 @@ export function useDataHealth(centerId) {
       // that could pair a radius row with a standing-slot row.
       supabase
         .from('sessions')
-        .select('id, student_id, center_id, date, start_time, duration, status, source, student:students(name)')
+        .select('id, student_id, center_id, date, start_time, duration, status, source, last_seen_in_radius, student:students(name)')
         .eq('center_id', centerId)
         .eq('status', 'scheduled')
         .gte('date', new Date().toISOString().slice(0, 10))
@@ -67,6 +68,12 @@ export function useDataHealth(centerId) {
         .from('recurring_slots')
         .select('student_id, effective_until, students!inner(center_id)')
         .eq('students.center_id', centerId),
+      // Coverage: which dates any committed Radius file actually spans.
+      supabase
+        .from('import_runs')
+        .select('date_from, date_to')
+        .eq('kind', 'radius_sessions')
+        .not('date_from', 'is', null),
     ])
 
     if (token !== requestRef.current) return
@@ -86,6 +93,7 @@ export function useDataHealth(centerId) {
       dismissals: dismissRes.data ?? EMPTY,
       slotDayDismissals: slotDayRes.data ?? EMPTY,
       slots: slotRes.data ?? EMPTY,
+      coverage: coverRes.data ?? EMPTY,
     })
     setError(null)
     setLoading(false)
@@ -126,9 +134,10 @@ export function useDataHealth(centerId) {
         dismissedKeys: dismissed,
         dismissedSlotDays: slotDays,
         slotCounts,
+        coverage: snapshot.coverage,
       }),
     }
-  }, [snapshot.sessions, snapshot.dismissals, snapshot.slotDayDismissals, snapshot.slots, isCurrent])
+  }, [snapshot.sessions, snapshot.dismissals, snapshot.slotDayDismissals, snapshot.slots, snapshot.coverage, isCurrent])
 
   /**
    * Autosave patch for the instructor editor opened from a flagged row.

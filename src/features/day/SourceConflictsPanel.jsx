@@ -23,8 +23,10 @@ import { DAYS } from '../roster/studentFields'
  * detector's suggestion — including cases that passed the count gate, because
  * a partial week plus an added session can match the slot count by
  * coincidence. The file cannot distinguish a move from an addition, so this
- * panel suggests NOTHING: no cancel action, no move language. It states the
- * fact; the only controls manage the notice itself.
+ * panel suggests NOTHING: no move language, no recommended action. It states
+ * the fact. A plain "Cancel this session" button exists on each row — the
+ * owner's tool for a decision they made themselves, restored at their
+ * request — but it carries no emphasis and the notice never argues for it.
  */
 export default function SourceConflictsPanel({ conflicts, crossDay = [], showDates = false, onChanged }) {
   const [busy, setBusy] = useState(null) // conflict key while writing
@@ -68,6 +70,23 @@ export default function SourceConflictsPanel({ conflicts, crossDay = [], showDat
       { student_id: conflict.studentId, center_id: conflict.centerId, date: conflict.date },
       { onConflict: 'student_id,date' },
     )
+    setBusy(null)
+    if (error) setError(error.message)
+    else await onChanged?.()
+  }
+
+  /**
+   * Cancels the standing-slot session. Present because the owner asked for
+   * the ability back — NOT because anything here recommends it. is_modified
+   * keeps the materializer from resurrecting the row.
+   */
+  async function cancelSession(conflict) {
+    setBusy(conflict.key)
+    setError(null)
+    const { error } = await supabase
+      .from('sessions')
+      .update({ status: 'cancelled', is_modified: true, updated_at: new Date().toISOString() })
+      .in('id', conflict.recurring.map((s) => s.id))
     setBusy(null)
     if (error) setError(error.message)
     else await onChanged?.()
@@ -185,6 +204,17 @@ export default function SourceConflictsPanel({ conflicts, crossDay = [], showDat
                     className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-40"
                   >
                     Don't show again for this slot
+                  </button>
+                  {/* The owner's tool, not a recommendation: the notice
+                      states facts; this button acts only on their say-so. */}
+                  <button
+                    type="button"
+                    disabled={busy === c.key}
+                    onClick={() => cancelSession(c)}
+                    title="Cancels this standing-slot session — your decision; the notice implies nothing"
+                    className="rounded border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-500 hover:bg-slate-100 disabled:opacity-40"
+                  >
+                    Cancel this session
                   </button>
                 </span>
                 )}

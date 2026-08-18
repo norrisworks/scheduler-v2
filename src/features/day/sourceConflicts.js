@@ -51,25 +51,39 @@ import { addDays, dayOfWeek } from '../../lib/dates'
 export const weekAnchorOf = (dateISO) => addDays(dateISO, -dayOfWeek(dateISO))
 
 /**
- * The CROSS-DAY notice: a standing-slot session absent from a week's Radius
- * file while the same student has radius sessions elsewhere that week.
+ * A session Radius has vouched for: created from a file (source 'radius') or
+ * matched by a committed file against an existing row (last_seen_in_radius,
+ * written by the import for created/linked/updated/unchanged alike). Source
+ * alone is NOT the signal — a matched-unchanged session keeps
+ * source 'recurring', and reading source as "in Radius" is the broken signal
+ * behind the 2026-08-17 wrong cancellations.
+ */
+export const isRadiusConfirmed = (s) =>
+  s.source === 'radius' || s.last_seen_in_radius != null
+
+/**
+ * The CROSS-DAY notice: a standing-slot session NOT confirmed by any Radius
+ * file whose date range covers its date, while the same student HAS
+ * confirmed sessions elsewhere that week.
  *
  * THIS IS INFORMATION, NOT A SUGGESTION. Five sessions were wrongly
  * cancelled in one day (2026-08-17: Isaac M, Daijhen F, Matthias F,
  * Victoria F among them) when this detector presented the pattern as a
- * probable move and Radius merely carried an ADDITIONAL session. Some of
- * those cases even passed the count gate below — a partial week plus an
- * added session can match the slot count by coincidence. The file cannot
- * distinguish a move from an addition, so callers must present these as a
- * plain statement of fact with no suggested action and no move language.
+ * probable move and Radius merely carried an ADDITIONAL session. The file
+ * cannot distinguish a move from an addition, so callers must present these
+ * as a plain statement of fact with no suggested action and no move
+ * language.
  *
- * THE COUNT GATE limits when the notice appears at all: only when the
- * week's radius sessions EQUAL the student's standing-slot count. MORE
- * radius sessions than slots is an addition; FEWER means Radius simply
- * doesn't carry the student's full week (most families are not scheduling
- * through Radius). Neither is mentioned. This keeps the notice rare — it
- * does not make it evidence.
+ * Three silencers keep the notice rare and honest:
+ *  - CONFIRMATION: a session any committed file listed is never mentioned.
+ *  - COVERAGE: a date no committed file's range covers is never mentioned —
+ *    "not confirmed" is only meaningful where Radius data exists at all.
+ *  - THE COUNT GATE: the week's confirmed sessions must EQUAL the student's
+ *    standing-slot count. MORE is an addition; FEWER means Radius doesn't
+ *    carry the student's full week (most families are not scheduling through
+ *    Radius). Neither is mentioned. This limits noise — it is not evidence.
  *
+ * coverage: [{date_from, date_to}] of committed radius imports.
  * slotCounts: studentId -> count of active standing slots. A student absent
  * from the map is never mentioned: no counts, no arithmetic, no notice.
  * dismissedKeys: `${studentId}|${date}` — hide the notice for this week.
@@ -77,39 +91,51 @@ export const weekAnchorOf = (dateISO) => addDays(dateISO, -dayOfWeek(dateISO))
  */
 export function findCrossDayConflicts(
   sessions,
-  { dismissedKeys = new Set(), dismissedSlotDays = new Set(), slotCounts = new Map() } = {},
+  {
+    dismissedKeys = new Set(),
+    dismissedSlotDays = new Set(),
+    slotCounts = new Map(),
+    coverage = [],
+  } = {},
 ) {
-  const radiusByStudentWeek = new Map()
-  const radiusDates = new Set()
+  const covered = (date) =>
+    coverage.some((r) => r.date_from && r.date_to && r.date_from <= date && date <= r.date_to)
+
+  const confirmedByStudentWeek = new Map()
+  const confirmedDates = new Set()
   const seenIds = new Set()
   for (const s of sessions) {
-    if (s.source !== 'radius' || s.status !== 'scheduled') continue
+    if (s.status !== 'scheduled' || !isRadiusConfirmed(s)) continue
     // Callers may merge overlapping lists (today's sessions + the week's
-    // radius rows) — the same row must not count twice.
+    // confirmed rows) — the same row must not count twice.
     if (s.id != null) {
       if (seenIds.has(s.id)) continue
       seenIds.add(s.id)
     }
-    radiusDates.add(`${s.student_id}|${s.date}`)
+    confirmedDates.add(`${s.student_id}|${s.date}`)
     const wk = `${s.student_id}|${weekAnchorOf(s.date)}`
-    radiusByStudentWeek.set(wk, [...(radiusByStudentWeek.get(wk) ?? []), s])
+    confirmedByStudentWeek.set(wk, [...(confirmedByStudentWeek.get(wk) ?? []), s])
   }
 
   const conflicts = []
+  const noticed = new Set()
   for (const s of sessions) {
     if (s.source !== 'recurring' || s.status !== 'scheduled') continue
-    if (radiusDates.has(`${s.student_id}|${s.date}`)) continue
-    const weekRadius = radiusByStudentWeek.get(`${s.student_id}|${weekAnchorOf(s.date)}`) ?? []
-    const sameWeek = weekRadius.filter((x) => x.date !== s.date)
+    if (isRadiusConfirmed(s)) continue
+    if (!covered(s.date)) continue
+    // A confirmed session on the SAME date is the same-day panel's job.
+    if (confirmedDates.has(`${s.student_id}|${s.date}`)) continue
+    const weekConfirmed =
+      confirmedByStudentWeek.get(`${s.student_id}|${weekAnchorOf(s.date)}`) ?? []
+    const sameWeek = weekConfirmed.filter((x) => x.date !== s.date)
     if (sameWeek.length === 0) continue
-    // The count gate: a move is only possible when the week's radius
-    // sessions equal the standing-slot count. Anything else is an addition
-    // or an incompletely-tracked week — silence, not suspicion.
     const slotCount = slotCounts.get(s.student_id)
-    if (slotCount === undefined || weekRadius.length !== slotCount) continue
+    if (slotCount === undefined || weekConfirmed.length !== slotCount) continue
     const key = conflictKey(s.student_id, s.date)
+    if (noticed.has(key)) continue
     if (dismissedKeys.has(key)) continue
     if (dismissedSlotDays.has(`${s.student_id}|${dayOfWeek(s.date)}`)) continue
+    noticed.add(key)
     conflicts.push({
       key,
       studentId: s.student_id,
@@ -131,7 +157,9 @@ export function findCrossDayConflicts(
  * plan FLAGGED (in-window but absent from the file) whose student has a file
  * row elsewhere in the same week. Same shape and same information-only rule
  * as findCrossDayConflicts, with the radius side as {date, start_time} stubs
- * from the file.
+ * from the file. Confirmation and coverage need no parameters here: the file
+ * rows (all buckets, matched-unchanged included) ARE the confirmations, and
+ * flagged sessions are in-window by construction.
  */
 export function planCrossDayConflicts(
   centerPlan,

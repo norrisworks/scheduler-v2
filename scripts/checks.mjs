@@ -10,14 +10,14 @@ import { ineligibleReason, buildCandidates, isFallbackOnly, unrankedStudents, ex
 import { placeAtRank } from '../src/features/assign/rankOrder.js'
 import { RANK_TIEBREAK, RANK_GATED_CAP, NEW_STUDENT_PREFERENCE } from '../src/features/assign/algorithmFlags.js'
 import { rescheduleRows, validateReschedule } from '../src/features/day/reschedule.js'
-import { findSourceConflicts, planSourceConflicts, findCrossDayConflicts, planCrossDayConflicts } from '../src/features/day/sourceConflicts.js'
+import { findSourceConflicts, planSourceConflicts, findCrossDayConflicts, planCrossDayConflicts, isRadiusConfirmed } from '../src/features/day/sourceConflicts.js'
 import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessage } from '../src/features/assign/algorithms.js'
 import { buildGroups } from '../src/features/day/rowGrouping.js'
 import { proposeRanking, ineligibleForStudentReason, proposalReasons, sameGender, eligibleForStudent, moveEntry } from '../src/features/assign/proposeRanking.js'
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
-import { generateDisplayName, violatesNamingConvention, staleGradeInName, displayNameShape, nearlySameFirstName, isPlaceholderName } from '../src/features/imports/namingConvention.js'
+import { generateDisplayName, violatesNamingConvention, staleGradeInName, displayNameShape, nearlySameFirstName, isPlaceholderName, nameKey } from '../src/features/imports/namingConvention.js'
 import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } from '../src/features/imports/workstreamImport.js'
-import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent } from '../src/features/imports/radiusImport.js'
+import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent, radiusKeyOf, confirmationTargets } from '../src/features/imports/radiusImport.js'
 import { planStudentImport, planStudentImportByCenter } from '../src/features/imports/studentImport.js'
 import { buildChecks } from '../src/features/health/checks.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime , formatStampDate, TIME_CHOICES } from '../src/lib/dates.js'
@@ -697,9 +697,11 @@ const tueThu = [
   wk({ id: 'thu', student_id: 'stA', date: '2026-08-20', source: 'recurring' }),
   wk({ id: 'thuR', student_id: 'stA', date: '2026-08-20', source: 'radius' }),   // Thu matched in file
 ]
-// stA has TWO standing slots; the file carries TWO radius sessions that week
-// — counts equal, so the notice may appear (as information only).
-const twoSlots = { slotCounts: new Map([['stA', 2]]) }
+// A committed file covered this week; stA has TWO standing slots and the
+// file carries TWO sessions that week — counts equal, so the notice may
+// appear (as information only).
+const radiusCover = [{ date_from: '2026-08-16', date_to: '2026-08-22' }]
+const twoSlots = { slotCounts: new Map([['stA', 2]]), coverage: radiusCover }
 eq('the skipped slot day gets a notice; the matched day does not',
    findCrossDayConflicts(tueThu, twoSlots).map((c) => c.key), ['stA|2026-08-18'])
 eq('the notice carries both sides',
@@ -734,14 +736,74 @@ const isaac = [
   wk({ id: 'ithu', student_id: 'isaac', date: '2026-08-20', start_time: '16:30:00', source: 'radius' }),
 ]
 eq('ISAAC: an added session produces no notice',
-   findCrossDayConflicts(isaac, { slotCounts: new Map([['isaac', 2]]) }).length, 0)
+   findCrossDayConflicts(isaac, { slotCounts: new Map([['isaac', 2]]), coverage: radiusCover }).length, 0)
 eq('MORE radius sessions than slots is an addition — no notice',
    findCrossDayConflicts([
      ...tueThu,
      wk({ id: 'fri', student_id: 'stA', date: '2026-08-21', source: 'radius' }),
    ], twoSlots).length, 0)
 eq('an unknown slot count shows nothing — no counts, no notice',
-   findCrossDayConflicts(tueThu, {}).length, 0)
+   findCrossDayConflicts(tueThu, { coverage: radiusCover }).length, 0)
+
+// THE MATTHIAS REGRESSION (2026-08-17): his Tuesday WAS in the file, matched
+// as unchanged — which used to leave no record on the session, so "not in
+// Radius" silently meant "source is not radius" and a confirmed session was
+// reported as absent. Confirmation is source='radius' OR last_seen_in_radius;
+// a confirmed session is never the subject of a notice and counts toward the
+// week's confirmed total.
+eq('confirmation is source radius OR last-seen — source alone is not the signal',
+   [isRadiusConfirmed({ source: 'radius' }),
+    isRadiusConfirmed({ source: 'recurring', last_seen_in_radius: '2026-08-17T02:58:44Z' }),
+    isRadiusConfirmed({ source: 'recurring', last_seen_in_radius: null })],
+   [true, true, false])
+const matthias = [
+  wk({ id: 'mmon', student_id: 'matt', date: '2026-08-17', start_time: '15:00:00', source: 'recurring' }),
+  wk({ id: 'mtue', student_id: 'matt', date: '2026-08-18', start_time: '18:00:00', source: 'recurring',
+       last_seen_in_radius: '2026-08-17T02:58:44Z' }),
+  wk({ id: 'mwed', student_id: 'matt', date: '2026-08-19', start_time: '18:00:00', source: 'radius' }),
+]
+eq('MATTHIAS: the matched-unchanged Tuesday is never mentioned; only the true absence is',
+   findCrossDayConflicts(matthias, { slotCounts: new Map([['matt', 2]]), coverage: radiusCover })
+     .map((c) => c.key),
+   ['matt|2026-08-17'])
+eq('a confirmed recurring session counts toward the weekly confirmed total',
+   findCrossDayConflicts(matthias, { slotCounts: new Map([['matt', 2]]), coverage: radiusCover })
+     .map((c) => c.radius.map((r) => r.id))[0],
+   [['mtue', 'mwed']][0])
+eq('a fully confirmed week shows nothing',
+   findCrossDayConflicts(
+     matthias.map((s) => (s.id === 'mmon' ? { ...s, last_seen_in_radius: '2026-08-17T02:58:44Z' } : s)),
+     { slotCounts: new Map([['matt', 2]]), coverage: radiusCover },
+   ).length, 0)
+
+// COVERAGE: "not confirmed" is only meaningful where Radius data exists.
+eq('no committed file coverage, no notice — absence means nothing there',
+   findCrossDayConflicts(tueThu, { slotCounts: new Map([['stA', 2]]) }).length, 0)
+eq('a date outside every file range gets no notice',
+   findCrossDayConflicts(tueThu, {
+     slotCounts: new Map([['stA', 2]]),
+     coverage: [{ date_from: '2026-08-24', date_to: '2026-08-28' }],
+   }).length, 0)
+
+// EVERY matched import row must leave a confirmation record — created,
+// linked, updated, AND unchanged. A bucket missing from confirmationTargets
+// is the 2026-08-17 bug again: the file listed a session and nothing
+// recorded it.
+const confPlan = {
+  created: [{ student: { id: 'sC' }, row: { studentName: 'Ava Brown', date: '2026-08-17', startTime: '16:00:00' } }],
+  linked: [{ student: { id: 'sL' }, row: { studentName: 'Bo Chen', date: '2026-08-18', startTime: '16:00:00' } }],
+  updated: [{ student: { id: 'sU' }, row: { studentName: 'Cy Diaz', date: '2026-08-19', startTime: '16:00:00' } }],
+  unchanged: [{ student: { id: 'sN' }, row: { studentName: 'Di Eng', date: '2026-08-20', startTime: '16:00:00' } }],
+}
+eq('every matched bucket yields a confirmation record — unchanged included',
+   confirmationTargets(confPlan).map((t) => [t.bucket, t.studentId]),
+   [['created', 'sC'], ['linked', 'sL'], ['updated', 'sU'], ['unchanged', 'sN']])
+eq('a confirmation record carries the file-side key',
+   confirmationTargets(confPlan)[3].radiusKey,
+   `${nameKey('Di Eng')}|2026-08-20|16:00:00`)
+eq('radiusKeyOf spells the natural key from the file row alone',
+   radiusKeyOf({ studentName: 'Ava Brown', date: '2026-08-17', startTime: '16:00:00' }),
+   `${nameKey('Ava Brown')}|2026-08-17|16:00:00`)
 
 // Import-preview variant: flagged (absent-from-file) + file rows same week.
 // stA's two slots are Tue+Thu; the file carries Mon + Thu — two file rows
@@ -777,9 +839,20 @@ eq('ISAAC in the preview: one file row against two slots shows nothing',
   ]
   eq('the cross-day notice states that absence usually means nothing',
      crossDaySources.every((s) => s.includes('usually means nothing')), true)
-  eq('no move language or cross-day cancel action survives in the UI',
-     crossDaySources.some((s) => /confirmed the move|moved day|probably moved|cancelCrossDay|crossDayChoices/.test(s)),
+  eq('no move language survives in the UI',
+     crossDaySources.some((s) => /confirmed the move|moved day|probably moved|crossDayChoices/.test(s)),
      false)
+  // The cancel button exists at the owner's request but must stay a plain,
+  // unrecommended action — factual label, no argument attached.
+  eq("the notice's cancel button is plain and unrecommended",
+     crossDaySources[0].includes('Cancel this session'), true)
+  // The import must actually write the confirmation fields and the file's
+  // date range — the pure confirmationTargets check above is meaningless if
+  // the component never consumes it.
+  eq('the import commit writes confirmations and the file date range',
+     ['confirmationTargets', 'last_seen_in_radius', 'radius_key', 'date_from'].every((needle) =>
+       crossDaySources[1].includes(needle)),
+     true)
 }
 
 // The import-preview variant: conflicts the FILE is about to cause.

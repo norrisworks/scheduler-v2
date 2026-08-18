@@ -243,6 +243,48 @@ export function matchStudent(row, students) {
 const sessionKey = (studentId, date, startTime) => `${studentId}|${date}|${startTime}`
 
 /**
+ * The file-side identity of a row, recorded on the session it confirmed.
+ * Radius has no stable appointment id, so this is the same natural key the
+ * upsert uses, spelled from the file's own fields.
+ */
+export function radiusKeyOf(row) {
+  return `${nameKey(row.studentName)}|${row.date}|${row.startTime}`
+}
+
+/**
+ * Every session a committed import must mark as Radius-confirmed: one target
+ * per MATCHED file row — created, linked, updated, AND unchanged. The
+ * unchanged bucket is the one that was historically skipped: a file row that
+ * matched an existing session byte-for-byte left no record that Radius had
+ * listed it, so "not in Radius" silently meant "source is not radius" and the
+ * cross-day detector reported confirmed sessions as absent (five wrong
+ * cancellations on 2026-08-17). Unchanged targets must be written WITHOUT
+ * touching source; the others ride the upsert.
+ */
+export function confirmationTargets(centerPlan) {
+  const buckets = [
+    ['created', centerPlan.created ?? []],
+    ['linked', centerPlan.linked ?? []],
+    ['updated', centerPlan.updated ?? []],
+    ['unchanged', centerPlan.unchanged ?? []],
+  ]
+  const out = []
+  for (const [bucket, entries] of buckets) {
+    for (const { row, student } of entries) {
+      if (!row || !student) continue
+      out.push({
+        bucket,
+        studentId: student.id,
+        date: row.date,
+        startTime: row.startTime,
+        radiusKey: radiusKeyOf(row),
+      })
+    }
+  }
+  return out
+}
+
+/**
  * Works out what the import would do, per center, without doing it.
  *
  * Sessions already in the database inside the file's date window but absent
