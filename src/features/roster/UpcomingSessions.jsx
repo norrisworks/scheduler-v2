@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import QueryError from '../../components/QueryError'
 import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../../lib/supabase'
 import { useCenter } from '../centers/CenterProvider'
@@ -90,9 +91,13 @@ export default function UpcomingSessions({ studentId, slots = [], refreshKey = 0
 
   return (
     <div className="space-y-1.5">
-      {error && <p className="rounded bg-red-50 px-2 py-1 text-xs text-red-700">{error}</p>}
+      {error && sessions.length > 0 && (
+        <p className="rounded bg-red-50 px-2 py-1 text-xs text-red-700">{error}</p>
+      )}
 
-      {sessions.length === 0 ? (
+      {error && sessions.length === 0 ? (
+        <QueryError error={error} compact onRetry={load} />
+      ) : sessions.length === 0 ? (
         <p className="text-[11px] text-zinc-400">
           No upcoming sessions. Generate them from the day view if a standing slot should have
           produced some.

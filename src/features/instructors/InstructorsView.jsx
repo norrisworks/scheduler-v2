@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import QueryError from '../../components/QueryError'
 import { useCenter } from '../centers/CenterProvider'
 import { useAuth } from '../auth/AuthProvider'
 import { readableTextOn } from '../../lib/colors'
@@ -18,6 +19,7 @@ export default function InstructorsView() {
     loading,
     saving,
     error,
+    refetch,
     createInstructor,
     updateInstructor,
     reorderInstructors,
@@ -103,7 +105,11 @@ export default function InstructorsView() {
 
       <div className="flex min-h-0 flex-1">
         <div className="min-w-0 flex-1 overflow-auto">
-          {loading && instructors.length === 0 ? (
+          {error && instructors.length === 0 ? (
+            <div className="p-6">
+              <QueryError error={error} onRetry={refetch} />
+            </div>
+          ) : loading && instructors.length === 0 ? (
             <Spinner label="Loading instructors…" />
           ) : visible.length === 0 ? (
             <p className="px-6 py-16 text-center text-sm text-zinc-400">

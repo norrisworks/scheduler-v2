@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import QueryError from '../../components/QueryError'
 import { supabase } from '../../lib/supabase'
 import { useCenter } from '../centers/CenterProvider'
 import { useAuth } from '../auth/AuthProvider'
@@ -91,7 +92,11 @@ export default function DataHealthView() {
       />
 
       <div className="min-h-0 flex-1 overflow-auto p-4">
-        {loading && checks.length === 0 ? (
+        {error && checks.length === 0 ? (
+          <div className="p-6">
+            <QueryError error={error} onRetry={refetch} />
+          </div>
+        ) : loading && checks.length === 0 ? (
           <Spinner label="Checking…" />
         ) : checks.length === 0 ? (
           <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-6 text-center text-sm text-emerald-800">

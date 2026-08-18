@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import QueryError from '../../components/QueryError'
 import { useCenter } from '../centers/CenterProvider'
 import { supabase } from '../../lib/supabase'
 import { addDays, centerNowTime, formatTimeMeridiem, timeToMinutes, todayISO } from '../../lib/dates'
@@ -415,7 +416,11 @@ export default function DayView() {
 
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 overflow-auto">
-            {loading && gridSessions.length === 0 ? (
+            {error && gridSessions.length === 0 ? (
+              <div className="p-6">
+                <QueryError error={error} onRetry={refetch} />
+              </div>
+            ) : loading && gridSessions.length === 0 ? (
               <Spinner label="Loading day…" />
             ) : orientation === 'transposed' ? (
               <TransposedGrid {...gridProps} grouping={grouping} />
