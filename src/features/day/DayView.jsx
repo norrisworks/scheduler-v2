@@ -104,8 +104,8 @@ export default function DayView() {
 
   // Radius-vs-standing-slot duplicates for this date, same-day and
   // cross-day. Dismissals are recorded answers; conflicts never resolve
-  // themselves. Cross-day needs the whole week's radius sessions, since the
-  // pattern is "moved to a different day".
+  // themselves. Cross-day needs the whole week's radius sessions to decide
+  // whether the absence is even worth mentioning.
   const [conflictContext, setConflictContext] = useState({
     dismissed: new Set(),
     slotDayDismissed: new Set(),
@@ -135,8 +135,8 @@ export default function DayView() {
         .eq('status', 'scheduled')
         .gte('date', weekStart)
         .lte('date', weekEnd),
-      // Standing-slot counts feed the count gate: a "moved?" question is
-      // only asked when the week's radius sessions equal the slot count.
+      // Standing-slot counts feed the count gate: the informational notice
+      // only appears when the week's radius sessions equal the slot count.
       supabase
         .from('recurring_slots')
         .select('student_id, effective_until, students!inner(center_id)')

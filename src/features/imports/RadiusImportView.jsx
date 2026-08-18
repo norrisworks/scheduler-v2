@@ -156,9 +156,10 @@ export default function RadiusImportView() {
   // flagged on the day view and data health after import).
   const [conflictChoices, setConflictChoices] = useState({})
 
-  // The cross-day question, asked at import time: a standing-slot session
-  // the file skipped while the same student has a file session elsewhere in
-  // the week. May be a move, may be a makeup — the file cannot tell.
+  // The cross-day NOTICE, shown at import time: a standing-slot session the
+  // file skipped while the same student has a file session elsewhere in the
+  // week. Information only — the file cannot tell a move from an addition,
+  // so nothing is suggested and nothing is written at commit.
   const crossDayByCenter = useMemo(() => {
     if (!plan || !reference) return new Map()
     const dismissedKeys = new Set(
@@ -183,9 +184,6 @@ export default function RadiusImportView() {
     }
     return out
   }, [plan, reference])
-  // key -> 'cancel' | 'both' | 'never' | undefined (= decide later).
-  const [crossDayChoices, setCrossDayChoices] = useState({})
-
   async function commit() {
     if (!plan) return
     setBusy(true)
@@ -239,35 +237,6 @@ export default function RadiusImportView() {
                 date: conflict.date,
               },
               { onConflict: 'student_id,date' },
-            )
-            if (error) throw new Error(error.message)
-          }
-        }
-
-        // Cross-day decisions. 'Decide later' leaves the pair flagged on the
-        // day view and data health — nothing is ever auto-removed.
-        for (const conflict of crossDayByCenter.get(center.center.id) ?? []) {
-          const choice = crossDayChoices[conflict.key]
-          if (choice === 'cancel') {
-            const { error } = await supabase
-              .from('sessions')
-              .update({ status: 'cancelled', is_modified: true, updated_at: new Date().toISOString() })
-              .in('id', conflict.recurring.map((s) => s.id))
-            if (error) throw new Error(error.message)
-          } else if (choice === 'both') {
-            const { error } = await supabase.from('session_conflict_dismissals').upsert(
-              { student_id: conflict.studentId, center_id: center.center.id, date: conflict.date },
-              { onConflict: 'student_id,date' },
-            )
-            if (error) throw new Error(error.message)
-          } else if (choice === 'never') {
-            const { error } = await supabase.from('session_cross_day_dismissals').upsert(
-              {
-                student_id: conflict.studentId,
-                center_id: center.center.id,
-                day_of_week: conflict.dayOfWeek,
-              },
-              { onConflict: 'student_id,day_of_week' },
             )
             if (error) throw new Error(error.message)
           }
@@ -453,59 +422,37 @@ export default function RadiusImportView() {
               )}
 
               {(crossDayByCenter.get(c.center.id) ?? []).length > 0 && (
-                <div className="border-b border-orange-200 bg-orange-50 p-3">
-                  <p className="text-xs font-semibold text-orange-900">
-                    Standing sessions not listed in this file — verify with the family before
-                    cancelling anything
+                <div className="border-b border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-semibold text-slate-700">
+                    Standing sessions not listed in this file
                   </p>
-                  <p className="mt-0.5 text-[11px] text-orange-800">
-                    A session missing from a Radius file is <span className="font-semibold">not</span>{' '}
-                    cancelled — most families aren't scheduling through Radius yet. These are shown
-                    only because the file's sessions equal the student's standing-slot count that
-                    week, which is what a moved day would also look like. Keeping is the default;
-                    nothing is removed unless you choose it.
+                  <p className="mt-0.5 text-[11px] text-slate-600">
+                    Most families are not on Radius, so this usually means nothing — a session
+                    absent from a Radius file is <span className="font-semibold">not</span>{' '}
+                    cancelled. Shown for awareness only; the import writes nothing for these.
                   </p>
                   <ul className="mt-1.5 space-y-1">
                     {(crossDayByCenter.get(c.center.id) ?? []).map((conflict) => (
                       <li
                         key={conflict.key}
-                        className="flex flex-wrap items-center gap-2 text-[11px] text-orange-900"
+                        className="flex flex-wrap items-center gap-2 text-[11px] text-slate-700"
                       >
                         <span className="font-semibold">{conflict.name}</span>
                         <span>
-                          slot {DAYS.find((d) => d.value === conflict.dayOfWeek)?.short}{' '}
+                          {DAYS.find((d) => d.value === conflict.dayOfWeek)?.short}{' '}
                           {conflict.date}{' '}
                           {conflict.recurring.map((s) => formatTimeMeridiem(s.start_time)).join(', ')}{' '}
-                          not in file · file has{' '}
+                          is not in the file; the file lists{' '}
                           <span className="font-medium">
                             {conflict.radius
                               .map((s) => `${s.date} ${formatTimeMeridiem(s.start_time)}`)
                               .join(', ')}
                           </span>
+                          {' '}that week.
                         </span>
-                        <select
-                          value={crossDayChoices[conflict.key] ?? ''}
-                          onChange={(e) =>
-                            setCrossDayChoices((prev) => ({
-                              ...prev,
-                              [conflict.key]: e.target.value || undefined,
-                            }))
-                          }
-                          aria-label={`Cross-day resolution for ${conflict.name}`}
-                          className="ml-auto shrink-0 rounded border border-orange-300 bg-white px-1.5 py-0.5 text-[11px]"
-                        >
-                          <option value="">Keep — decide later</option>
-                          <option value="both">Keep — confirmed with the family</option>
-                          <option value="never">Keep — never ask about this slot again</option>
-                          <option value="cancel">Family confirmed the move — cancel the standing session</option>
-                        </select>
                       </li>
                     ))}
                   </ul>
-                  <p className="mt-1 text-[10px] text-orange-700">
-                    If a move is permanent, also edit the student's standing slot afterwards —
-                    otherwise the same question returns every week.
-                  </p>
                 </div>
               )}
 

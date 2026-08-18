@@ -51,34 +51,29 @@ import { addDays, dayOfWeek } from '../../lib/dates'
 export const weekAnchorOf = (dateISO) => addDays(dateISO, -dayOfWeek(dateISO))
 
 /**
- * The CROSS-DAY pattern: the parent moves Tuesday to Monday in Radius, the
- * import creates Monday, and Tuesday's standing-slot session stays (absence
- * never deletes — rule one is always err toward keeping). The student is on
- * the week twice on different days.
+ * The CROSS-DAY notice: a standing-slot session absent from a week's Radius
+ * file while the same student has radius sessions elsewhere that week.
  *
- * THE COUNT GATE (learned the hard way — Isaac M, 2026-08-17): "a recurring
- * session is absent from the file and some radius session exists that week"
- * does NOT imply a move; a makeup or added session produces the identical
- * shape. Isaac had slots Mon+Wed, Radius carried one added Thursday, the
- * detector called Monday "probably moved", and the cancelled student showed
- * up with no seat. A move is only arithmetically possible when the week's
- * radius sessions EQUAL the student's standing-slot count — each slot visit
- * accounted for, just relocated. MORE radius sessions than slots is an
- * addition; FEWER means Radius simply doesn't carry the student's full week
- * (most families are not scheduling through Radius). Neither is flagged.
+ * THIS IS INFORMATION, NOT A SUGGESTION. Five sessions were wrongly
+ * cancelled in one day (2026-08-17: Isaac M, Daijhen F, Matthias F,
+ * Victoria F among them) when this detector presented the pattern as a
+ * probable move and Radius merely carried an ADDITIONAL session. Some of
+ * those cases even passed the count gate below — a partial week plus an
+ * added session can match the slot count by coincidence. The file cannot
+ * distinguish a move from an addition, so callers must present these as a
+ * plain statement of fact with no suggested action and no move language.
  *
- * Even when the counts pass, this is a QUESTION for the family, never a
- * conclusion — the caller's wording and button emphasis must keep it one.
+ * THE COUNT GATE limits when the notice appears at all: only when the
+ * week's radius sessions EQUAL the student's standing-slot count. MORE
+ * radius sessions than slots is an addition; FEWER means Radius simply
+ * doesn't carry the student's full week (most families are not scheduling
+ * through Radius). Neither is mentioned. This keeps the notice rare — it
+ * does not make it evidence.
  *
  * slotCounts: studentId -> count of active standing slots. A student absent
- * from the map is never flagged: no counts, no arithmetic, no accusation.
- * dismissedKeys: `${studentId}|${date}` — "keep both, this week".
- * dismissedSlotDays: `${studentId}|${dayOfWeek}` — "never ask about this slot".
- *
- * Each conflict carries evidence for the human: sameTime / sameDuration mark
- * whether any of the week's radius sessions matches the flagged session's
- * start time or length — a same-time same-length pair looks like a moved
- * day; a mismatch weakens the story.
+ * from the map is never mentioned: no counts, no arithmetic, no notice.
+ * dismissedKeys: `${studentId}|${date}` — hide the notice for this week.
+ * dismissedSlotDays: `${studentId}|${dayOfWeek}` — never show it again.
  */
 export function findCrossDayConflicts(
   sessions,
@@ -124,8 +119,6 @@ export function findCrossDayConflicts(
       centerId: s.center_id ?? null,
       recurring: [s],
       radius: [...sameWeek].sort((a, b) => a.date.localeCompare(b.date)),
-      sameTime: sameWeek.some((x) => x.start_time === s.start_time),
-      sameDuration: sameWeek.some((x) => (x.duration ?? 60) === (s.duration ?? 60)),
     })
   }
   return conflicts.sort(
@@ -134,10 +127,11 @@ export function findCrossDayConflicts(
 }
 
 /**
- * Import-preview variant of the cross-day pattern: a recurring session the
+ * Import-preview variant of the cross-day notice: a recurring session the
  * plan FLAGGED (in-window but absent from the file) whose student has a file
- * row elsewhere in the same week. Same shape as findCrossDayConflicts, with
- * the radius side as {date, start_time} stubs from the file.
+ * row elsewhere in the same week. Same shape and same information-only rule
+ * as findCrossDayConflicts, with the radius side as {date, start_time} stubs
+ * from the file.
  */
 export function planCrossDayConflicts(
   centerPlan,
@@ -166,7 +160,7 @@ export function planCrossDayConflicts(
     if (sameWeek.length === 0) continue
     // The same count gate as the live detector: file rows that week must
     // EQUAL the standing-slot count, or this is an addition / an
-    // incompletely-tracked week, and no question is asked.
+    // incompletely-tracked week, and nothing is mentioned.
     const slotCount = slotCounts.get(s.student_id)
     if (slotCount === undefined || weekRows.length !== slotCount) continue
     const key = conflictKey(s.student_id, s.date)
@@ -181,8 +175,6 @@ export function planCrossDayConflicts(
       centerId: s.center_id ?? null,
       recurring: [s],
       radius: [...sameWeek].sort((a, b) => a.date.localeCompare(b.date)),
-      sameTime: sameWeek.some((x) => x.start_time === s.start_time),
-      sameDuration: sameWeek.some((x) => (x.duration ?? 60) === (s.duration ?? 60)),
     })
   }
   return conflicts.sort(

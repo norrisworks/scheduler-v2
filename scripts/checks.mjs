@@ -698,17 +698,17 @@ const tueThu = [
   wk({ id: 'thuR', student_id: 'stA', date: '2026-08-20', source: 'radius' }),   // Thu matched in file
 ]
 // stA has TWO standing slots; the file carries TWO radius sessions that week
-// (moved Mon + matched Thu) — counts equal, so the question may be asked.
+// — counts equal, so the notice may appear (as information only).
 const twoSlots = { slotCounts: new Map([['stA', 2]]) }
-eq('the skipped slot day is questioned; the matched day is not',
+eq('the skipped slot day gets a notice; the matched day does not',
    findCrossDayConflicts(tueThu, twoSlots).map((c) => c.key), ['stA|2026-08-18'])
-eq('the question carries both sides',
+eq('the notice carries both sides',
    findCrossDayConflicts(tueThu, twoSlots).map((c) => [c.recurring[0].id, c.radius.map((r) => r.id)])[0],
    ['tue', ['mon', 'thuR']])
-eq('the evidence is attached: same time and duration strengthen the story',
-   findCrossDayConflicts(tueThu, twoSlots).map((c) => [c.sameTime, c.sameDuration])[0],
-   [true, true])
-eq('no radius elsewhere in the week, no question',
+eq('the notice carries no move-evidence fields — information only',
+   Object.keys(findCrossDayConflicts(tueThu, twoSlots)[0]).some((k) => k === 'sameTime' || k === 'sameDuration'),
+   false)
+eq('no radius elsewhere in the week, no notice',
    findCrossDayConflicts([wk({ id: 'tue', date: '2026-08-18', source: 'recurring' })], twoSlots).length, 0)
 eq('a different WEEK is never paired',
    findCrossDayConflicts([
@@ -726,26 +726,26 @@ eq('a cancelled recurring session is not questioned',
      .length, 0)
 
 // THE ISAAC M REGRESSION (2026-08-17, cost a real seat): slots Mon+Wed, the
-// file carried ONE added Thursday. Radius count (1) < slot count (2), so the
-// counts cannot support a move and NO question is asked.
+// file carried ONE added Thursday. Radius count (1) < slot count (2), so
+// there is no notice at all.
 const isaac = [
   wk({ id: 'imon', student_id: 'isaac', date: '2026-08-17', start_time: '16:30:00', source: 'recurring' }),
   wk({ id: 'iwed', student_id: 'isaac', date: '2026-08-19', start_time: '15:30:00', source: 'recurring' }),
   wk({ id: 'ithu', student_id: 'isaac', date: '2026-08-20', start_time: '16:30:00', source: 'radius' }),
 ]
-eq('ISAAC: an added session is never presented as a possible move',
+eq('ISAAC: an added session produces no notice',
    findCrossDayConflicts(isaac, { slotCounts: new Map([['isaac', 2]]) }).length, 0)
-eq('MORE radius sessions than slots is an addition, never a move',
+eq('MORE radius sessions than slots is an addition — no notice',
    findCrossDayConflicts([
      ...tueThu,
      wk({ id: 'fri', student_id: 'stA', date: '2026-08-21', source: 'radius' }),
    ], twoSlots).length, 0)
-eq('an unknown slot count asks nothing — no counts, no accusation',
+eq('an unknown slot count shows nothing — no counts, no notice',
    findCrossDayConflicts(tueThu, {}).length, 0)
 
 // Import-preview variant: flagged (absent-from-file) + file rows same week.
-// stA's two slots are Tue+Thu; the file carries moved Mon + matched Thu —
-// two file rows against two slots, so the preview may ask.
+// stA's two slots are Tue+Thu; the file carries Mon + Thu — two file rows
+// against two slots, so the preview shows the notice.
 const crossPlan = {
   flagged: [wk({ id: 'tue', student_id: 'stA', date: '2026-08-18', source: 'recurring' })],
   created: [{ student: { id: 'stA', name: 'Ava B' },
@@ -754,7 +754,7 @@ const crossPlan = {
               row: { date: '2026-08-20', startTime: '16:00:00', status: 'scheduled' } }],
   updated: [], unchanged: [], linked: [],
 }
-eq('the preview asks the same question before commit',
+eq('the preview shows the same notice before commit',
    planCrossDayConflicts(crossPlan, twoSlots).map((c) => [c.key, c.radius[0].date])[0],
    ['stA|2026-08-18', '2026-08-17'])
 eq('a cancelled file row does not pair',
@@ -764,8 +764,23 @@ eq('a cancelled file row does not pair',
      twoSlots).length, 0)
 eq('preview honors never-ask too',
    planCrossDayConflicts(crossPlan, { ...twoSlots, dismissedSlotDays: new Set(['stA|2']) }).length, 0)
-eq('ISAAC in the preview: one file row against two slots asks nothing',
+eq('ISAAC in the preview: one file row against two slots shows nothing',
    planCrossDayConflicts({ ...crossPlan, created: [crossPlan.created[0]] }, twoSlots).length, 0)
+
+// The cross-day surfaces are INFORMATION-ONLY (owner directive after five
+// wrong cancellations on 2026-08-17): the mandated plain-fact sentence is
+// present, and no cancel action or move language exists in either surface.
+{
+  const crossDaySources = [
+    readFileSync(joinPath(process.cwd(), 'src/features/day/SourceConflictsPanel.jsx'), 'utf8'),
+    readFileSync(joinPath(process.cwd(), 'src/features/imports/RadiusImportView.jsx'), 'utf8'),
+  ]
+  eq('the cross-day notice states that absence usually means nothing',
+     crossDaySources.every((s) => s.includes('usually means nothing')), true)
+  eq('no move language or cross-day cancel action survives in the UI',
+     crossDaySources.some((s) => /confirmed the move|moved day|probably moved|cancelCrossDay|crossDayChoices/.test(s)),
+     false)
+}
 
 // The import-preview variant: conflicts the FILE is about to cause.
 const previewPlan = {

@@ -87,7 +87,6 @@ export default function DataHealthView() {
         conflicts={sourceConflicts}
         crossDay={crossDayConflicts}
         showDates
-        onEditStudent={(studentId) => setEditing({ entity: 'student', id: studentId })}
         onChanged={refetch}
       />
 
