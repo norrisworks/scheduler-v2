@@ -8,6 +8,7 @@ import RecurringSlots from './RecurringSlots'
 import StudentNotes from './StudentNotes'
 import InstructorPins from './InstructorPins'
 import UpcomingSessions from './UpcomingSessions'
+import BinderPanel from '../binder/BinderPanel'
 
 const TABS = [
   { key: 'attributes', label: 'Details' },
@@ -154,6 +155,13 @@ export default function StudentDrawer({ studentId, onClose, onChanged }) {
               onSave={saveAttributes}
             />
 
+
+            <section className="border-t border-zinc-200 pt-4">
+              <h3 className="mb-2 text-xs font-semibold tracking-wide text-zinc-500 uppercase">
+                Binder
+              </h3>
+              <BinderPanel student={student} saving={saving} onSave={saveAttributes} />
+            </section>
 
             <section className="border-t border-zinc-200 pt-4">
               <h3 className="mb-2 text-xs font-semibold tracking-wide text-zinc-500 uppercase">

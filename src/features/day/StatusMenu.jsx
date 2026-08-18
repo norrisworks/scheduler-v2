@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../../lib/supabase'
-import { BINDER_STATUSES } from '../binder/BinderPrepView'
+import { BINDER_STATUSES } from '../binder/binderPrep'
 
 /**
  * Status changes for one session. Rendered at the top of the day view rather
  * than inside the card, so it is never clipped by the card's overflow.
  *
  * Also the day view's one look at the binder note: the day query never loads
- * it (cards must not show it), so this fetches the single session's note on
- * open instead.
+ * it (cards must not show it), so this fetches the note on open. Binder state
+ * belongs to the STUDENT now, so that is what it reads.
  */
 export default function StatusMenu({ menu, onStatusChange, onUnassign, onReschedule, onClose }) {
   const [binder, setBinder] = useState(null)
@@ -26,9 +26,9 @@ export default function StatusMenu({ menu, onStatusChange, onUnassign, onResched
     setBinder(null)
     if (!menu) return
     supabase
-      .from('sessions')
+      .from('students')
       .select('binder_status, binder_note')
-      .eq('id', menu.session.id)
+      .eq('id', menu.session.student_id)
       .single()
       .then(({ data }) => data && setBinder(data))
   }, [menu])

@@ -3,12 +3,13 @@ import { supabase } from '../../lib/supabase'
 import { INSTRUCTOR_COLUMNS } from '../instructors/rankAccess'
 
 // binder_note is deliberately NOT selected: cards show a done/not-done tick
-// only, and the surest way to keep the note off them is to never load it here.
+// only. binder_status now rides on the STUDENT, because binder prep persists
+// until the binder is used rather than expiring with one session.
 const SESSION_SELECT = `
-  id, center_id, student_id, date, start_time, duration, status, source, notes, is_modified, binder_status, last_seen_in_radius,
+  id, center_id, student_id, date, start_time, duration, status, source, notes, is_modified, last_seen_in_radius,
   student:students ( id, name, grade, level, gender, first_day,
                      needs_schoolwork, slot_certainty, academic_status,
-                     enrollment_start_date ),
+                     enrollment_start_date, binder_status ),
   assignments ( id, instructor_id, source )
 `
 
@@ -156,6 +157,13 @@ export function useDaySchedule(centerId, date) {
           table: 'instructor_shifts',
           filter: `center_id=eq.${centerId}`,
         },
+        nudge,
+      )
+      // Binder state lives on the student now, so the card's prep tick only
+      // stays live if student updates reach this channel too.
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'students', filter: `center_id=eq.${centerId}` },
         nudge,
       )
       .subscribe()

@@ -2,30 +2,35 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useCenter } from '../centers/CenterProvider'
 import Spinner from '../../components/Spinner'
+import QueryError from '../../components/QueryError'
 import { addDays, formatDateLong, formatTimeMeridiem, todayISO } from '../../lib/dates'
+import { BINDER_RESET, BINDER_STATUSES, binderCounts, binderRows, binderStatusOf } from './binderPrep'
+
 
 /**
- * The night-before checklist: every student on tomorrow's schedule, in time
- * order, with a three-way prep status and a note for whoever builds the
- * binders. Status and note live on the SESSION, so each visit starts fresh
- * and past days keep their state as history — no reset job.
+ * The night-before checklist: every student on a chosen date's schedule, in
+ * time order, with a three-way prep status and a note for whoever builds the
+ * binders.
  *
- * The note is prep context only. Day-view cards never show it; they get a
- * bare done/not-done tick.
+ * Status and note live on the STUDENT, because prep is physical work on a
+ * physical binder and it survives until that binder is actually used. Reset is
+ * attendance-driven, in a database trigger — a no-show no longer throws the
+ * prep away, and a date going by never clears anything.
+ *
+ * One row per student, not per session: a student booked twice shares a single
+ * status, so showing two independent controls would be showing a lie.
+ *
+ * The note is prep context only. Day-view cards never show it; they get a bare
+ * done/not-done tick.
  */
-export const BINDER_STATUSES = [
-  { value: 'not_started', label: 'Not started', chip: 'bg-zinc-200 text-zinc-700', active: 'bg-zinc-600 text-white' },
-  { value: 'in_progress', label: 'In progress', chip: 'bg-amber-100 text-amber-800', active: 'bg-amber-500 text-white' },
-  { value: 'complete', label: 'Complete', chip: 'bg-emerald-100 text-emerald-800', active: 'bg-emerald-600 text-white' },
-]
-
 export default function BinderPrepView() {
   const { centerId, center } = useCenter()
   // Prep happens the night before, so tomorrow is the default.
   const [date, setDate] = useState(() => addDays(todayISO(), 1))
   const [snapshot, setSnapshot] = useState({ key: null, rows: [] })
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const [loadError, setLoadError] = useState(null)
+  const [saveError, setSaveError] = useState(null)
   const requestRef = useRef(0)
   const noteTimers = useRef(new Map())
 
@@ -39,7 +44,7 @@ export default function BinderPrepView() {
     const { data, error } = await supabase
       .from('sessions')
       .select(
-        'id, start_time, duration, status, binder_status, binder_note, student:students ( id, name, grade, level )',
+        'id, start_time, duration, status, student:students ( id, name, grade, level, binder_status, binder_note )',
       )
       .eq('center_id', centerId)
       .eq('date', date)
@@ -48,15 +53,11 @@ export default function BinderPrepView() {
 
     if (token !== requestRef.current) return
     if (error) {
-      setError(error.message)
+      // A failed load must not read as "nobody is booked that day".
+      setLoadError(error)
     } else {
-      const rows = (data ?? []).sort(
-        (a, b) =>
-          a.start_time.localeCompare(b.start_time) ||
-          (a.student?.name ?? '').localeCompare(b.student?.name ?? ''),
-      )
-      setSnapshot({ key, rows })
-      setError(null)
+      setSnapshot({ key, rows: binderRows(data) })
+      setLoadError(null)
     }
     setLoading(false)
   }, [centerId, date, key])
@@ -67,54 +68,68 @@ export default function BinderPrepView() {
 
   const rows = snapshot.key === key ? snapshot.rows : []
 
-  const patchRow = useCallback((sessionId, patch) => {
+  /** Patches the student on every row that carries them — one shared state. */
+  const patchStudent = useCallback((studentId, patch) => {
     setSnapshot((prev) => ({
       ...prev,
-      rows: prev.rows.map((r) => (r.id === sessionId ? { ...r, ...patch } : r)),
+      rows: prev.rows.map((r) =>
+        r.studentId === studentId ? { ...r, student: { ...r.student, ...patch } } : r,
+      ),
     }))
   }, [])
 
   /** Every change saves immediately; a failure rolls the row back and says so. */
   const save = useCallback(
-    async (sessionId, patch, previous) => {
-      patchRow(sessionId, patch)
+    async (studentId, patch, previous) => {
+      patchStudent(studentId, patch)
       const { error } = await supabase
-        .from('sessions')
+        .from('students')
         .update({ ...patch, updated_at: new Date().toISOString() })
-        .eq('id', sessionId)
+        .eq('id', studentId)
       if (error) {
-        patchRow(sessionId, previous)
-        setError(error.message)
+        patchStudent(studentId, previous)
+        setSaveError(error)
       }
     },
-    [patchRow],
+    [patchStudent],
   )
 
   const setStatus = (row, value) =>
-    save(row.id, { binder_status: value }, { binder_status: row.binder_status })
+    save(
+      row.studentId,
+      { binder_status: value },
+      { binder_status: binderStatusOf(row.student) },
+    )
+
+  /**
+   * The manual reset. Attendance normally clears a binder, but that depends on
+   * the Radius import having been run — so there has to be a way to say "this
+   * binder is used" by hand. Clears the note as well as the status.
+   */
+  const reset = (row) =>
+    save(row.studentId, { ...BINDER_RESET }, {
+      binder_status: binderStatusOf(row.student),
+      binder_note: row.student?.binder_note ?? null,
+    })
 
   // Notes save on a short debounce so typing is not a write per keystroke.
   const setNote = (row, value) => {
-    patchRow(row.id, { binder_note: value })
+    patchStudent(row.studentId, { binder_note: value })
     const timers = noteTimers.current
-    clearTimeout(timers.get(row.id))
+    clearTimeout(timers.get(row.studentId))
     timers.set(
-      row.id,
+      row.studentId,
       setTimeout(async () => {
         const { error } = await supabase
-          .from('sessions')
+          .from('students')
           .update({ binder_note: value || null, updated_at: new Date().toISOString() })
-          .eq('id', row.id)
-        if (error) setError(error.message)
+          .eq('id', row.studentId)
+        if (error) setSaveError(error)
       }, 500),
     )
   }
 
-  const counts = useMemo(() => {
-    const c = { complete: 0, in_progress: 0, not_started: 0 }
-    for (const r of rows) c[r.binder_status ?? 'not_started'] += 1
-    return c
-  }, [rows])
+  const counts = useMemo(() => binderCounts(rows), [rows])
 
   const tomorrow = addDays(todayISO(), 1)
 
@@ -177,17 +192,24 @@ export default function BinderPrepView() {
         </div>
       </div>
 
-      {error && (
-        <div className="flex items-center gap-3 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
-          <span className="flex-1">{error}</span>
-          <button type="button" onClick={() => setError(null)} className="font-medium underline">
-            Dismiss
-          </button>
+      {saveError && (
+        <div className="border-b border-red-200 px-4 py-2">
+          <QueryError error={saveError} compact onRetry={() => setSaveError(null)} />
         </div>
       )}
 
       <div className="min-h-0 flex-1 overflow-auto">
-        {loading && rows.length === 0 ? (
+        {loadError ? (
+          <div className="mx-auto max-w-2xl px-4 py-8">
+            <QueryError
+              error={loadError}
+              onRetry={() => {
+                setLoadError(null)
+                load()
+              }}
+            />
+          </div>
+        ) : loading && rows.length === 0 ? (
           <Spinner label="Loading sessions…" />
         ) : rows.length === 0 ? (
           <p className="px-6 py-16 text-center text-sm text-zinc-400">
@@ -195,50 +217,65 @@ export default function BinderPrepView() {
           </p>
         ) : (
           <ul className="mx-auto max-w-3xl divide-y divide-zinc-100 px-4 py-2">
-            {rows.map((row) => (
-              <li key={row.id} className="flex flex-wrap items-center gap-3 py-2">
-                <span className="w-20 shrink-0 text-xs tabular-nums text-zinc-500">
-                  {formatTimeMeridiem(row.start_time)}
-                </span>
-                <span className="w-40 min-w-0 shrink-0">
-                  <span className="block truncate text-sm font-medium text-zinc-900">
-                    {row.student?.name ?? 'Unknown'}
+            {rows.map((row) => {
+              const status = binderStatusOf(row.student)
+              const prepped = status !== 'not_started' || row.student?.binder_note
+              return (
+                <li key={row.studentId} className="flex flex-wrap items-center gap-3 py-2">
+                  <span className="w-20 shrink-0 text-xs tabular-nums text-zinc-500">
+                    {formatTimeMeridiem(row.startTime)}
                   </span>
-                  <span className="block text-[10px] text-zinc-400">
-                    {row.student?.grade ? `gr ${row.student.grade}` : ''}
-                    {row.duration && row.duration !== 60 ? ` · ${row.duration}m` : ''}
+                  <span className="w-40 min-w-0 shrink-0">
+                    <span className="block truncate text-sm font-medium text-zinc-900">
+                      {row.student?.name ?? 'Unknown'}
+                    </span>
+                    <span className="block text-[10px] text-zinc-400">
+                      {row.student?.grade ? `gr ${row.student.grade}` : ''}
+                      {row.duration && row.duration !== 60 ? ` · ${row.duration}m` : ''}
+                      {/* One binder, two visits — say so rather than repeat the row. */}
+                      {row.sessionCount > 1 ? ` · ${row.sessionCount} sessions today` : ''}
+                    </span>
                   </span>
-                </span>
 
-                <span className="flex shrink-0 overflow-hidden rounded-lg border border-zinc-300">
-                  {BINDER_STATUSES.map((s) => (
-                    <button
-                      key={s.value}
-                      type="button"
-                      onClick={() => setStatus(row, s.value)}
-                      aria-pressed={(row.binder_status ?? 'not_started') === s.value}
-                      className={
-                        'px-2 py-1 text-[11px] font-medium transition ' +
-                        ((row.binder_status ?? 'not_started') === s.value
-                          ? s.active
-                          : 'bg-white text-zinc-500 hover:bg-zinc-100')
-                      }
-                    >
-                      {s.label}
-                    </button>
-                  ))}
-                </span>
+                  <span className="flex shrink-0 overflow-hidden rounded-lg border border-zinc-300">
+                    {BINDER_STATUSES.map((s) => (
+                      <button
+                        key={s.value}
+                        type="button"
+                        onClick={() => setStatus(row, s.value)}
+                        aria-pressed={status === s.value}
+                        className={
+                          'px-2 py-1 text-[11px] font-medium transition ' +
+                          (status === s.value ? s.active : 'bg-white text-zinc-500 hover:bg-zinc-100')
+                        }
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </span>
 
-                <input
-                  type="text"
-                  value={row.binder_note ?? ''}
-                  onChange={(e) => setNote(row, e.target.value)}
-                  placeholder="Binder note — pages, packets, anything prep needs"
-                  aria-label={`Binder note for ${row.student?.name ?? 'student'}`}
-                  className="min-w-40 flex-1 rounded-lg border border-zinc-200 px-2 py-1 text-xs text-zinc-800 placeholder:text-zinc-300 focus:border-brand-500 focus:ring-1 focus:ring-brand-200"
-                />
-              </li>
-            ))}
+                  <input
+                    type="text"
+                    value={row.student?.binder_note ?? ''}
+                    onChange={(e) => setNote(row, e.target.value)}
+                    placeholder="Binder note — pages, packets, anything prep needs"
+                    aria-label={`Binder note for ${row.student?.name ?? 'student'}`}
+                    className="min-w-40 flex-1 rounded-lg border border-zinc-200 px-2 py-1 text-xs text-zinc-800 placeholder:text-zinc-300 focus:border-brand-500 focus:ring-1 focus:ring-brand-200"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => reset(row)}
+                    disabled={!prepped}
+                    title="Mark this binder used — clears the status and the note"
+                    aria-label={`Reset binder for ${row.student?.name ?? 'student'}`}
+                    className="shrink-0 rounded border border-zinc-300 px-1.5 py-1 text-[11px] font-medium text-zinc-600 hover:bg-zinc-100 disabled:opacity-30"
+                  >
+                    Reset
+                  </button>
+                </li>
+              )
+            })}
           </ul>
         )}
       </div>

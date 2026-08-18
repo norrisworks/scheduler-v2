@@ -5,6 +5,7 @@ import { STATUSES } from './levels'
 import { ACADEMIC_STATUS, BRAND_RED, SLOT_CERTAINTY } from './studentOptions'
 import { coverageWarning } from './shiftCoverage'
 import { INSTRUCTOR_DRAG_TYPE } from './dnd'
+import { isBinderReady } from '../binder/binderPrep'
 
 /**
  * One card component for both orientations. Layout, sizing and row order in
@@ -121,7 +122,7 @@ export default function SessionCard({
   // Binder tick: prepped or not, nothing more. The note itself is prep-room
   // context and never appears on a card.
   const binderTick =
-    session.binder_status === 'complete' ? (
+    isBinderReady(student) ? (
       <span className="shrink-0 text-[8px] leading-none text-emerald-600" title="Binder ready" aria-label="Binder ready">
         ✓
       </span>
