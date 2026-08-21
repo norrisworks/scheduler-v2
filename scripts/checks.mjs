@@ -1902,6 +1902,48 @@ eq('a write renumbers the gaps away',
    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
 eq('a write puts the moved instructor where asked',
    placeAtRank(visibleRanking(marcusRanks, stillActive), 'will', 1)[0].instructorId, 'will')
+
+// ---- instructor_rank is the DATABASE's to assign, never the client's
+// Creating an instructor was impossible: the column is NOT NULL with no
+// default AND carries no client INSERT grant, so naming it fails on
+// permissions and omitting it failed the not-null constraint. The database
+// now fills it in (trigger instructors_assign_rank, max + 1 for that center,
+// so a new hire lands last). That leaves the client one job: keep NOT writing
+// it. These checks hold the client to that half. They CANNOT see the trigger
+// — nothing in this repo can, since the schema lives only in Supabase — so
+// the database half is proved by SQL simulation and recorded in HANDOFF.
+{
+  // Normalized: the repo is CRLF-on-checkout, so a \n\n split silently
+  // matches nothing and every scan below quietly reads the whole file.
+  const readSrc = (rel) =>
+    readFileSync(joinPath(process.cwd(), rel), 'utf8').replace(/\r\n/g, '\n')
+
+  // The select allowlist exists because select('*') on instructors fails for
+  // every role. Putting the private column back in it breaks every read.
+  const rankAccess = readSrc('src/features/instructors/rankAccess.js')
+  const columnList = rankAccess.split('INSTRUCTOR_COLUMNS')[1].split('\n\n')[0]
+  eq('the select allowlist omits instructor_rank', columnList.includes('instructor_rank'), false)
+  eq('the select allowlist still names assignability', columnList.includes('assignability'), true)
+
+  // The create payload is an explicit literal, so a stray field is visible.
+  const createForm = readSrc('src/features/instructors/InstructorForm.jsx')
+  const payload = createForm.split('await onCreate({')[1].split('})')[0]
+  eq('the create payload omits instructor_rank', payload.includes('instructor_rank'), false)
+  eq('the create payload still sends the name', payload.includes('name:'), true)
+
+  // Belt and braces: no write anywhere in the app names the private column.
+  const srcFiles = readdirSync(joinPath(process.cwd(), 'src'), { recursive: true })
+    .filter((f) => /\.jsx?$/.test(String(f)))
+  const rankWriters = []
+  for (const rel of srcFiles) {
+    const text = readSrc(joinPath('src', String(rel)))
+    for (const m of text.matchAll(/\.(insert|update|upsert)\(([\s\S]{0,400}?)\)/g)) {
+      if (m[2].includes('instructor_rank')) rankWriters.push(`${rel}: .${m[1]}()`)
+    }
+  }
+  eq('no client write names instructor_rank', rankWriters, [])
+}
+
 let failed = 0
 for (const [label, got, want, ok] of checks) {
   if (!ok) { failed++; console.log(`FAIL ${label}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`) }

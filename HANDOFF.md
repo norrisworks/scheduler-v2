@@ -133,6 +133,20 @@ anchor). **Never call `toISOString()` for dates.**
     matrix. The popup used to renumber survivors 1..11, so the two screens
     disagreed. Reordering still renumbers on save — that is a WRITE, and writes
     stay contiguous.
+14. **The DATABASE assigns `instructor_rank`, never the client** (2026-08-21).
+    Creating an instructor was outright impossible: the column is NOT NULL with
+    no default AND is absent from the client INSERT grant, so naming it fails on
+    permissions and omitting it failed the not-null constraint. Trigger
+    `instructors_assign_rank` (BEFORE INSERT) fills a null rank with max + 1 for
+    that center, so a new hire lands last. It MUST be SECURITY DEFINER — it
+    reads `max(instructor_rank)`, and that column is revoked from
+    `authenticated`, so an invoker-rights trigger fails exactly where the insert
+    already did. It takes a per-center advisory lock because the unique
+    constraint is DEFERRABLE INITIALLY DEFERRED: two concurrent inserts picking
+    the same max + 1 would not fail until COMMIT, far from the cause.
+    `createInstructor` still sends the whole order to
+    `set_instructor_rank_order` straight after, which renumbers 1..N — the
+    trigger only has to make the insert legal.
 
 ## Importers (all preview-first; never commit on the owner's behalf)
 
@@ -225,6 +239,18 @@ anchor). **Never call `toISOString()` for dates.**
 - Kieran's admin login can see the full instructor ranking (role-based
   confidentiality has no per-person carve-out) — flagged to the owner; a
   third role would be needed to change that.
+- **`npm run check` cannot see the database.** It bundles under node with no
+  Supabase client, so schema-level rules — the binder reset triggers, the
+  instructor-rank trigger, grants, RLS — are proved by SQL simulation
+  (`set local role authenticated` + `request.jwt.claims`) and recorded here,
+  not by the suite. The suite guards the CLIENT half of those rules (e.g. that
+  nothing ever writes `instructor_rank`). Dropping a trigger stays green.
+- **`instructors` is writable by any authenticated JWT at the database.** Its
+  only policy is `staff_all` (ALL / true), so the "instructor role is read-only
+  except binder" rule holds for `sessions` and `students` but NOT here — an
+  instructor account is blocked from the instructor form by UI gating alone.
+  Noticed while fixing decision 14; not fixed, since it needs the owner's call
+  on whether instructor accounts should be refused outright.
 
 ## Working style the owner expects
 
