@@ -147,6 +147,26 @@ anchor). **Never call `toISOString()` for dates.**
     `createInstructor` still sends the whole order to
     `set_instructor_rank_order` straight after, which renumbers 1..N — the
     trigger only has to make the insert legal.
+15. **`instructors` is admin-write at the DATABASE** (2026-08-21). It was the
+    last core table on `staff_all` (ALL / true), so "instructor accounts are
+    read-only except binder" held in the UI and nowhere else — any authenticated
+    JWT could edit capability and assignability flags that auto-assign depends
+    on. Now `read_all` (SELECT / true) + `admin_write` (ALL / `jwt_is_admin()`),
+    the same shape as sessions and students. Proven both ways by simulation:
+    instructor JWT reads 22 rows, INSERT raises, UPDATE and DELETE touch 0 rows;
+    admin does all three.
+16. **`npm run check:db` covers what the bundled suite cannot** (2026-08-21).
+    `scripts/db-check.mjs` asserts triggers, policies, grants, column locks and
+    definer/search_path settings. The database returns FACTS ONLY
+    (`db_schema_facts`, admin-gated, `service_role` allowed for CI); every
+    EXPECTATION lives in the script, in git, so dropping a trigger changes the
+    facts and fails an assertion — a checker that graded itself in the database
+    could just be edited to say everything is fine. `DB_CHECK_FACTS_FILE=<json>`
+    runs the assertions against a captured payload with no credentials, which is
+    how they are mutation-tested. Gate history worth knowing: the first version
+    tested `current_user`, which SECURITY DEFINER rebinds to the function OWNER,
+    so it failed OPEN; the second added a `session_user` allowance that made it
+    untestable. It now reads only the caller's JWT.
 
 ## Importers (all preview-first; never commit on the owner's behalf)
 
@@ -239,18 +259,20 @@ anchor). **Never call `toISOString()` for dates.**
 - Kieran's admin login can see the full instructor ranking (role-based
   confidentiality has no per-person carve-out) — flagged to the owner; a
   third role would be needed to change that.
-- **`npm run check` cannot see the database.** It bundles under node with no
-  Supabase client, so schema-level rules — the binder reset triggers, the
-  instructor-rank trigger, grants, RLS — are proved by SQL simulation
-  (`set local role authenticated` + `request.jwt.claims`) and recorded here,
-  not by the suite. The suite guards the CLIENT half of those rules (e.g. that
-  nothing ever writes `instructor_rank`). Dropping a trigger stays green.
-- **`instructors` is writable by any authenticated JWT at the database.** Its
-  only policy is `staff_all` (ALL / true), so the "instructor role is read-only
-  except binder" rule holds for `sessions` and `students` but NOT here — an
-  instructor account is blocked from the instructor form by UI gating alone.
-  Noticed while fixing decision 14; not fixed, since it needs the owner's call
-  on whether instructor accounts should be refused outright.
+- **Six tables are still on a permissive `staff_all` (ALL / true)**, so any
+  authenticated JWT can write them: `centers`, `import_runs`,
+  `instructor_shifts`, `session_conflict_dismissals`,
+  `session_cross_day_dismissals`, `v1_reference`. `assignment_overrides` is a
+  variant (SELECT true + INSERT true). **`instructor_shifts` is the one worth
+  deciding about** — shift coverage is a hard filter in auto-assign, so an
+  instructor account editing shifts changes who is assignable. The others are
+  low-stakes. They are listed in `PERMISSIVE_ALLOWED` in `db-check.mjs`, so
+  they stay visible and a NEW permissive table fails the checks.
+- **Imports are not admin-gated in the nav** (`TopBar.jsx` marks only
+  Instructors and Rankings `adminOnly`), but every write an import makes lands
+  on an admin-write table, so an instructor account reaches the screens and
+  then fails mid-import. Gate the nav, or leave it — but it is not a
+  permissions hole, only a bad error path.
 
 ## Working style the owner expects
 

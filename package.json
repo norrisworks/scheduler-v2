@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "esbuild scripts/checks.mjs --bundle --format=esm --platform=node --outfile=node_modules/.cache/checks.mjs --log-level=error && node node_modules/.cache/checks.mjs"
+    "check": "esbuild scripts/checks.mjs --bundle --format=esm --platform=node --outfile=node_modules/.cache/checks.mjs --log-level=error && node node_modules/.cache/checks.mjs",
+    "check:db": "node scripts/db-check.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.58.0",
