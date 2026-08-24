@@ -188,15 +188,25 @@ anchor). **Never call `toISOString()` for dates.**
       exempts the stamp (it changes on every binder write by design).
     - Nothing else is written. No session statuses, no roster edits.
     - The manual Reset control stays: attendance depends on the import running.
-18. **`radius_lead_id`, and why the obvious id does not work** (2026-08-23).
-    The attendance export carries `Lead Id` (per student) and `Account Id` (a
-    uuid, per guardian). NEITHER is in `radius_account`: that column holds the
-    guardian NAME, and its numeric suffix — 'Tang, Jun | 3266135' — is an
-    ACCOUNT-level id from a different space. Measured on the real 8/21 export:
-    0 of 105 Lead Ids matched a `radius_account` suffix; the Students export's
-    own `Lead Id` column matched 105 of 105, and `Account Id` also matched
-    105 of 105 but is shared by siblings so it cannot identify a student.
-    Hence `students.radius_lead_id`, populated by the Students import.
+18. **The attendance bridge is (Lead Id + First Name)** (2026-08-23, corrected
+    2026-08-24). The attendance export carries NO per-student id. `Lead Id` and
+    `Account Id` are both FAMILY-level and identical across siblings — the
+    three Coyne children share lead 3069017 and one Account Id uuid. On the
+    real 8/21 export, 25 of 105 leads cover more than one child, and the file
+    holds **131 students, not 105**. `Student Id` exists only in the Students
+    export, so it cannot bridge the two files.
+    - The pair IS unique within a family: 744 distinct pairs from the 744
+      Students-export rows carrying a lead, zero duplicates.
+    - Stored as a pair (`radius_lead_id` + `radius_first_name`) by the Students
+      import, so the mapping is recorded once rather than inferred on each run.
+    - `radius_account` is not a route either: it holds the guardian NAME and
+      its numeric suffix ('Tang, Jun | 3266135') is account-level, from a
+      different space — 0 of 105 matched.
+    - **The first cut keyed on the lead alone and was wrong in a way that
+      mattered**: it merged siblings into one bucket, so the last child out of
+      the door decided all their binders. Checks now cover siblings resolving
+      independently, and an unknown sibling falling through rather than
+      claiming one of the others.
 
 ## Importers (all preview-first; never commit on the owner's behalf)
 
@@ -228,11 +238,12 @@ anchor). **Never call `toISOString()` for dates.**
   student's own surname, so the template row 'John Smith' matched the real
   'John G' (account Germin). On the real export it made 2 matches, 1 wrong.
   Placeholder names never match, for the same reason they never create.
-  Real 8/21 export: 249 rows, 0 skipped, 105 students, 99 matched by name with
-  no lead ids stored yet. The 6 misses are all known quirks — Anvit Arun
-  ('Anvit S'), Audie Prykowski ('Audie K'), Haziq Hassan ('Hazik H'), Jacob
-  Allegretti ('Jake A'), John Smith (placeholder), Kalaikkathir kalaikkovan
-  ('Kathir K'). Running the Students import first makes all 105 exact.
+  Real 8/21 export with the pair populated: 249 rows, 0 skipped, **131
+  students, 129 matched, all via the pair**; Blue Bell 40 of 40. The two misses
+  are the cases where guessing is worst: 'Haziq Hassan' vs the stored 'Hazik H'
+  (a spelling divergence INSIDE a sibling pair — the family also holds Hayat H,
+  so a guess picks between two real children), and 'John Smith', refused as a
+  placeholder. Both surface in the preview.
 - **Source conflicts**: a (student, date) with both a scheduled radius and
   recurring session = duplicate (family moved their time in Radius). Surfaced
   in the day view, data health, and the import preview with explicit
@@ -315,13 +326,15 @@ anchor). **Never call `toISOString()` for dates.**
   instructor account editing shifts changes who is assignable. The others are
   low-stakes. They are listed in `PERMISSIVE_ALLOWED` in `db-check.mjs`, so
   they stay visible and a NEW permissive table fails the checks.
-- **`radius_lead_id` is empty on every student right now.** The column and the
-  Students-import wiring exist, but no Students import has run since, so the
-  attendance import falls back to name matching (99 of 105 on the real 8/21
-  file, 6 known quirks unmatched). Run the Students export through the roster
-  import once and every attendance match becomes exact. A one-time SQL backfill
-  from `Students Export 8_23_2026.xlsx` would do the same and can be proposed
-  on request — not done unilaterally, as it is a bulk roster write.
+- **`radius_first_name` is empty on every student until a Students import
+  runs.** `radius_lead_id` is populated (247 of 252) from an earlier run, but
+  the lead alone is a FAMILY, so until the second half is stored the attendance
+  import falls back to name matching. Re-run the Students export through the
+  roster import once and matching becomes exact. The 129-of-131 figure above
+  was measured by reconstructing what that import will write, from the real
+  `Students Export 8_23_2026.xlsx` — the definitive number comes from the run
+  itself. A one-time SQL backfill would do the same and can be proposed on
+  request; not done unilaterally, as it is a bulk roster write.
 - **Imports are not admin-gated in the nav** (`TopBar.jsx` marks only
   Instructors and Rankings `adminOnly`), but every write an import makes lands
   on an admin-write table, so an instructor account reaches the screens and

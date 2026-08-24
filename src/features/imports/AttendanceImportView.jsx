@@ -152,7 +152,7 @@ export default function AttendanceImportView() {
           onChange={onFile}
           disabled={busy}
           aria-label="Student Attendance Report file"
-          className="mx-auto block text-sm"
+          className="block w-full text-sm text-zinc-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-500 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-white hover:file:bg-brand-600"
         />
         <p className="mt-2 text-xs text-zinc-400">
           Student Attendance Report export — Lead Id, Attendance Date, Departure Time, Center.

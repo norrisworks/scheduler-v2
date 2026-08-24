@@ -1689,7 +1689,9 @@ eq('two file rows of the same shape block it too', twoInFile.updated.length, 0)
 const doubled = planStudentImport(
   [{ __row: 2, first_name: 'Rex', last_name: 'Ford', account: 'Ford, A', grade: '3' },
    { __row: 3, first_name: 'Rex', last_name: 'Ford', account: 'Ford, A', grade: '9' }],
-  [{ id: 'r', name: 'Rex F', radius_account: 'Ford, A | 1', grade: '3', active: true }],
+  // radius_first_name already stored, so the FIRST row has nothing to backfill
+  // and this still measures the duplicate, not the pair backfill.
+  [{ id: 'r', name: 'Rex F', radius_account: 'Ford, A | 1', radius_first_name: 'Rex', grade: '3', active: true }],
 )
 eq('a duplicated export row is flagged, not applied', doubled.problems.length, 1)
 eq('and the student is untouched', doubled.updated.length, 0)
@@ -1984,18 +1986,35 @@ eq('an unreadable date is a problem',
 eq('a missing departure is a problem',
    attendanceRowProblem(readAttendanceRow(attRow({ departure_time: '' }))), 'unreadable departure time')
 
-// Matching: lead id first, name only as a fallback.
-const albert = { id: 'a', name: 'Albert C', radius_lead_id: '3299461' }
+// Matching keys on the PAIR: Lead Id is family-level and Account Id is the
+// same family, so neither identifies a child on its own.
+const albert = { id: 'a', name: 'Albert C', radius_lead_id: '3299461', radius_first_name: 'Albert' }
 const albertNoId = { id: 'a', name: 'Albert C' }
 const otherAlbert = { id: 'b', name: 'Albert S' }
-eq('matches on lead id',   matchAttendanceStudent(readAtt, [albert, otherAlbert]).via, 'lead id')
+eq('matches on the pair',  matchAttendanceStudent(readAtt, [albert, otherAlbert]).via, 'lead id + first name')
 eq('falls back to name',   matchAttendanceStudent(readAtt, [albertNoId, otherAlbert]).via, 'name')
 eq('name fallback finds the right student',
    matchAttendanceStudent(readAtt, [albertNoId, otherAlbert]).student.id, 'a')
 eq('no match is not a guess', matchAttendanceStudent(readAtt, [otherAlbert]).student, null)
-// The guardian account id must never be used: siblings share one.
-eq('two students on one lead id is ambiguous, not a coin toss',
-   matchAttendanceStudent(readAtt, [albert, { id: 'c', name: 'Alma C', radius_lead_id: '3299461' }]).student,
+
+// Siblings: three Coyne children on one lead. The lead alone must never pick
+// one of them, and each first name must reach its own child.
+const coyne = ['Charlie', 'Connor', 'Kieran'].map((first, i) => ({
+  id: 'c' + i, name: `${first} C`, radius_lead_id: '3069017', radius_first_name: first,
+}))
+const coyneRow = (first) =>
+  readAttendanceRow(attRow({ lead_id: '3069017', first_name: first, last_name: 'Coyne' }))
+eq('each sibling matches their own record',
+   coyne.map((c) => matchAttendanceStudent(coyneRow(c.radius_first_name), coyne).student.id),
+   ['c0', 'c1', 'c2'])
+eq('a shared lead alone never resolves',
+   matchAttendanceStudent(readAttendanceRow(attRow({ lead_id: '3069017', first_name: '', last_name: 'Coyne' })), coyne).student,
+   null)
+// A sibling we do not have on the roster must not claim one of the others.
+eq('an unknown sibling falls through instead of stealing a sibling',
+   matchAttendanceStudent(coyneRow('Rowan'), coyne).student, null)
+eq('the same pair twice is ambiguous, not a coin toss',
+   matchAttendanceStudent(readAtt, [albert, { id: 'c', name: 'Albert Z', radius_lead_id: '3299461', radius_first_name: 'Albert' }]).student,
    null)
 // Rule 2 of the naming convention: a shared first name gets TWO letters of
 // surname, so 'Micah Chun' is stored 'Micah Ch', not 'Micah C'. Matching only
@@ -2027,9 +2046,9 @@ eq('the guardian surname alone is not enough',
      [{ id: 'k', name: 'Audie K', radius_account: 'Keller, Joy | 3182051' }]).student,
    null)
 
-// A stored lead id wins even when a different student's NAME also matches.
-eq('lead id beats a name collision',
-   matchAttendanceStudent(readAtt, [{ id: 'z', name: 'Albert C' }, { id: 'a', name: 'Albert Z', radius_lead_id: '3299461' }]).student.id,
+// A stored pair wins even when a different student's NAME also matches.
+eq('the pair beats a name collision',
+   matchAttendanceStudent(readAtt, [{ id: 'z', name: 'Albert C' }, { id: 'a', name: 'Albert Z', radius_lead_id: '3299461', radius_first_name: 'Albert' }]).student.id,
    'a')
 
 // The rule itself. Departure 8/21 6:53pm ET = 2026-08-21T22:53Z.
@@ -2062,11 +2081,14 @@ eq('no departure means no decision',
   ])
   const studentsByCenter = new Map([
     ['mv', [
-      { id: 'a', name: 'Albert C', radius_lead_id: '3299461', binder_status: 'complete', binder_status_set_at: '2026-08-18T12:00:00Z' },
-      { id: 'd', name: 'Derek B', radius_lead_id: '3038634', binder_status: 'complete', binder_status_set_at: '2026-08-22T12:00:00Z' },
+      { id: 'a', name: 'Albert C', radius_lead_id: '3299461', radius_first_name: 'Albert', binder_status: 'complete', binder_status_set_at: '2026-08-18T12:00:00Z' },
+      { id: 'd', name: 'Derek B', radius_lead_id: '3038634', radius_first_name: 'Derek', binder_status: 'complete', binder_status_set_at: '2026-08-22T12:00:00Z' },
+      // Two siblings on ONE lead, prepped at different times.
+      { id: 'c1', name: 'Charlie C', radius_lead_id: '3069017', radius_first_name: 'Charlie', binder_status: 'complete', binder_status_set_at: '2026-08-18T12:00:00Z' },
+      { id: 'c2', name: 'Connor C', radius_lead_id: '3069017', radius_first_name: 'Connor', binder_status: 'complete', binder_status_set_at: '2026-08-22T12:00:00Z' },
     ]],
     ['bb', [
-      { id: 'e', name: 'Eli C', radius_lead_id: '2664376', binder_status: 'not_started', binder_status_set_at: '2026-08-01T12:00:00Z' },
+      { id: 'e', name: 'Eli C', radius_lead_id: '2664376', radius_first_name: 'Eli', binder_status: 'not_started', binder_status_set_at: '2026-08-01T12:00:00Z' },
     ]],
   ])
 
@@ -2086,11 +2108,16 @@ eq('no departure means no decision',
       attRow({ departure_time: '' }),
       // A center we do not run.
       attRow({ lead_id: '5555555', center: 'Rosemont' }),
+      // Two siblings on one lead, attending on the same day. Charlie's prep
+      // predates the visit (consumed); Connor's postdates it (kept). Keying on
+      // the lead alone would have given both children the same answer.
+      attRow({ lead_id: '3069017', first_name: 'Charlie', last_name: 'Coyne', attendance_date: '8/21/2026' }),
+      attRow({ lead_id: '3069017', first_name: 'Connor', last_name: 'Coyne', attendance_date: '8/21/2026' }),
     ],
     { centersByName, studentsByCenter },
   )
 
-  eq('every row is accounted for', plan.totalRows, 7)
+  eq('every row is accounted for', plan.totalRows, 9)
   eq('the window comes from the file', [plan.dateFrom, plan.dateTo], ['2026-08-17', '2026-08-21'])
   eq('both centers appear', plan.centers.map((c) => c.center.name), ['Blue Bell', 'Montgomeryville'])
   eq('an unknown center is named, not silently dropped', plan.unknownCenters, ['Rosemont'])
@@ -2101,8 +2128,10 @@ eq('no departure means no decision',
   eq('and the visits are counted', mv.matched.find((m) => m.student.id === 'a').visits, 2)
   eq('the LATEST departure decides',
      mv.matched.find((m) => m.student.id === 'a').row.date, '2026-08-21')
-  eq('Albert is reset', mv.resets.map((r) => r.student.id), ['a'])
-  eq('Derek is kept', mv.kept.map((k) => k.student.id), ['d'])
+  eq('siblings are separate students', mv.matched.filter((m) => m.row.leadId === '3069017').length, 2)
+  eq('and are decided independently',
+     [mv.resets.map((r) => r.student.id).sort(), mv.kept.map((k) => k.student.id).sort()],
+     [['a', 'c1'], ['c2', 'd']])
   eq('the ghost is unmatched', mv.unmatched.map((u) => u.row.fullName), ['Ghost Student'])
 
   const bb = plan.centers.find((c) => c.center.id === 'bb')

@@ -111,7 +111,10 @@ const BINDER_COLUMNS = [
  */
 const REQUIRED_COLUMNS = [
   ['students', 'binder_status_set_at'],
+  // BOTH halves of the attendance bridge. Lead Id is family-level — siblings
+  // share one — so the first name is what makes the pair identify a child.
   ['students', 'radius_lead_id'],
+  ['students', 'radius_first_name'],
 ]
 
 // --------------------------------------------------------------------- runner

@@ -14,15 +14,20 @@ import { centerInstant } from '../../lib/dates'
  * sessions, assignments or the roster; the only column it writes is the
  * student's binder state.
  *
- * MATCHING, and why it is not what it looks like. The file carries a Lead Id
- * (per student) and an Account Id (a UUID, per guardian). Neither can be found
- * in students.radius_account: that column holds the guardian NAME, and its
- * numeric suffix — 'Tang, Jun | 3266135' — is an ACCOUNT-level id from a
- * different id space. Measured against the real 8/21 export: 0 of 105 Lead Ids
- * matched a radius_account suffix, while the Students export's own Lead Id
- * column matched 105 of 105. So the id used here is radius_lead_id, populated
- * from the Students export, and Account Id is not used at all — siblings share
- * one, so it cannot identify a student.
+ * MATCHING. The attendance export carries NO per-student id. Lead Id and
+ * Account Id are both FAMILY-level and identical across siblings — the three
+ * Coyne children share lead 3069017 and one Account Id uuid. In the real 8/21
+ * export, 25 of 105 leads cover more than one child, and the file holds 131
+ * students, not 105. Student Id exists only in the Students export.
+ *
+ * The bridge is therefore (Lead Id + First Name), which is unique within a
+ * family: 744 distinct pairs from the 744 Students-export rows that carry a
+ * lead, zero duplicates. Both halves are stored on the student by the Students
+ * import, so the mapping is recorded rather than inferred here.
+ *
+ * radius_account is NOT a match route: it holds the guardian NAME, and its
+ * numeric suffix ('Tang, Jun | 3266135') is an account-level id from a
+ * different space — 0 of 105 matched the file's lead ids.
  */
 
 /** One attendance row, normalised. Returns nulls for anything unparseable. */
@@ -90,12 +95,17 @@ export function displayCandidates(fullName) {
 export function matchAttendanceStudent(row, students) {
   if (isPlaceholderName(row.fullName)) return { student: null, via: 'placeholder name' }
 
-  if (row.leadId) {
-    const byId = students.filter(
-      (s) => String(s.radius_lead_id ?? '').trim() === row.leadId,
+  if (row.leadId && row.firstName) {
+    const byPair = students.filter(
+      (s) =>
+        String(s.radius_lead_id ?? '').trim() === row.leadId &&
+        nameKey(s.radius_first_name) === nameKey(row.firstName),
     )
-    if (byId.length === 1) return { student: byId[0], via: 'lead id' }
-    if (byId.length > 1) return { student: null, via: 'ambiguous lead id' }
+    if (byPair.length === 1) return { student: byPair[0], via: 'lead id + first name' }
+    if (byPair.length > 1) return { student: null, via: 'ambiguous lead id + first name' }
+    // A lead we know with a first name we do not is a sibling who is not on
+    // our roster — fall through to the name routes rather than claiming one of
+    // their siblings.
   }
 
   const candidates = displayCandidates(row.fullName)
@@ -170,9 +180,13 @@ export function planAttendanceImport(rows, { centersByName, studentsByCenter }) 
     const bucket = perCenter.get(center.id)
     bucket.rows += 1
 
-    // Key on the lead id when present so two students sharing a display name
-    // stay separate; fall back to the name for pre-lead-id rows.
-    const key = row.leadId ? `id:${row.leadId}` : `name:${nameKey(row.fullName)}`
+    // Key on the PAIR. The lead alone is a family: keying on it merged the
+    // three Coyne children into one bucket and let the last sibling out of the
+    // door decide all three binders.
+    const key =
+      row.leadId && row.firstName
+        ? `pair:${row.leadId}|${nameKey(row.firstName)}`
+        : `name:${nameKey(row.fullName)}`
     const departedAt = centerInstant(row.date, row.departure)
     const existing = bucket.visits.get(key)
     if (!existing) {
