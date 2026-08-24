@@ -210,19 +210,14 @@ export function planStudentImport(rows, existingStudents) {
   const taken = existingStudents.map((s) => s.name)
   const matchedIds = new Set()
 
-  // Two NEW students sharing a first name both need two letters, so the
-  // first one processed can't be given a bare initial. Existing students are
-  // never renamed, so only incoming rows are counted here.
-  const incomingFirstNames = new Map()
-  for (const raw of rows) {
-    const first = splitName(readStudentRow(raw).fullName).first.toLowerCase()
-    if (first) incomingFirstNames.set(first, (incomingFirstNames.get(first) ?? 0) + 1)
-  }
   const rosterFirstNames = new Set(
     existingStudents.map((s) => splitName(s.name).first.toLowerCase()),
   )
 
   const created = []
+  // Rows that passed the gate with nobody matching; named in a second pass
+  // once every match is known.
+  const pendingCreates = []
   const updated = []
   const unchanged = []
   const problems = []
@@ -329,9 +324,24 @@ export function planStudentImport(rows, existingStudents) {
       continue
     }
 
+    pendingCreates.push(row)
+  }
+
+  // Naming happens in a second pass, over the rows that will actually CREATE.
+  // The old count ran over every file row before the gate, and a Radius export
+  // is a center's full history — so 'Lily Rocco', Inactive and skipped, forced
+  // rule 2 onto the only real Lily and she landed as 'LILY Ge'. A student who
+  // is not joining the roster cannot be a naming collision.
+  const createFirstNames = new Map()
+  for (const row of pendingCreates) {
+    const first = splitName(row.fullName).first.toLowerCase()
+    if (first) createFirstNames.set(first, (createFirstNames.get(first) ?? 0) + 1)
+  }
+
+  for (const row of pendingCreates) {
     const first = splitName(row.fullName).first.toLowerCase()
     const generated = generateDisplayName(row.fullName, row.values.grade, taken, {
-      sharesFirstName: rosterFirstNames.has(first) || (incomingFirstNames.get(first) ?? 0) > 1,
+      sharesFirstName: rosterFirstNames.has(first) || (createFirstNames.get(first) ?? 0) > 1,
     })
     if (!generated.name) {
       problems.push({ rowNumber: row.rowNumber, fullName: row.fullName, reason: generated.reason })
@@ -342,7 +352,9 @@ export function planStudentImport(rows, existingStudents) {
 
     // Before inventing a student, look for one we already have under a
     // near-miss spelling: the roster's 'Chariss E' is this file's 'Charis
-    // Effraim'. Too weak to match on, strong enough to stop and ask.
+    // Effraim'. Too weak to match on, strong enough to stop and ask. Running
+    // after the whole match pass means matchedIds is complete here — a
+    // lookalike claimed by a LATER row no longer slips through.
     const lastInitial = splitName(row.fullName).last[0]?.toLowerCase()
     const lookalike = existingStudents.find(
       (s) =>

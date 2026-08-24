@@ -1,5 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
+import { supabase } from '../../lib/supabase'
 import QueryError from '../../components/QueryError'
+import InstructorForm from '../instructors/InstructorForm'
 import { useCenter } from '../centers/CenterProvider'
 import { useAuth } from '../auth/AuthProvider'
 import { readableTextOn } from '../../lib/colors'
@@ -43,7 +45,21 @@ export default function RankingsMatrix() {
   // so the row updates in place; the table itself never unmounts, so the
   // scroll position survives.
   const [editingStudent, setEditingStudent] = useState(null)
+  // The instructor editor over the matrix, from a column header — the mirror
+  // of the student modal. Closing refetches so capability edits reopen or
+  // close cells in place.
+  const [editingInstructor, setEditingInstructor] = useState(null)
+  const [instructorSaving, setInstructorSaving] = useState(false)
+  const [instructorError, setInstructorError] = useState(null)
   const cellRefs = useRef(new Map())
+
+  async function patchInstructor(id, patch) {
+    setInstructorSaving(true)
+    setInstructorError(null)
+    const { error } = await supabase.from('instructors').update(patch).eq('id', id)
+    setInstructorSaving(false)
+    if (error) setInstructorError(error.message)
+  }
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -195,14 +211,24 @@ export default function RankingsMatrix() {
                     key={i.id}
                     style={{ width: CELL, minWidth: CELL }}
                     className="sticky top-0 z-20 border-b border-zinc-200 bg-zinc-50 p-1 align-bottom"
-                    title={`${i.name}${i.instructor_rank ? ` · ranked #${i.instructor_rank}` : ''}${isFallbackOnly(i) ? ' · fallback only' : ''}`}
+                    title={`${i.name}${i.instructor_rank ? ` · ranked #${i.instructor_rank}` : ''}${isFallbackOnly(i) ? ' · fallback only' : ''} — click to edit`}
                   >
-                    <span
-                      className="mx-auto flex h-6 w-6 items-center justify-center rounded text-[10px] font-bold"
-                      style={{ backgroundColor: i.color, color: readableTextOn(i.color) }}
+                    {/* Fix-in-place, same as clicking a student name: the
+                        header IS the way to the instructor's editor while a
+                        capability gap is on screen in their column. */}
+                    <button
+                      type="button"
+                      onClick={() => setEditingInstructor(i)}
+                      aria-label={`Edit ${i.name}`}
+                      className="mx-auto block rounded hover:ring-2 hover:ring-brand-400"
                     >
-                      {initials(i.name)}
-                    </span>
+                      <span
+                        className="mx-auto flex h-6 w-6 items-center justify-center rounded text-[10px] font-bold"
+                        style={{ backgroundColor: i.color, color: readableTextOn(i.color) }}
+                      >
+                        {initials(i.name)}
+                      </span>
+                    </button>
                     <span className="mt-1 block text-[9px] font-normal text-zinc-400">
                       {genderLabel(i.gender)}
                     </span>
@@ -369,6 +395,41 @@ export default function RankingsMatrix() {
             >
               Done
             </button>
+          </div>
+        </Modal>
+      )}
+
+      {editingInstructor && (
+        <Modal
+          label={`Edit ${editingInstructor.name}`}
+          onClose={async () => {
+            setEditingInstructor(null)
+            setInstructorError(null)
+            await refetch()
+          }}
+        >
+          <div className="border-b border-zinc-200 px-4 py-3">
+            <h2 className="text-sm font-semibold text-zinc-900">{editingInstructor.name}</h2>
+            <p className="mt-0.5 text-xs text-zinc-500">
+              {instructorSaving ? 'Saving…' : 'Every change saves as you make it.'}
+            </p>
+          </div>
+          {instructorError && (
+            <p className="mx-4 mt-2 rounded bg-red-50 px-2 py-1 text-xs text-red-700">
+              {instructorError}
+            </p>
+          )}
+          <div className="min-h-0 flex-1 overflow-auto p-4">
+            <InstructorForm
+              key={editingInstructor.id}
+              instructor={editingInstructor}
+              onPatch={(patch) => patchInstructor(editingInstructor.id, patch)}
+              onCancel={async () => {
+                setEditingInstructor(null)
+                setInstructorError(null)
+                await refetch()
+              }}
+            />
           </div>
         </Modal>
       )}

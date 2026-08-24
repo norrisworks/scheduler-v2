@@ -271,28 +271,31 @@ export default function SessionCard({
         </div>
       )}
 
-      {/* Middle: pinned notes and the day's one-liner. BRIEF.md requires these
-          at readable size; v1 rendered them at 8px. */}
-      {(session.notes || notes.length > 0) && (
+      {/* Middle: pinned notes and the day's one-liner. The note area is the
+          card's flex slack: it fills every pixel between the header rows and
+          the bottom row, and only clips where the card itself ends — the old
+          two-line clamp cut notes short with empty card below them. 10px is
+          the floor; v1's 8px is what BRIEF.md forbids. */}
+      {session.notes || notes.length > 0 ? (
         <div className="mt-1 min-h-0 flex-1 space-y-0.5 overflow-hidden">
           {session.notes && (
-            <p className="line-clamp-2 text-[11px] leading-snug break-words text-amber-900">
+            <p className="text-[10px] leading-snug break-words text-amber-900">
               {session.notes}
             </p>
           )}
           {notes.map((note) => (
             <p
               key={note.id}
-              className="line-clamp-2 text-[11px] leading-snug break-words text-zinc-700"
+              className="text-[10px] leading-snug break-words text-zinc-700"
               title={note.body}
             >
               {note.body}
             </p>
           ))}
         </div>
+      ) : (
+        <div className="flex-1" />
       )}
-
-      <div className="flex-1" />
 
       {/* Bottom: instructor left, Supp badge right */}
       <div className="mt-0.5 flex items-center justify-between gap-1">

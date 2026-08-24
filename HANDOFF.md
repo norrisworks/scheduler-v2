@@ -232,6 +232,22 @@ anchor). **Never call `toISOString()` for dates.**
     not delete them, so the first cut reported "removed 96" having removed
     nothing. UI: preview-first on the instructor record (`BulkRankingRemove`),
     undo lives until the panel closes.
+21. **Naming: only rows that JOIN the roster are collisions, and first names
+    are title-cased** (2026-08-24). The rule-2 count used to run over every
+    file row before the creation gate — and a Students export is a center's
+    full history, so 'Lily Rocco' (Inactive, skipped) forced two letters onto
+    the only Lily actually joining ('LILY Ge'). Naming now happens in a second
+    pass over the rows that actually create. First names are title-cased for
+    DISPLAY only ('LILY' -> 'Lily'; short all-caps 'JJ' and mixed-case
+    'McKenna' are left alone; `titleCaseName`); `radius_first_name` keeps the
+    file's verbatim spelling because it is a matching fact, not a display
+    name, and the attendance matcher compares case-insensitively. Existing
+    rows corrected by hand: 'Chino Br' -> 'Chino B' (owner's call — 'Chino D'
+    is a hand-entered duplicate of the same child, pending merge), 'LILY Ge'
+    -> 'Lily G'. NOTE: while both Chino rows exist, a fresh import of 'Chino
+    Bridges' would still produce 'Chino Br' — a roster student sharing the
+    first name IS a rule-2 collision; the convention cannot know two rows are
+    one child. Merging the duplicate ends that.
 
 ## Importers (all preview-first; never commit on the owner's behalf)
 

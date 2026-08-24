@@ -17,7 +17,7 @@ import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessa
 import { buildGroups } from '../src/features/day/rowGrouping.js'
 import { proposeRanking, ineligibleForStudentReason, proposalReasons, sameGender, eligibleForStudent, moveEntry } from '../src/features/assign/proposeRanking.js'
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
-import { generateDisplayName, violatesNamingConvention, staleGradeInName, displayNameShape, nearlySameFirstName, isPlaceholderName, nameKey } from '../src/features/imports/namingConvention.js'
+import { titleCaseName, generateDisplayName, violatesNamingConvention, staleGradeInName, displayNameShape, nearlySameFirstName, isPlaceholderName, nameKey } from '../src/features/imports/namingConvention.js'
 import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } from '../src/features/imports/workstreamImport.js'
 import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, mapDelivery, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent, radiusKeyOf, confirmationTargets, planRadiusImport } from '../src/features/imports/radiusImport.js'
 import { planStudentImport, planStudentImportByCenter } from '../src/features/imports/studentImport.js'
@@ -1010,6 +1010,41 @@ eq('summary with leftovers',
 eq('summary with none left over',
    summaryMessage({ assigned: 5, worstRank: 1, couldNotAssign: 0 }),
    'Assigned 5 students! Worst match rank: 1')
+
+// ---- first-name case: Radius hands over whatever the front desk typed
+eq('ALL-CAPS becomes title case',   titleCaseName('LILY'), 'Lily')
+eq('lowercase becomes title case',  titleCaseName('himanshu'), 'Himanshu')
+eq('short all-caps is initials, kept', titleCaseName('JJ'), 'JJ')
+eq('mixed case is deliberate, kept',   titleCaseName('McKenna'), 'McKenna')
+eq('hyphenated segments each cased',   titleCaseName('mary-JANE'), 'Mary-Jane')
+eq('the display name is title-cased even when the file shouts',
+   generateDisplayName('LILY GELASHVILI', '3', []).name, 'Lily G')
+eq('collision checks are unaffected by case',
+   generateDisplayName('LILY GELASHVILI', '3', [], { sharesFirstName: true }).name, 'Lily Ge')
+
+// ---- rule 2 needs a REAL collision, not a ghost from the file's history
+// A Radius Students export is a center's full history. 'Lily Rocco' left long
+// ago and is skipped by the creation gate — the old count ran before the gate,
+// so she forced rule 2 onto the only Lily actually joining ('LILY Ge').
+{
+  const lilyGhost = { __row: 2, first_name: 'Lily', last_name: 'Rocco', enrollment_status: 'Inactive' }
+  const lilyReal = { __row: 3, first_name: 'LILY', last_name: 'GELASHVILI', enrollment_status: 'Pre-Enrolled' }
+
+  eq('a gate-skipped row is not a naming collision',
+     planStudentImport([lilyGhost, lilyReal], []).created.map((c) => c.name), ['Lily G'])
+  eq('and the ghost is still accounted for',
+     planStudentImport([lilyGhost, lilyReal], []).skipped.length, 1)
+  eq('two Lilys genuinely joining still both get two letters',
+     planStudentImport([{ ...lilyGhost, enrollment_status: 'Enrolled' }, lilyReal], [])
+       .created.map((c) => c.name).sort(), ['Lily Ge', 'Lily Ro'])
+  // A roster student sharing the first name is a REAL collision and still
+  // fires rule 2 — which is why 'Chino Bridges' landed as 'Chino Br' while the
+  // hand-entered duplicate 'Chino D' sat on the roster. The convention cannot
+  // know two rows are one child; the duplicates report exists for that.
+  eq('a roster collision still two-letters',
+     planStudentImport([{ __row: 2, first_name: 'Chino', last_name: 'Bridges', enrollment_status: 'Pre-Enrolled' }],
+       [{ id: 'x', name: 'Chino D', active: true }]).created.map((c) => c.name), ['Chino Br'])
+}
 
 // ---- student display names (v1_reference naming_convention)
 eq('default is first name plus last initial',

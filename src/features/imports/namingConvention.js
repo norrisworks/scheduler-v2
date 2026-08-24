@@ -14,6 +14,27 @@ export function splitName(fullName) {
 }
 
 /**
+ * Radius hands over first names in whatever case the front desk typed —
+ * 'LILY', 'himanshu' — and display names carried it verbatim. Title-cased per
+ * hyphen-separated segment, with two deliberate exceptions:
+ *   - short ALL-CAPS stays ('JJ' is initials, not shouting)
+ *   - mixed case stays ('McKenna', 'DiFulgo' are deliberate)
+ */
+export function titleCaseName(name) {
+  return String(name ?? '')
+    .split(/([\s-])/)
+    .map((seg) => {
+      if (!/[a-zA-Z]/.test(seg)) return seg
+      if (seg === seg.toLowerCase()) return seg[0].toUpperCase() + seg.slice(1)
+      if (seg === seg.toUpperCase() && seg.length >= 3) {
+        return seg[0] + seg.slice(1).toLowerCase()
+      }
+      return seg
+    })
+    .join('')
+}
+
+/**
  * A display name violates the convention when a second word is longer than
  * two characters and isn't a parenthetical grade — i.e. a full last name.
  */
@@ -32,14 +53,17 @@ export function generateDisplayName(fullName, grade, takenNames = [], options = 
   const taken = new Set(takenNames.map(nameKey))
   const { first, last } = splitName(fullName)
   if (!first) return { name: '', needsReview: true, reason: 'no name in the file' }
+  // The DISPLAY name gets title case ('LILY' -> 'Lily'); collision checks stay
+  // on the raw value, which nameKey lowercases anyway.
+  const displayFirst = titleCaseName(first)
   if (!last) {
-    const solo = first
+    const solo = displayFirst
     return taken.has(nameKey(solo))
       ? { name: solo, needsReview: true, reason: 'name collides and the file has no last name' }
       : { name: solo, needsReview: false, reason: null }
   }
 
-  const oneInitial = `${first} ${last[0].toUpperCase()}`
+  const oneInitial = `${displayFirst} ${last[0].toUpperCase()}`
 
   // Rule 2 triggers on a shared FIRST NAME, not on a display-name collision:
   // 'Micah C' and 'Micah H' do not collide, but the convention still wants
@@ -52,7 +76,7 @@ export function generateDisplayName(fullName, grade, takenNames = [], options = 
     return { name: oneInitial, needsReview: false, reason: null }
   }
 
-  const twoLetters = `${first} ${last[0].toUpperCase()}${(last[1] ?? '').toLowerCase()}`
+  const twoLetters = `${displayFirst} ${last[0].toUpperCase()}${(last[1] ?? '').toLowerCase()}`
   if (twoLetters !== oneInitial && !taken.has(nameKey(twoLetters))) {
     return { name: twoLetters, needsReview: false, reason: null }
   }
