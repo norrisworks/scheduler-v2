@@ -115,6 +115,11 @@ export function readStudentRow(row) {
     rowNumber: row.__row,
     fullName: readFullName(row),
     radiusAccount: pick(row, 'radius_account', 'account_name', 'account'),
+    // The STUDENT-level Radius id, and the only thing the attendance export
+    // can be matched on. radius_account is the guardian, and its numeric
+    // suffix is an account-level id from a different space — measured 0 of 105
+    // against the real attendance file, where this matched 105 of 105.
+    radiusLeadId: String(pick(row, 'lead_id') ?? '').trim(),
     values,
   }
 }
@@ -296,6 +301,9 @@ export function planStudentImport(rows, existingStudents) {
       if (implied !== null && Boolean(match.active) !== implied) patch.active = implied
       // An existing student is NEVER renamed, whatever the file says.
       if (row.radiusAccount && !match.radius_account) patch.radius_account = row.radiusAccount
+      // Backfilled once and then kept: the attendance import matches on it, so
+      // a student without it falls back to name matching.
+      if (row.radiusLeadId && !match.radius_lead_id) patch.radius_lead_id = row.radiusLeadId
 
       if (Object.keys(patch).length > 0) {
         updated.push({ id: match.id, name: match.name, rowNumber: row.rowNumber, patch })
@@ -352,6 +360,7 @@ export function planStudentImport(rows, existingStudents) {
       values: {
         ...row.values,
         ...(row.radiusAccount ? { radius_account: row.radiusAccount } : {}),
+        ...(row.radiusLeadId ? { radius_lead_id: row.radiusLeadId } : {}),
         // A new student with no usable enrollment signal starts inactive
         // rather than being assumed onto the schedule.
         active: impliedActive === true,

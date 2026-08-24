@@ -22,7 +22,8 @@ import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } f
 import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent, radiusKeyOf, confirmationTargets } from '../src/features/imports/radiusImport.js'
 import { planStudentImport, planStudentImportByCenter } from '../src/features/imports/studentImport.js'
 import { buildChecks } from '../src/features/health/checks.js'
-import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime , formatStampDate, TIME_CHOICES } from '../src/lib/dates.js'
+import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime , formatStampDate, TIME_CHOICES, centerInstant } from '../src/lib/dates.js'
+import { readAttendanceRow, attendanceRowProblem, matchAttendanceStudent, decideReset, planAttendanceImport, displayCandidates } from '../src/features/imports/attendanceImport.js'
 import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, gaugeCellClass, slotChipClass } from '../src/features/day/load.js'
 import { genderLabel, normalizeGender as normalizeGenderValue } from '../src/lib/gender.js'
 import { readFileSync, readdirSync } from 'node:fs'
@@ -1942,6 +1943,171 @@ eq('a write puts the moved instructor where asked',
     }
   }
   eq('no client write names instructor_rank', rankWriters, [])
+}
+
+// ---- center-local wall clock -> a real instant
+// Departure times are naive center time; binder_status_set_at is a
+// timestamptz. Comparing the two is the whole reset rule, so the conversion
+// has to carry the right offset — including across a DST boundary.
+eq('August is EDT (-04:00)',  centerInstant('2026-08-21', '16:56').toISOString(), '2026-08-21T20:56:00.000Z')
+eq('January is EST (-05:00)', centerInstant('2026-01-21', '16:56').toISOString(), '2026-01-21T21:56:00.000Z')
+eq('the day before spring forward', centerInstant('2026-03-07', '12:00').toISOString(), '2026-03-07T17:00:00.000Z')
+eq('the day after spring forward',  centerInstant('2026-03-09', '12:00').toISOString(), '2026-03-09T16:00:00.000Z')
+eq('seconds are accepted',    centerInstant('2026-08-21', '16:56:30').toISOString(), '2026-08-21T20:56:30.000Z')
+eq('garbage date is null',    centerInstant('21/8/2026', '16:56'), null)
+eq('garbage time is null',    centerInstant('2026-08-21', 'half four'), null)
+
+// ---- attendance import: the binder reset rule
+// Shapes taken from the real 8/21 export: 'Lead Id' is per student, and
+// 'Account Id' is a per-GUARDIAN uuid that siblings share.
+const attRow = (over = {}) => ({
+  __row: 2,
+  lead_id: '3299461',
+  account_id: 'f9a78ab2-1279-4383-b6a7-68184c69148c',
+  attendance_date: '8/21/2026',
+  first_name: 'Albert',
+  last_name: 'Chen',
+  arrival_time: '5:50 PM',
+  departure_time: '6:53 PM',
+  center: 'Montgomeryville',
+  ...over,
+})
+
+const readAtt = readAttendanceRow(attRow())
+eq('reads the lead id',    readAtt.leadId, '3299461')
+eq('reads M/D/YYYY',       readAtt.date, '2026-08-21')
+eq('reads the departure',  readAtt.departure, '18:53:00')
+eq('joins the full name',  readAtt.fullName, 'Albert Chen')
+eq('a good row has no problem', attendanceRowProblem(readAtt), null)
+eq('an unreadable date is a problem',
+   attendanceRowProblem(readAttendanceRow(attRow({ attendance_date: '' }))), 'unreadable attendance date')
+eq('a missing departure is a problem',
+   attendanceRowProblem(readAttendanceRow(attRow({ departure_time: '' }))), 'unreadable departure time')
+
+// Matching: lead id first, name only as a fallback.
+const albert = { id: 'a', name: 'Albert C', radius_lead_id: '3299461' }
+const albertNoId = { id: 'a', name: 'Albert C' }
+const otherAlbert = { id: 'b', name: 'Albert S' }
+eq('matches on lead id',   matchAttendanceStudent(readAtt, [albert, otherAlbert]).via, 'lead id')
+eq('falls back to name',   matchAttendanceStudent(readAtt, [albertNoId, otherAlbert]).via, 'name')
+eq('name fallback finds the right student',
+   matchAttendanceStudent(readAtt, [albertNoId, otherAlbert]).student.id, 'a')
+eq('no match is not a guess', matchAttendanceStudent(readAtt, [otherAlbert]).student, null)
+// The guardian account id must never be used: siblings share one.
+eq('two students on one lead id is ambiguous, not a coin toss',
+   matchAttendanceStudent(readAtt, [albert, { id: 'c', name: 'Alma C', radius_lead_id: '3299461' }]).student,
+   null)
+// Rule 2 of the naming convention: a shared first name gets TWO letters of
+// surname, so 'Micah Chun' is stored 'Micah Ch', not 'Micah C'. Matching only
+// the one-letter form missed every disambiguated student — three of nine on
+// the real 8/21 export.
+eq('both display forms are candidates', displayCandidates('Micah Chun'), ['micah c', 'micah ch'])
+eq('a one-letter surname yields one candidate', displayCandidates('Ada T'), ['ada t'])
+eq('no surname yields nothing', displayCandidates('Cher'), [])
+eq('the rule-2 form matches',
+   matchAttendanceStudent(readAttendanceRow(attRow({ first_name: 'Micah', last_name: 'Chun' })),
+     [{ id: 'm1', name: 'Micah Ch' }, { id: 'm2', name: 'Micah Ho' }]).student.id,
+   'm1')
+
+// Placeholders never match. Radius carries training records, and the guardian
+// -surname fallback used to marry 'John Smith' to the real 'John G' (account
+// Germin) — first name + guardian initial ignores the student's own surname.
+eq('a placeholder matches nobody',
+   matchAttendanceStudent(readAttendanceRow(attRow({ first_name: 'John', last_name: 'Smith' })),
+     [{ id: 'g', name: 'John G', radius_account: 'Germin, Chauncey | 1' }]).student,
+   null)
+eq('and says why',
+   matchAttendanceStudent(readAttendanceRow(attRow({ first_name: 'John', last_name: 'Smith' })),
+     [{ id: 'g', name: 'John G', radius_account: 'Germin, Chauncey | 1' }]).via,
+   'placeholder name')
+// The guardian surname is NOT a match route, however tempting: it would clear
+// the wrong child's binder with nobody watching.
+eq('the guardian surname alone is not enough',
+   matchAttendanceStudent(readAttendanceRow(attRow({ first_name: 'Audie', last_name: 'Prykowski' })),
+     [{ id: 'k', name: 'Audie K', radius_account: 'Keller, Joy | 3182051' }]).student,
+   null)
+
+// A stored lead id wins even when a different student's NAME also matches.
+eq('lead id beats a name collision',
+   matchAttendanceStudent(readAtt, [{ id: 'z', name: 'Albert C' }, { id: 'a', name: 'Albert Z', radius_lead_id: '3299461' }]).student.id,
+   'a')
+
+// The rule itself. Departure 8/21 6:53pm ET = 2026-08-21T22:53Z.
+const leftAt = centerInstant('2026-08-21', '18:53')
+const prepped = (status, setAt, note = null) => ({ binder_status: status, binder_status_set_at: setAt, binder_note: note })
+eq('a clear binder is left alone',
+   decideReset(prepped('not_started', '2026-08-20T12:00:00Z'), leftAt).reset, false)
+eq('prep from before the visit is consumed',
+   decideReset(prepped('complete', '2026-08-21T14:00:00Z'), leftAt).reset, true)
+eq('prep from AFTER they left survives',
+   decideReset(prepped('complete', '2026-08-22T02:00:00Z'), leftAt).reset, false)
+eq('and says why',
+   decideReset(prepped('complete', '2026-08-22T02:00:00Z'), leftAt).reason,
+   'prepped after they left — kept for next session')
+eq('the same instant is not "later", so it survives',
+   decideReset(prepped('complete', leftAt.toISOString()), leftAt).reset, false)
+eq('in_progress resets too',
+   decideReset(prepped('in_progress', '2026-08-21T14:00:00Z'), leftAt).reset, true)
+// A note with no status is still prep worth clearing.
+eq('a lone note counts as prepped',
+   decideReset(prepped('not_started', '2026-08-21T14:00:00Z', 'p42 packet'), leftAt).reset, true)
+eq('no departure means no decision',
+   decideReset(prepped('complete', '2026-08-21T14:00:00Z'), null).reset, false)
+
+// Whole-file plan, both centers, latest visit winning.
+{
+  const centersByName = new Map([
+    ['montgomeryville', { id: 'mv', name: 'Montgomeryville' }],
+    ['blue bell', { id: 'bb', name: 'Blue Bell' }],
+  ])
+  const studentsByCenter = new Map([
+    ['mv', [
+      { id: 'a', name: 'Albert C', radius_lead_id: '3299461', binder_status: 'complete', binder_status_set_at: '2026-08-18T12:00:00Z' },
+      { id: 'd', name: 'Derek B', radius_lead_id: '3038634', binder_status: 'complete', binder_status_set_at: '2026-08-22T12:00:00Z' },
+    ]],
+    ['bb', [
+      { id: 'e', name: 'Eli C', radius_lead_id: '2664376', binder_status: 'not_started', binder_status_set_at: '2026-08-01T12:00:00Z' },
+    ]],
+  ])
+
+  const plan = planAttendanceImport(
+    [
+      // Albert attended the 17th and the 21st; his binder was prepped on the
+      // 18th, so only the LATEST visit decides — and it consumes the prep.
+      attRow({ attendance_date: '8/17/2026', departure_time: '6:44 PM' }),
+      attRow({ attendance_date: '8/21/2026', departure_time: '6:53 PM' }),
+      // Derek's binder was prepped the day AFTER he left: keep it.
+      attRow({ lead_id: '3038634', first_name: 'Derek', last_name: 'Bradley', attendance_date: '8/21/2026' }),
+      // Eli is already clear.
+      attRow({ lead_id: '2664376', first_name: 'Eli', last_name: 'Chang', center: 'Blue Bell' }),
+      // Nobody we know.
+      attRow({ lead_id: '9999999', first_name: 'Ghost', last_name: 'Student' }),
+      // An unusable row is skipped, not guessed at.
+      attRow({ departure_time: '' }),
+      // A center we do not run.
+      attRow({ lead_id: '5555555', center: 'Rosemont' }),
+    ],
+    { centersByName, studentsByCenter },
+  )
+
+  eq('every row is accounted for', plan.totalRows, 7)
+  eq('the window comes from the file', [plan.dateFrom, plan.dateTo], ['2026-08-17', '2026-08-21'])
+  eq('both centers appear', plan.centers.map((c) => c.center.name), ['Blue Bell', 'Montgomeryville'])
+  eq('an unknown center is named, not silently dropped', plan.unknownCenters, ['Rosemont'])
+  eq('unusable rows are skipped', plan.skipped.length, 2)
+
+  const mv = plan.centers.find((c) => c.center.id === 'mv')
+  eq('two visits collapse to one student', mv.matched.filter((m) => m.student.id === 'a').length, 1)
+  eq('and the visits are counted', mv.matched.find((m) => m.student.id === 'a').visits, 2)
+  eq('the LATEST departure decides',
+     mv.matched.find((m) => m.student.id === 'a').row.date, '2026-08-21')
+  eq('Albert is reset', mv.resets.map((r) => r.student.id), ['a'])
+  eq('Derek is kept', mv.kept.map((k) => k.student.id), ['d'])
+  eq('the ghost is unmatched', mv.unmatched.map((u) => u.row.fullName), ['Ghost Student'])
+
+  const bb = plan.centers.find((c) => c.center.id === 'bb')
+  eq('an already-clear binder is not rewritten', bb.resets.length, 0)
+  eq('but the student is still reported as matched', bb.matched.length, 1)
 }
 
 let failed = 0

@@ -64,10 +64,21 @@ const PERMISSIVE_ALLOWED = {
 const EXPECTED_TRIGGERS = [
   'instructors|instructors_assign_rank|assign_instructor_rank',
   'sessions|sessions_instructor_binder_only|enforce_instructor_binder_only',
-  'sessions|sessions_reset_binder_on_attendance_ins|reset_binder_on_attendance',
-  'sessions|sessions_reset_binder_on_attendance_upd|reset_binder_on_attendance',
   'students|students_default_duration_propagation|propagate_default_duration',
+  // Must sort BEFORE students_instructor_binder_only: BEFORE triggers fire in
+  // name order, and the carve-out has to compare the already-stamped row.
+  'students|students_binder_stamp|stamp_binder_status_set_at',
   'students|students_instructor_binder_only|enforce_instructor_binder_only_students',
+]
+
+/**
+ * Triggers that must NOT exist. Attendance is the sole binder reset signal, so
+ * the session-status route is gone; if it comes back, two sources race to
+ * clear the same flag and a no-show silently wastes prep again.
+ */
+const FORBIDDEN_TRIGGERS = [
+  'sessions_reset_binder_on_attendance_ins',
+  'sessions_reset_binder_on_attendance_upd',
 ]
 
 /**
@@ -78,7 +89,6 @@ const EXPECTED_TRIGGERS = [
  */
 const MUST_BE_DEFINER = {
   assign_instructor_rank: 'reads max(instructor_rank), revoked from authenticated',
-  reset_binder_on_attendance: 'writes students from a sessions trigger',
   db_schema_facts: 'reads pg_catalog on behalf of an admin JWT',
 }
 
@@ -91,6 +101,17 @@ const LOCKED_COLUMNS = [
 const BINDER_COLUMNS = [
   ['students', 'binder_status'],
   ['students', 'binder_note'],
+]
+
+/**
+ * Columns that must simply exist. binder_status_set_at is what makes the
+ * attendance reset decidable — without it there is no way to tell prep done
+ * BEFORE a visit (consumed) from prep done after it (keep). radius_lead_id is
+ * the only id the attendance export can be matched on.
+ */
+const REQUIRED_COLUMNS = [
+  ['students', 'binder_status_set_at'],
+  ['students', 'radius_lead_id'],
 ]
 
 // --------------------------------------------------------------------- runner
@@ -196,6 +217,14 @@ function assertFacts(facts) {
     )
   }
 
+  const names = new Set((facts.triggers ?? []).map((t) => t.name))
+  const revived = FORBIDDEN_TRIGGERS.filter((n) => names.has(n))
+  check(
+    'the session-driven binder reset stays retired',
+    revived.length === 0,
+    revived.join(', '),
+  )
+
   // ---- privileged functions
   for (const [name, why] of Object.entries(MUST_BE_DEFINER)) {
     const fn = (facts.functions ?? {})[name]
@@ -236,6 +265,10 @@ function assertFacts(facts) {
     const c = columns.get(`${table}.${column}`)
     check(`${table}.${column} is writable by authenticated`, Boolean(c?.auth_update),
       'the instructor binder carve-out depends on this')
+  }
+
+  for (const [table, column] of REQUIRED_COLUMNS) {
+    check(`${table}.${column} exists`, columns.has(`${table}.${column}`), 'missing')
   }
 }
 

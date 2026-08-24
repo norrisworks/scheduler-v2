@@ -2,11 +2,13 @@ import { useState } from 'react'
 import StudentImportView from '../features/imports/StudentImportView'
 import RadiusImportView from '../features/imports/RadiusImportView'
 import WorkstreamImportView from '../features/imports/WorkstreamImportView'
+import AttendanceImportView from '../features/imports/AttendanceImportView'
 
 const TABS = [
   { key: 'students', label: 'Student roster' },
   { key: 'radius', label: 'Radius sessions' },
   { key: 'workstream', label: 'Workstream shifts' },
+  { key: 'attendance', label: 'Attendance' },
 ]
 
 export default function ImportsPage() {
@@ -39,8 +41,10 @@ export default function ImportsPage() {
           <StudentImportView />
         ) : tab === 'radius' ? (
           <RadiusImportView />
-        ) : (
+        ) : tab === 'workstream' ? (
           <WorkstreamImportView />
+        ) : (
+          <AttendanceImportView />
         )}
       </div>
     </div>

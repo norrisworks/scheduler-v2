@@ -107,11 +107,12 @@ anchor). **Never call `toISOString()` for dates.**
     reasoning): prep is physical work on a physical binder, so it persists
     until that binder is actually used. Per-session state meant a no-show
     wasted the prep — the next day read "not started". Reset is
-    ATTENDANCE-driven and never time-driven: trigger
-    `sessions_reset_binder_on_attendance_ins/_upd` clears status and note when
-    a session TRANSITIONS to `completed` (the Attended value Radius writes), so
-    it fires on every path. A passed date, a cancellation and a no-show all
-    leave prep alone — checks cover each. Because attendance depends on the
+    ATTENDANCE-driven and never time-driven. **The mechanism was replaced on
+    2026-08-23 — see decision 17.** It was a trigger on `sessions` firing when
+    a session TRANSITIONED to `completed`; it is now the attendance import, and
+    those triggers are dropped. The RULE is unchanged: a passed date, a
+    cancellation and a no-show all leave prep alone. Because attendance depends
+    on the
     import being run, there is a manual Reset on the student (drawer) and per
     row in the binder view. The instructor RLS carve-out moved to `students`
     (`students_instructor_binder_only`), and it FREEZES EVERYTHING EXCEPT the
@@ -167,6 +168,35 @@ anchor). **Never call `toISOString()` for dates.**
     tested `current_user`, which SECURITY DEFINER rebinds to the function OWNER,
     so it failed OPEN; the second added a `session_user` allowance that made it
     untestable. It now reads only the caller's JWT.
+17. **Attendance is the SOLE binder reset signal** (2026-08-23). The session
+    triggers from decision 11 are dropped; `attendanceImport.js` +
+    `AttendanceImportView` replace them. Session status came from the
+    appointments export, which says what was BOOKED; the attendance export says
+    who actually walked in, and only attendees appear in it — so a no-show is
+    simply absent and keeps its prep.
+    - `students.binder_status_set_at` (timestamptz, backfilled from
+      `updated_at`) is what makes the rule decidable. Reset only when the
+      binder is not already clear AND departure is LATER than the stamp; prep
+      done after the student left is a re-prep for next time and survives.
+      Equal timestamps count as "not later", so they survive too.
+    - The stamp is maintained by trigger `students_binder_stamp` and IGNORES
+      whatever a client sends, so it cannot be back-dated to force or dodge a
+      reset. `students` has table-wide grants, so forcing the value beat
+      converting the whole table to column-by-column grants for one field.
+      The trigger name matters: BEFORE triggers fire in NAME order, and this
+      must precede `students_instructor_binder_only`, whose comparison now
+      exempts the stamp (it changes on every binder write by design).
+    - Nothing else is written. No session statuses, no roster edits.
+    - The manual Reset control stays: attendance depends on the import running.
+18. **`radius_lead_id`, and why the obvious id does not work** (2026-08-23).
+    The attendance export carries `Lead Id` (per student) and `Account Id` (a
+    uuid, per guardian). NEITHER is in `radius_account`: that column holds the
+    guardian NAME, and its numeric suffix — 'Tang, Jun | 3266135' — is an
+    ACCOUNT-level id from a different space. Measured on the real 8/21 export:
+    0 of 105 Lead Ids matched a `radius_account` suffix; the Students export's
+    own `Lead Id` column matched 105 of 105, and `Account Id` also matched
+    105 of 105 but is shared by siblings so it cannot identify a student.
+    Hence `students.radius_lead_id`, populated by the Students import.
 
 ## Importers (all preview-first; never commit on the owner's behalf)
 
@@ -186,6 +216,23 @@ anchor). **Never call `toISOString()` for dates.**
   rule — in-window shifts absent from the file are deleted (previewed first).
   The matching file shape is the `Employee Timesheet Export` xlsx, not the
   time_clock csv.
+- **Student Attendance Report** (`attendanceImport.js`): binder resets, and
+  nothing else. Splits by the Center column, groups by student, and keeps each
+  student's LATEST departure — attended Monday and Friday against a Wednesday
+  prep still counts as used. Matching is `radius_lead_id`, then the display
+  name, and an ambiguous name matches NOTHING: a missed reset costs one manual
+  click, a wrong one clears another child's binder unnoticed. Two match routes
+  were deliberately refused — near-miss first names ('Haziq'/'Hazik', as likely
+  siblings as a typo) and the GUARDIAN surname. The guardian route was built,
+  measured and removed: its key is first name + guardian initial, ignoring the
+  student's own surname, so the template row 'John Smith' matched the real
+  'John G' (account Germin). On the real export it made 2 matches, 1 wrong.
+  Placeholder names never match, for the same reason they never create.
+  Real 8/21 export: 249 rows, 0 skipped, 105 students, 99 matched by name with
+  no lead ids stored yet. The 6 misses are all known quirks — Anvit Arun
+  ('Anvit S'), Audie Prykowski ('Audie K'), Haziq Hassan ('Hazik H'), Jacob
+  Allegretti ('Jake A'), John Smith (placeholder), Kalaikkathir kalaikkovan
+  ('Kathir K'). Running the Students import first makes all 105 exact.
 - **Source conflicts**: a (student, date) with both a scheduled radius and
   recurring session = duplicate (family moved their time in Radius). Surfaced
   in the day view, data health, and the import preview with explicit
@@ -268,6 +315,13 @@ anchor). **Never call `toISOString()` for dates.**
   instructor account editing shifts changes who is assignable. The others are
   low-stakes. They are listed in `PERMISSIVE_ALLOWED` in `db-check.mjs`, so
   they stay visible and a NEW permissive table fails the checks.
+- **`radius_lead_id` is empty on every student right now.** The column and the
+  Students-import wiring exist, but no Students import has run since, so the
+  attendance import falls back to name matching (99 of 105 on the real 8/21
+  file, 6 known quirks unmatched). Run the Students export through the roster
+  import once and every attendance match becomes exact. A one-time SQL backfill
+  from `Students Export 8_23_2026.xlsx` would do the same and can be proposed
+  on request — not done unilaterally, as it is a bulk roster write.
 - **Imports are not admin-gated in the nav** (`TopBar.jsx` marks only
   Instructors and Rankings `adminOnly`), but every write an import makes lands
   on an admin-write table, so an instructor account reaches the screens and

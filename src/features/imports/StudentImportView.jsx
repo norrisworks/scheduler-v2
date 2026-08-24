@@ -38,7 +38,7 @@ export default function StudentImportView() {
         supabase
           .from('students')
           .select(
-            'id, name, radius_account, grade, level, school, gender, slot_certainty, academic_status, enrollment_status, needs_schoolwork, default_duration, active, center_id',
+            'id, name, radius_account, radius_lead_id, grade, level, school, gender, slot_certainty, academic_status, enrollment_status, needs_schoolwork, default_duration, active, center_id',
           ),
       ])
       if (centerRes.error) throw new Error(centerRes.error.message)

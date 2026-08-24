@@ -39,6 +39,51 @@ export function centerNowTime(instant = new Date()) {
   }).format(instant)
 }
 
+/** How far the center's wall clock is from UTC at a given instant, in ms. */
+function centerOffsetMs(instant) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: CENTER_TZ,
+    hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
+    .formatToParts(instant)
+    .reduce((acc, p) => ((acc[p.type] = p.value), acc), {})
+  const asUTC = Date.UTC(
+    Number(parts.year), Number(parts.month) - 1, Number(parts.day),
+    Number(parts.hour), Number(parts.minute), Number(parts.second),
+  )
+  return asUTC - instant.getTime()
+}
+
+/**
+ * A center-local date + wall-clock time as a real INSTANT.
+ *
+ * Rule 2 above says an ISO date must never become an instant, and that still
+ * holds for scheduling. This is the one place the opposite is needed: an
+ * attendance departure ('8/21/2026', '4:56 PM') has to be compared against
+ * students.binder_status_set_at, which is a timestamptz. Comparing a naive
+ * string to a timestamptz is exactly the class of bug rule 2 exists to stop,
+ * so the conversion happens here, once, with the zone applied properly.
+ *
+ * The offset is resolved twice because it is itself a function of the instant:
+ * the first pass can land on the wrong side of a DST change, and the second
+ * corrects it. Returns null on unparseable input rather than an Invalid Date.
+ */
+export function centerInstant(isoDate, time) {
+  const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(isoDate ?? '').trim())
+  const tm = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(String(time ?? '').trim())
+  if (!dm || !tm) return null
+
+  const naive = Date.UTC(
+    Number(dm[1]), Number(dm[2]) - 1, Number(dm[3]),
+    Number(tm[1]), Number(tm[2]), Number(tm[3] ?? 0),
+  )
+  let instant = new Date(naive - centerOffsetMs(new Date(naive)))
+  instant = new Date(naive - centerOffsetMs(instant))
+  return instant
+}
+
 /**
  * Parse 'YYYY-MM-DD' into a Date anchored at UTC noon. Noon keeps every
  * arithmetic result inside the same calendar day no matter the offset.
