@@ -248,6 +248,38 @@ anchor). **Never call `toISOString()` for dates.**
     Bridges' would still produce 'Chino Br' — a roster student sharing the
     first name IS a rule-2 collision; the convention cannot know two rows are
     one child. Merging the duplicate ends that.
+22. **The poisoned-slot bug, and how sessions die** (2026-08-24, found via
+    Chino B's 18 unfillable slots). Cancelling sets `is_modified`, which
+    shields the row from the materializer's delete pass, and the unique
+    (student, date, start_time) index makes the insert's ON CONFLICT DO
+    NOTHING skip that spot forever — so cancel + delete slot + re-create slot
+    at the same times = permanently blocked, with `recurring_slot_id` nulled
+    by the FK (ON DELETE SET NULL). Three-part fix:
+    - The materializer RECLAIMS a cancelled row squatting on an active slot's
+      exact (student, date, time) IF it is not that slot's own session
+      (`recurring_slot_id is distinct from` the slot): it becomes a fresh
+      scheduled instance, linked, is_modified false, stale assignment cleared.
+      The slot's OWN cancelled session is a deliberate one-off ("out this
+      Tuesday") and is NEVER resurrected — this function runs on every
+      day-view load, so a blanket rule would undo every cancel. A reclaimed
+      row the owner re-cancels carries the slot's id and stays cancelled:
+      reclaim converges, it cannot loop. Proven by simulation end to end.
+    - Deleting a standing slot offers to remove its future cancelled sessions
+      (count shown, three-way choice; the count query runs BEFORE the delete
+      because the FK nulls the link).
+    - The card ⋯ menu gains "Delete permanently…" (admin, two-click arm),
+      a HARD delete: row gone, assignment cascades, and if a slot covers that
+      time the next materializer run regenerates it — deleting is not
+      cancelling.
+23. **Enrollment drives `active` on manual edits too** (2026-08-24).
+    "Deactivating a student doesn't save" was a missing coupling, not a broken
+    write: the drawer's Enrollment select saved `enrollment_status='inactive'`
+    and left `active=true` — decision 8's importer rule never ran on manual
+    edits. The drawer now derives `active` via `activeFromEnrollment` in the
+    same patch (New/blank imply nothing; the Active checkbox remains a manual
+    override). Chino D corrected in place. Diagnosed by testing the exact
+    UPDATE under an admin JWT (it worked) and then reading the row: fresh
+    updated_at, status inactive, boolean untouched.
 
 ## Importers (all preview-first; never commit on the owner's behalf)
 

@@ -61,6 +61,7 @@ export default function DayView() {
     unassign,
     setStatus,
     setDelivery,
+    deleteSession,
     dismissError,
   } = useDaySchedule(centerId, date)
 
@@ -508,6 +509,7 @@ export default function DayView() {
         menu={statusMenu}
         onStatusChange={setStatus}
         onDeliveryChange={setDelivery}
+        onDelete={deleteSession}
         onUnassign={unassign}
         onReschedule={(session) => setRescheduling(session)}
         onClose={() => setStatusMenu(null)}

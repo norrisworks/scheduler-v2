@@ -11,10 +11,17 @@ import { BINDER_STATUSES } from '../binder/binderPrep'
  * it (cards must not show it), so this fetches the note on open. Binder state
  * belongs to the STUDENT now, so that is what it reads.
  */
-export default function StatusMenu({ menu, onStatusChange, onDeliveryChange, onUnassign, onReschedule, onClose }) {
+export default function StatusMenu({ menu, onStatusChange, onDeliveryChange, onUnassign, onReschedule, onDelete, onClose }) {
   const [binder, setBinder] = useState(null)
+  // Hard delete arms on first click and fires on the second — a permanent
+  // action never rides on one click. Re-arms per menu open.
+  const [deleteArmed, setDeleteArmed] = useState(false)
   // Instructor-role accounts get the binder info only — no status actions.
   const { isAdmin } = useAuth()
+
+  useEffect(() => {
+    setDeleteArmed(false)
+  }, [menu])
 
   useEffect(() => {
     const onKey = (e) => e.key === 'Escape' && onClose()
@@ -89,6 +96,28 @@ export default function StatusMenu({ menu, onStatusChange, onDeliveryChange, onU
             {item.label}
           </button>
         ))}
+        {isAdmin && (
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              if (!deleteArmed) {
+                setDeleteArmed(true)
+                return
+              }
+              onDelete(session.id)
+              onClose()
+            }}
+            className={
+              'block w-full border-t border-zinc-100 px-3 py-1.5 text-left text-sm ' +
+              (deleteArmed
+                ? 'bg-red-600 font-medium text-white hover:bg-red-700'
+                : 'text-red-600 hover:bg-red-50')
+            }
+          >
+            {deleteArmed ? 'Really delete — cannot be undone' : 'Delete permanently…'}
+          </button>
+        )}
         {binder && (
           <div className="max-w-56 border-t border-zinc-100 px-3 py-1.5">
             <p className="text-[10px] text-zinc-400">

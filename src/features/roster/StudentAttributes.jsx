@@ -6,6 +6,7 @@ import {
   ENROLLMENT_OPTIONS,
   GENDER_OPTIONS,
   LEVEL_OPTIONS,
+  activeFromEnrollment,
   emptyToNull,
 } from './studentFields'
 
@@ -73,7 +74,21 @@ export default function StudentAttributes({ student, saving, onSave }) {
       // A blank name is never written — the field stays editable, the row
       // keeps its last real name.
       if (key === 'name' && !value.trim()) return
-      onSave({ [key]: normalizeField(key, value) })
+
+      const patch = { [key]: normalizeField(key, value) }
+      // Enrollment drives `active` here exactly as it does in the importer
+      // (decision 8). Without this, setting Inactive saved the STATUS and left
+      // the boolean true — the student "wouldn't deactivate" while every
+      // filter in the app kept scheduling them. New/blank imply nothing and
+      // change nothing; the Active checkbox stays as a manual override.
+      if (key === 'enrollment_status') {
+        const implied = activeFromEnrollment(patch.enrollment_status)
+        if (implied !== null) {
+          patch.active = implied
+          setForm((prev) => ({ ...prev, active: implied }))
+        }
+      }
+      onSave(patch)
     }
 
     const existing = pending.current.get(key)
@@ -153,7 +168,7 @@ export default function StudentAttributes({ student, saving, onSave }) {
 
       <Field
         label="Enrollment status"
-        hint="Comes from the Radius Students export. Enrolled and Pre-enrolled are schedulable."
+        hint="Comes from the Radius Students export. Enrolled and Pre-enrolled are schedulable — changing this sets Active to match."
       >
         <Select
           value={form.enrollment_status}

@@ -12,9 +12,19 @@ const inputClass =
  * materializer turns them into real `sessions`. Editing one re-materializes
  * future sessions that haven't been hand-edited (step 4).
  */
-export default function RecurringSlots({ slots, saving, defaultDuration, onAdd, onUpdate, onDelete }) {
+export default function RecurringSlots({ slots, saving, defaultDuration, onAdd, onUpdate, onDelete, onCountCancelled }) {
   const { isAdmin } = useAuth()
   const [draft, setDraft] = useState({ day_of_week: 1, start_time: '16:00' })
+  // Two-step delete: {slotId, cancelled} while the confirm is showing. The
+  // cancelled count matters because a cancelled session left behind squats on
+  // its exact (date, time) — re-creating the slot then finds every occurrence
+  // blocked (the poisoned-slot bug, Chino B's 18 rows).
+  const [confirming, setConfirming] = useState(null)
+
+  async function askDelete(slotId) {
+    const cancelled = (await onCountCancelled?.(slotId)) ?? 0
+    setConfirming({ slotId, cancelled })
+  }
 
   async function add(e) {
     e.preventDefault()
@@ -89,15 +99,54 @@ export default function RecurringSlots({ slots, saving, defaultDuration, onAdd, 
                       End
                     </button>
                   )}
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={() => onDelete(slot.id)}
-                    title="Delete the template entirely"
-                    className="rounded px-1.5 py-0.5 text-xs text-slate-400 hover:bg-red-50 hover:text-red-600"
-                  >
-                    ✕
-                  </button>
+                  {confirming?.slotId === slot.id ? (
+                    <span className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => {
+                          setConfirming(null)
+                          onDelete(slot.id, { alsoCancelled: confirming.cancelled > 0 })
+                        }}
+                        className="rounded bg-red-600 px-1.5 py-0.5 text-xs font-medium text-white hover:bg-red-700"
+                      >
+                        {confirming.cancelled > 0
+                          ? `Delete + ${confirming.cancelled} cancelled`
+                          : 'Delete slot'}
+                      </button>
+                      {confirming.cancelled > 0 && (
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={() => {
+                            setConfirming(null)
+                            onDelete(slot.id, { alsoCancelled: false })
+                          }}
+                          title="Keep the cancelled sessions as history. Note: they keep blocking these times until a slot reclaims them."
+                          className="rounded border border-slate-300 px-1.5 py-0.5 text-xs text-slate-600 hover:bg-slate-100"
+                        >
+                          Slot only
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setConfirming(null)}
+                        className="rounded px-1.5 py-0.5 text-xs text-slate-400 hover:bg-slate-100"
+                      >
+                        Keep
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => askDelete(slot.id)}
+                      title="Delete the template entirely"
+                      className="rounded px-1.5 py-0.5 text-xs text-slate-400 hover:bg-red-50 hover:text-red-600"
+                    >
+                      ✕
+                    </button>
+                  )}
                   </>)}
                 </div>
               </li>

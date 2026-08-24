@@ -267,6 +267,35 @@ export function useDaySchedule(centerId, date) {
     [sessions, key, patchSession],
   )
 
+  /**
+   * HARD delete — the row ceases to exist, unlike cancel, which keeps it as
+   * history (and keeps its (date, time) occupied). This is the UI's way out of
+   * a session that should never have existed; its assignment goes with it
+   * (FK cascade). If it came from a standing slot, the next materializer run
+   * simply regenerates the occurrence — deleting is not cancelling.
+   */
+  const deleteSession = useCallback(
+    async (sessionId) => {
+      const previous = sessions.find((s) => s.id === sessionId)
+      setSnapshot((prev) =>
+        prev.key === key
+          ? { ...prev, sessions: prev.sessions.filter((s) => s.id !== sessionId) }
+          : prev,
+      )
+
+      const { error } = await supabase.from('sessions').delete().eq('id', sessionId)
+      if (error) {
+        if (previous) {
+          setSnapshot((prev) =>
+            prev.key === key ? { ...prev, sessions: [...prev.sessions, previous] } : prev,
+          )
+        }
+        setError(error.message)
+      }
+    },
+    [sessions, key],
+  )
+
   const setStatus = useCallback(
     async (sessionId, status) => {
       const previous = sessions.find((s) => s.id === sessionId)?.status
@@ -321,6 +350,7 @@ export function useDaySchedule(centerId, date) {
     unassign,
     setStatus,
     setDelivery,
+    deleteSession,
     dismissError: () => setError(null),
   }
 }

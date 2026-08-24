@@ -33,6 +33,7 @@ export default function StudentDrawer({ studentId, onClose, onChanged }) {
     addSlot,
     updateSlot,
     deleteSlot,
+    futureCancelledCount,
     addNote,
     updateNote,
     deleteNote,
@@ -173,7 +174,8 @@ export default function StudentDrawer({ studentId, onClose, onChanged }) {
                 defaultDuration={student.default_duration}
                 onAdd={(slot) => saveSlot(addSlot, slot)}
                 onUpdate={(id, patch) => saveSlot(updateSlot, id, patch)}
-                onDelete={(id) => saveSlot(deleteSlot, id)}
+                onDelete={(id, opts) => saveSlot(deleteSlot, id, opts)}
+                onCountCancelled={futureCancelledCount}
               />
               {slotEffect && (
                 <p

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../auth/AuthProvider'
+import { todayISO } from '../../lib/dates'
 
 const EMPTY = []
 
@@ -105,8 +106,39 @@ export function useStudent(studentId) {
     [run],
   )
 
+  /**
+   * Deleting a slot leaves its future CANCELLED sessions behind as orphans
+   * (the FK is ON DELETE SET NULL), and a cancelled row blocks its exact
+   * (date, time) from ever being materialized again — the poisoned-slot bug.
+   * The materializer now reclaims such orphans when a new slot lands on them,
+   * but offering the cleanup at delete time keeps them out of the cancelled
+   * strip entirely. The count query MUST run before the delete: afterwards
+   * the link is already null.
+   */
+  const futureCancelledCount = useCallback(async (id) => {
+    const { count, error } = await supabase
+      .from('sessions')
+      .select('id', { count: 'exact', head: true })
+      .eq('recurring_slot_id', id)
+      .eq('status', 'cancelled')
+      .gte('date', todayISO())
+    return error ? 0 : (count ?? 0)
+  }, [])
+
   const deleteSlot = useCallback(
-    (id) => run(() => supabase.from('recurring_slots').delete().eq('id', id)),
+    (id, { alsoCancelled = false } = {}) =>
+      run(async () => {
+        if (alsoCancelled) {
+          const { error } = await supabase
+            .from('sessions')
+            .delete()
+            .eq('recurring_slot_id', id)
+            .eq('status', 'cancelled')
+            .gte('date', todayISO())
+          if (error) return { error }
+        }
+        return supabase.from('recurring_slots').delete().eq('id', id)
+      }),
     [run],
   )
 
@@ -148,6 +180,7 @@ export function useStudent(studentId) {
     addSlot,
     updateSlot,
     deleteSlot,
+    futureCancelledCount,
     addNote,
     updateNote,
     deleteNote,

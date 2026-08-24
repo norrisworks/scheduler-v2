@@ -1980,6 +1980,13 @@ eq('a write puts the moved instructor where asked',
     }
   }
   eq('no client write names instructor_rank', rankWriters, [])
+
+  // Enrollment drives `active` on MANUAL edits too, not just in the importer.
+  // Without this, setting a student Inactive in the drawer saved the status
+  // and left the boolean true — "deactivating doesn't save" (Chino D).
+  const attrs = readSrc('src/features/roster/StudentAttributes.jsx')
+  eq('the drawer couples enrollment_status to active',
+     attrs.includes('activeFromEnrollment(') && attrs.includes('patch.active = implied'), true)
 }
 
 // ---- delivery method: the file's spellings, and nothing else goes online
