@@ -19,7 +19,7 @@ import { proposeRanking, ineligibleForStudentReason, proposalReasons, sameGender
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
 import { generateDisplayName, violatesNamingConvention, staleGradeInName, displayNameShape, nearlySameFirstName, isPlaceholderName, nameKey } from '../src/features/imports/namingConvention.js'
 import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } from '../src/features/imports/workstreamImport.js'
-import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent, radiusKeyOf, confirmationTargets } from '../src/features/imports/radiusImport.js'
+import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, mapDelivery, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent, radiusKeyOf, confirmationTargets, planRadiusImport } from '../src/features/imports/radiusImport.js'
 import { planStudentImport, planStudentImportByCenter } from '../src/features/imports/studentImport.js'
 import { buildChecks } from '../src/features/health/checks.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime , formatStampDate, TIME_CHOICES, centerInstant } from '../src/lib/dates.js'
@@ -1945,6 +1945,52 @@ eq('a write puts the moved instructor where asked',
     }
   }
   eq('no client write names instructor_rank', rankWriters, [])
+}
+
+// ---- delivery method: the file's spellings, and nothing else goes online
+// The real export writes exactly 'In-Center' and 'Online'. Anything
+// unrecognised is in_center — wrong about a room beats inventing an online
+// session nobody scheduled.
+eq('Online maps online',        mapDelivery('Online'), 'online')
+eq('case-insensitive',          mapDelivery('ONLINE'), 'online')
+eq('In-Center maps in_center',  mapDelivery('In-Center'), 'in_center')
+eq('blank defaults in_center',  mapDelivery(''), 'in_center')
+eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
+
+// A delivery flip with the time unchanged is still a CHANGE — before this,
+// such a row landed in "unchanged" and the flip was silently dropped.
+{
+  const centersByName = new Map([['montgomeryville', { id: 'mv', name: 'Montgomeryville' }]])
+  const student = { id: 'stu', name: 'Ryan T', radius_account: 'Tocci, Stacey | 1', active: true }
+  const fileRow = {
+    __row: 2, student_name: 'Ryan T', account_name: 'Stacey Tocci',
+    appointment_date: '8/24/2026', appointment_time: '4:00 PM',
+    session_duration: '60', session_status: 'Scheduled',
+    delivery_method: 'Online', center: 'Montgomeryville',
+  }
+  const existing = {
+    id: 'sess', student_id: 'stu', center_id: 'mv', date: '2026-08-24',
+    start_time: '16:00:00', duration: 60, status: 'scheduled', source: 'radius',
+  }
+  const args = {
+    centersByName,
+    centersById: new Map([['mv', { id: 'mv', name: 'Montgomeryville' }]]),
+    studentsByCenter: new Map([['mv', [student]]]),
+  }
+
+  const flipped = planRadiusImport([fileRow], { ...args, existingSessions: [{ ...existing, delivery_method: 'in_center' }] })
+  eq('a delivery flip is an update, not unchanged',
+     [flipped.centers[0].updated.length, flipped.centers[0].unchanged.length], [1, 0])
+  eq('and the target carries the new delivery',
+     flipped.centers[0].updated[0].target.delivery, 'online')
+
+  const same = planRadiusImport([fileRow], { ...args, existingSessions: [{ ...existing, delivery_method: 'online' }] })
+  eq('matching delivery stays unchanged',
+     [same.centers[0].updated.length, same.centers[0].unchanged.length], [0, 1])
+
+  // Rows written before the column existed read as in_center, the default.
+  const legacy = planRadiusImport([fileRow], { ...args, existingSessions: [existing] })
+  eq('a pre-column row going online is an update', legacy.centers[0].updated.length, 1)
 }
 
 // ---- center-local wall clock -> a real instant

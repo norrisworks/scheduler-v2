@@ -6,7 +6,7 @@ import { INSTRUCTOR_COLUMNS } from '../instructors/rankAccess'
 // only. binder_status now rides on the STUDENT, because binder prep persists
 // until the binder is used rather than expiring with one session.
 const SESSION_SELECT = `
-  id, center_id, student_id, date, start_time, duration, status, source, notes, is_modified, last_seen_in_radius,
+  id, center_id, student_id, date, start_time, duration, status, source, notes, is_modified, delivery_method, last_seen_in_radius,
   student:students ( id, name, grade, level, gender, first_day,
                      needs_schoolwork, slot_certainty, academic_status,
                      enrollment_start_date, binder_status ),
@@ -238,6 +238,35 @@ export function useDaySchedule(centerId, date) {
     [sessions, key, patchSession],
   )
 
+  /**
+   * In-center <-> online, from the card menu. Radius normally owns this via
+   * the import; the manual toggle exists for sessions with no Radius row —
+   * materialized standing slots default to in_center and someone has to be
+   * able to say otherwise. is_modified for the same reason as setStatus: a
+   * hand-edited row must survive re-materialization.
+   */
+  const setDelivery = useCallback(
+    async (sessionId, deliveryMethod) => {
+      const previous = sessions.find((s) => s.id === sessionId)?.delivery_method
+      patchSession(key, sessionId, { delivery_method: deliveryMethod, is_modified: true })
+
+      const { error } = await supabase
+        .from('sessions')
+        .update({
+          delivery_method: deliveryMethod,
+          is_modified: true,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', sessionId)
+
+      if (error) {
+        patchSession(key, sessionId, { delivery_method: previous })
+        setError(error.message)
+      }
+    },
+    [sessions, key, patchSession],
+  )
+
   const setStatus = useCallback(
     async (sessionId, status) => {
       const previous = sessions.find((s) => s.id === sessionId)?.status
@@ -291,6 +320,7 @@ export function useDaySchedule(centerId, date) {
     assign,
     unassign,
     setStatus,
+    setDelivery,
     dismissError: () => setError(null),
   }
 }

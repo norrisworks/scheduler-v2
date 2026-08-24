@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
 import { formatTime } from '../../lib/dates'
 import { STATUSES } from './levels'
-import { ACADEMIC_STATUS, BRAND_RED, SLOT_CERTAINTY } from './studentOptions'
+import { ACADEMIC_STATUS, BRAND_RED, ONLINE_GREEN, SLOT_CERTAINTY } from './studentOptions'
 import { coverageWarning } from './shiftCoverage'
 import { INSTRUCTOR_DRAG_TYPE } from './dnd'
 import { isBinderReady } from '../binder/binderPrep'
@@ -98,9 +98,12 @@ export default function SessionCard({
       ...style,
       backgroundColor: instructor ? `${instructor.color}20` : '#f3f4f6',
       // A normal card is a flat rectangle: tinted instructor fill and text,
-      // nothing else — no stripe, no border, no shadow, no radius. The ONE
-      // exception is a first-day student, whose full brand-red border is the
-      // deliberate v1 signal (owner's call, restored after being removed).
+      // nothing else — no stripe, no border, no shadow, no radius. Two
+      // exceptions, both full borders: green for an online session, and the
+      // deliberate v1 first-day red (owner's call, restored after being
+      // removed). Spread order makes red WIN when both apply — a first-day
+      // student is the rarer, more important signal.
+      ...(session.delivery_method === 'online' ? { border: `3px solid ${ONLINE_GREEN}` } : null),
       ...(student?.first_day ? { border: `3px solid ${BRAND_RED}` } : null),
       ...(ring ? { outline: ring, outlineOffset: '-2px' } : null),
     },

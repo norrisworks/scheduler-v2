@@ -11,7 +11,7 @@ import { BINDER_STATUSES } from '../binder/binderPrep'
  * it (cards must not show it), so this fetches the note on open. Binder state
  * belongs to the STUDENT now, so that is what it reads.
  */
-export default function StatusMenu({ menu, onStatusChange, onUnassign, onReschedule, onClose }) {
+export default function StatusMenu({ menu, onStatusChange, onDeliveryChange, onUnassign, onReschedule, onClose }) {
   const [binder, setBinder] = useState(null)
   // Instructor-role accounts get the binder info only — no status actions.
   const { isAdmin } = useAuth()
@@ -47,6 +47,12 @@ export default function StatusMenu({ menu, onStatusChange, onUnassign, onResched
       ? { key: 'restore', label: 'Restore to schedule', run: () => onStatusChange(session.id, 'scheduled') }
       : { key: 'cancel', label: 'Cancel', run: () => onStatusChange(session.id, 'cancelled') },
     { key: 'reschedule', label: 'Reschedule…', run: () => onReschedule(session) },
+    // Radius owns this for imported sessions; the manual toggle is for rows
+    // with no Radius record — materialized standing slots default to
+    // in_center, and someone has to be able to say otherwise.
+    session.delivery_method === 'online'
+      ? { key: 'delivery', label: 'Mark in-center', run: () => onDeliveryChange(session.id, 'in_center') }
+      : { key: 'delivery', label: 'Mark online', run: () => onDeliveryChange(session.id, 'online') },
     ...(session.instructor_id
       ? [{ key: 'unassign', label: 'Unassign instructor', run: () => onUnassign(session.id) }]
       : []),

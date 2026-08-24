@@ -21,6 +21,10 @@ export const ACADEMIC_STATUS = {
 
 export const BRAND_RED = '#EC3A33'
 
+/** Online-session border. Emerald-600: distinct from the first-day red and
+ * from every instructor palette green at 3px. */
+export const ONLINE_GREEN = '#059669'
+
 /** v1 instructorColors palette — used when seeding or editing instructors. */
 export const INSTRUCTOR_PALETTE = [
   '#E53935', '#1E88E5', '#43A047', '#FB8C00', '#8E24AA', '#00ACC1',

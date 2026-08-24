@@ -207,6 +207,31 @@ anchor). **Never call `toISOString()` for dates.**
       the door decided all their binders. Checks now cover siblings resolving
       independently, and an unknown sibling falling through rather than
       claiming one of the others.
+19. **`sessions.delivery_method`** (2026-08-24): 'in_center' | 'online',
+    default in_center. Online sessions get a full green border on day-view
+    cards (`ONLINE_GREEN` in `studentOptions.js`); the first-day red border
+    WINS when both apply. Written by the Radius import from the file's
+    Delivery Method column ('In-Center'/'Online' verbatim; anything else maps
+    in_center). A delivery flip on an otherwise-unchanged row counts as an
+    UPDATE — before that it landed in "unchanged" and was silently dropped.
+    Manual toggle in the card ⋯ menu (sets `is_modified`, so re-materialization
+    leaves it alone); materialized standing slots have no Radius row and
+    correctly default to in_center. Adding the column also exposed that the
+    sessions instructor-trigger enumerated FROZEN columns, so new columns were
+    instructor-writable by default — it is now inverted (freeze everything
+    except the binder columns), matching the students version.
+20. **Bulk ranking removal, with exact undo** (2026-08-24). The inverse of
+    `bulk_insert_ranking`, for the rename-instead-of-create mistake (the "new"
+    instructor inherited 93 rankings). `bulk_remove_ranking(center, instructor)`
+    deletes and renumbers every affected list contiguously in one transaction,
+    returning the removed (student, rank) pairs; `bulk_restore_ranking` puts
+    each pair back at its original rank, restoring every list bit-for-bit
+    (proved on the 96-student worst case). Both are INVOKER rights — RLS is
+    the write gate, and db-check asserts they stay that way. The remove
+    self-verifies its delete count: an instructor JWT can READ rankings but
+    not delete them, so the first cut reported "removed 96" having removed
+    nothing. UI: preview-first on the instructor record (`BulkRankingRemove`),
+    undo lives until the panel closes.
 
 ## Importers (all preview-first; never commit on the owner's behalf)
 

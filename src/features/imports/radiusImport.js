@@ -135,6 +135,16 @@ export function isSuspiciousActor(value) {
   return parts.length === 2 && parts[0] === parts[1]
 }
 
+/**
+ * 'In-Center' / 'Online' -> the sessions.delivery_method values. The real
+ * export carries exactly those two spellings; anything unrecognised (or blank)
+ * is in_center, matching the column default — being wrong about a room beats
+ * inventing an online session nobody scheduled.
+ */
+export function mapDelivery(value) {
+  return String(value ?? '').trim().toLowerCase() === 'online' ? 'online' : 'in_center'
+}
+
 export function readRadiusRow(row) {
   const studentName = pick(row, 'student_name', 'student')
   return {
@@ -147,7 +157,7 @@ export function readRadiusRow(row) {
     rawStatus: pick(row, 'session_status', 'status'),
     status: mapStatus(pick(row, 'session_status', 'status')),
     sessionType: pick(row, 'session_type'),
-    deliveryMethod: pick(row, 'delivery_method'),
+    delivery: mapDelivery(pick(row, 'delivery_method')),
     grade: pick(row, 'grade'),
     bookedOn: parseRadiusDate(pick(row, 'booked_on_date', 'booked_on')),
     lastModified: parseRadiusDate(pick(row, 'last_modified')),
@@ -363,13 +373,16 @@ export function planRadiusImport(
       const key = sessionKey(student.id, row.date, row.startTime)
       seenKeys.add(key)
       const current = existing.get(key)
-      const target = { status: row.status, duration: row.duration }
+      const target = { status: row.status, duration: row.duration, delivery: row.delivery }
 
       if (!current) {
         created.push({ row, student, via, target })
       } else if (
         current.status !== target.status ||
-        (current.duration ?? 60) !== target.duration
+        (current.duration ?? 60) !== target.duration ||
+        // A session that moves online without changing time is still a change
+        // — leaving it in "unchanged" would silently drop the delivery flip.
+        (current.delivery_method ?? 'in_center') !== target.delivery
       ) {
         updated.push({ row, student, via, current, target })
       } else {

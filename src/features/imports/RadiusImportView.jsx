@@ -56,7 +56,7 @@ export default function RadiusImportView() {
         ? await Promise.all([
             supabase
               .from('sessions')
-              .select('id, student_id, center_id, date, start_time, duration, status, source')
+              .select('id, student_id, center_id, date, start_time, duration, status, source, delivery_method')
               .gte('date', dates[0])
               .lte('date', dates[dates.length - 1]),
             supabase
@@ -212,6 +212,7 @@ export default function RadiusImportView() {
               start_time: row.startTime,
               duration: row.duration,
               status: row.status,
+              delivery_method: row.delivery,
               source: 'radius',
               radius_key: radiusKeyOf(row),
               last_seen_in_radius: seenAt,
