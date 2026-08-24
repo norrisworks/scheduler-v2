@@ -3,10 +3,10 @@ import { BINDER_RESET, binderStatusMeta, binderStatusOf } from './binderPrep'
 /**
  * Binder state on the student record, and the manual way to clear it.
  *
- * Attendance normally clears a binder, in a database trigger — but attendance
- * only reaches us when the Radius import is run. Until it is, the owner needs
- * a way to say "that binder got used" without inventing a session status. This
- * is that control.
+ * Attendance normally clears a binder, via the attendance import — but that
+ * only reaches us when someone runs it. Until they do, the owner needs a way
+ * to say "that binder got used" without inventing a session status. This is
+ * that control.
  *
  * The full three-way editor lives in Binder prep; this is state plus reset.
  */

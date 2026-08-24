@@ -3,6 +3,8 @@ import { supabase } from '../../lib/supabase'
 import { useCenter } from '../centers/CenterProvider'
 import Spinner from '../../components/Spinner'
 import QueryError from '../../components/QueryError'
+import Modal from '../../components/Modal'
+import StudentDrawer from '../roster/StudentDrawer'
 import { addDays, formatDateLong, formatTimeMeridiem, todayISO } from '../../lib/dates'
 import { BINDER_RESET, BINDER_STATUSES, binderCounts, binderRows, binderStatusOf } from './binderPrep'
 
@@ -14,8 +16,8 @@ import { BINDER_RESET, BINDER_STATUSES, binderCounts, binderRows, binderStatusOf
  *
  * Status and note live on the STUDENT, because prep is physical work on a
  * physical binder and it survives until that binder is actually used. Reset is
- * attendance-driven, in a database trigger — a no-show no longer throws the
- * prep away, and a date going by never clears anything.
+ * attendance-driven, via the attendance import — a no-show no longer throws
+ * the prep away, and a date going by never clears anything.
  *
  * One row per student, not per session: a student booked twice shares a single
  * status, so showing two independent controls would be showing a lie.
@@ -31,6 +33,10 @@ export default function BinderPrepView() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
   const [saveError, setSaveError] = useState(null)
+  // The full student drawer over this page — same fix-in-place pattern as the
+  // rankings matrix and the unplaced panel. Prepping a binder is exactly when
+  // you want the notes and standing slots without losing your place.
+  const [editingStudent, setEditingStudent] = useState(null)
   const requestRef = useRef(0)
   const noteTimers = useRef(new Map())
 
@@ -226,9 +232,15 @@ export default function BinderPrepView() {
                     {formatTimeMeridiem(row.startTime)}
                   </span>
                   <span className="w-40 min-w-0 shrink-0">
-                    <span className="block truncate text-sm font-medium text-zinc-900">
+                    <button
+                      type="button"
+                      disabled={!row.student}
+                      onClick={() => setEditingStudent(row.student)}
+                      title={`Open ${row.student?.name ?? 'this student'}'s details`}
+                      className="block max-w-full truncate text-left text-sm font-medium text-zinc-900 hover:text-brand-700 hover:underline disabled:cursor-default disabled:no-underline"
+                    >
                       {row.student?.name ?? 'Unknown'}
-                    </span>
+                    </button>
                     <span className="block text-[10px] text-zinc-400">
                       {row.student?.grade ? `gr ${row.student.grade}` : ''}
                       {row.duration && row.duration !== 60 ? ` · ${row.duration}m` : ''}
@@ -279,6 +291,26 @@ export default function BinderPrepView() {
           </ul>
         )}
       </div>
+
+      {editingStudent && (
+        <Modal
+          side="right"
+          label={`${editingStudent.name} details`}
+          onClose={() => setEditingStudent(null)}
+        >
+          {/* keyed so switching students remounts rather than showing the
+              previous one's tabs and pending edits */}
+          <StudentDrawer
+            key={editingStudent.id}
+            studentId={editingStudent.id}
+            onClose={() => setEditingStudent(null)}
+            // The drawer carries its own binder panel, so an edit there has to
+            // reach this list — otherwise the row behind the modal disagrees
+            // with the drawer in front of it.
+            onChanged={load}
+          />
+        </Modal>
+      )}
     </div>
   )
 }
