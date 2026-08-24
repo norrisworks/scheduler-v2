@@ -9,6 +9,7 @@ import { capabilityString, instructorWarnings, nextColor } from './instructorFie
 import { isFallbackOnly } from '../assign/rankings'
 import InstructorForm from './InstructorForm'
 import BulkRankingInsert from './BulkRankingInsert'
+import BulkRankingRemove from './BulkRankingRemove'
 import { genderLabel } from '../../lib/gender'
 
 export default function InstructorsView() {
@@ -172,7 +173,10 @@ export default function InstructorsView() {
               />
 
               {!adding && selected && (
-                <BulkRankingInsert instructor={selected} centerId={centerId} />
+                <>
+                  <BulkRankingInsert instructor={selected} centerId={centerId} />
+                  <BulkRankingRemove instructor={selected} centerId={centerId} />
+                </>
               )}
             </div>
           </aside>

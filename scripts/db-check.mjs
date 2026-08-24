@@ -92,6 +92,20 @@ const MUST_BE_DEFINER = {
   db_schema_facts: 'reads pg_catalog on behalf of an admin JWT',
 }
 
+/**
+ * Functions where INVOKER rights are the security gate: they write
+ * instructor_rankings and rely on the admin_write policy to refuse instructor
+ * JWTs. Flipping one to SECURITY DEFINER would let any authenticated JWT bulk-
+ * edit rankings. bulk_remove_ranking also self-verifies its delete count,
+ * because under an instructor JWT the capture READS rows the delete cannot
+ * touch — the first cut reported "removed 96" having removed nothing.
+ */
+const MUST_BE_INVOKER = {
+  bulk_insert_ranking: 'writes rankings; RLS is the gate',
+  bulk_remove_ranking: 'writes rankings; RLS is the gate',
+  bulk_restore_ranking: 'writes rankings; RLS is the gate',
+}
+
 /** Columns no client role may see or write, whatever the policies say. */
 const LOCKED_COLUMNS = [
   ['instructors', 'instructor_rank', "the owner's private ranking"],
@@ -115,6 +129,9 @@ const REQUIRED_COLUMNS = [
   // share one — so the first name is what makes the pair identify a child.
   ['students', 'radius_lead_id'],
   ['students', 'radius_first_name'],
+  // Online sessions on the day view; written by the Radius import, defaulted
+  // for materialized standing slots.
+  ['sessions', 'delivery_method'],
 ]
 
 // --------------------------------------------------------------------- runner
@@ -236,6 +253,15 @@ function assertFacts(facts) {
     check(`${name} is SECURITY DEFINER`, fn.security_definer === true, why)
     const pinned = (fn.config ?? []).some((c) => String(c).startsWith('search_path='))
     check(`${name} pins its search_path`, pinned, 'definer without a pinned path is escalation')
+  }
+
+  for (const [name, why] of Object.entries(MUST_BE_INVOKER)) {
+    const fn = (facts.functions ?? {})[name]
+    check(`${name} exists`, Boolean(fn), why)
+    if (!fn) continue
+    check(`${name} is INVOKER rights`, fn.security_definer === false, why)
+    const pinned = (fn.config ?? []).some((c) => String(c).startsWith('search_path='))
+    check(`${name} pins its search_path`, pinned, 'unpinned path in a writer')
   }
 
   // ---- column locks
