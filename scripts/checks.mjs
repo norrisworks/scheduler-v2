@@ -11,7 +11,7 @@ import { placeAtRank, visibleRanking } from '../src/features/assign/rankOrder.js
 import { BINDER_RESET, binderCounts, binderRows, binderStatusOf, isBinderReady } from '../src/features/binder/binderPrep.js'
 import { classifyQueryError, describeQueryError, CLOCK_SKEW, SESSION_EXPIRED, OFFLINE, UNKNOWN } from '../src/lib/queryError.js'
 import { RANK_TIEBREAK, RANK_GATED_CAP, NEW_STUDENT_PREFERENCE } from '../src/features/assign/algorithmFlags.js'
-import { rescheduleRows, validateReschedule } from '../src/features/day/reschedule.js'
+import { rescheduleRows, validateReschedule, collisionKind, collisionMessage, reusePatch } from '../src/features/day/reschedule.js'
 import { findSourceConflicts, planSourceConflicts, findCrossDayConflicts, planCrossDayConflicts, isRadiusConfirmed } from '../src/features/day/sourceConflicts.js'
 import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessage } from '../src/features/assign/algorithms.js'
 import { buildGroups } from '../src/features/day/rowGrouping.js'
@@ -559,6 +559,30 @@ eq('a past date is refused', validateReschedule('2026-08-01', '16:00', '2026-08-
    'the new date is in the past')
 eq('today is allowed', validateReschedule('2026-08-14', '16:00', '2026-08-14'), null)
 eq('a missing time is refused', validateReschedule('2026-08-20', '', '2026-08-14'), 'pick a time')
+
+// ---- collisions: cancelled rows occupy their slot but are REUSED, not fatal
+// The unique index counts cancelled rows, so moving a session back where it
+// came from always failed against its own corpse, and every retry left
+// another one. Classification separates the two situations the old error
+// conflated.
+eq('an empty target is free',       collisionKind(null), 'free')
+eq('a cancelled row is reusable',   collisionKind({ status: 'cancelled' }), 'cancelled')
+eq('a scheduled row is live',       collisionKind({ status: 'scheduled' }), 'live')
+eq('attendance rows are live too',  collisionKind({ status: 'completed' }), 'live')
+eq('the live message says scheduled',
+   collisionMessage('live', 'Keira D'), 'Keira D already has a scheduled session at that time.')
+eq('the cancelled message says restorable',
+   collisionMessage('cancelled', 'Keira D'),
+   'Keira D has a cancelled session at that time — it can be restored instead.')
+eq('a free target has no message', collisionMessage('free', 'Keira D'), null)
+// Reviving a corpse makes it THE requested session, marked as a hand edit so
+// the materializer leaves it alone.
+eq('reuse revives as scheduled manual hand-edit',
+   reusePatch({ duration: 90, notes: 'leaving early' }),
+   { status: 'scheduled', source: 'manual', is_modified: true, duration: 90, notes: 'leaving early' })
+eq('reuse defaults duration and clears stale notes',
+   reusePatch({}),
+   { status: 'scheduled', source: 'manual', is_modified: true, duration: 60, notes: null })
 
 // ---- instructor_rank flags: OFF must be EXACTLY today's behavior
 // Fixture: three instructors, four overlapping sessions with identical

@@ -430,7 +430,7 @@ export default function DayView() {
               <ScheduleGrid {...gridProps} />
             )}
           </div>
-          <CancelledList sessions={offGrid} onStatusChange={setStatus} />
+          <CancelledList sessions={offGrid} onStatusChange={setStatus} onDelete={deleteSession} />
         </div>
 
         {openStudent && (

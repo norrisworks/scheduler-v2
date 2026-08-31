@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import Modal from '../../components/Modal'
 import TimeSelect from '../../components/TimeSelect'
 import { addDays, formatDateLong, formatTimeMeridiem, todayISO } from '../../lib/dates'
-import { rescheduleRows, validateReschedule } from './reschedule'
+import { collisionKind, collisionMessage, rescheduleRows, reusePatch, validateReschedule } from './reschedule'
 
 /**
  * Move one session to a future date and time. The original is cancelled and
@@ -17,6 +17,31 @@ export default function RescheduleDialog({ session, onClose, onDone }) {
   const [time, setTime] = useState(session.start_time.slice(0, 5))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  // What already sits at the chosen target, looked up as the pickers change,
+  // so "that spot holds a cancelled session — it will be restored" is visible
+  // BEFORE the button is pressed, not discovered as a failure after.
+  const [occupant, setOccupant] = useState(null)
+
+  useEffect(() => {
+    let stale = false
+    const startTime = time.length === 5 ? `${time}:00` : time
+    supabase
+      .from('sessions')
+      .select('id, status')
+      .eq('student_id', session.student_id)
+      .eq('date', date)
+      .eq('start_time', startTime)
+      .neq('id', session.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!stale) setOccupant(data ?? null)
+      })
+    return () => {
+      stale = true
+    }
+  }, [session.student_id, session.id, date, time])
+
+  const targetKind = collisionKind(occupant)
 
   async function save() {
     const problem = validateReschedule(date, time, today)
@@ -28,14 +53,46 @@ export default function RescheduleDialog({ session, onClose, onDone }) {
     setError(null)
 
     const { cancel, create } = rescheduleRows(session, date, time)
-    // Create first: if the new row is rejected (double-booking, bad data),
-    // the original is still on the schedule and nothing was lost.
-    const inserted = await supabase.from('sessions').insert(create)
-    if (inserted.error) {
-      setError(inserted.error.message)
+
+    // The unique index counts cancelled rows, so the insert below would fail
+    // against a corpse — which is what made "move it back where it came from"
+    // impossible and left a trail of cancelled rows on every retry. A
+    // cancelled occupant is REUSED: revived in place as the new session, so
+    // no duplicate ever exists. A live occupant refuses, and says "scheduled".
+    const { data: existing } = await supabase
+      .from('sessions')
+      .select('id, status')
+      .eq('student_id', session.student_id)
+      .eq('date', create.date)
+      .eq('start_time', create.start_time)
+      .neq('id', session.id)
+      .maybeSingle()
+
+    const kind = collisionKind(existing)
+    if (kind === 'live') {
+      setError(collisionMessage('live', session.student?.name))
       setSaving(false)
       return
     }
+
+    // New-session write first, whichever form it takes: if it is rejected,
+    // the original is still on the schedule and nothing was lost.
+    const landed =
+      kind === 'cancelled'
+        ? await supabase
+            .from('sessions')
+            .update({
+              ...reusePatch(create),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', existing.id)
+        : await supabase.from('sessions').insert(create)
+    if (landed.error) {
+      setError(landed.error.message)
+      setSaving(false)
+      return
+    }
+
     const cancelled = await supabase
       .from('sessions')
       .update({ ...cancel.patch, updated_at: new Date().toISOString() })
@@ -83,6 +140,17 @@ export default function RescheduleDialog({ session, onClose, onDone }) {
         <p className="text-[11px] text-zinc-400">
           {session.duration ?? 60} minutes, same as the original.
         </p>
+        {targetKind === 'cancelled' && (
+          <p className="rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] leading-snug text-amber-800">
+            A cancelled session already sits at that time — it will be restored as this session
+            instead of creating a duplicate.
+          </p>
+        )}
+        {targetKind === 'live' && (
+          <p className="rounded-lg bg-red-50 px-2.5 py-1.5 text-[11px] leading-snug text-red-700">
+            {collisionMessage('live', session.student?.name)}
+          </p>
+        )}
         {error && <p className="rounded bg-red-50 px-2 py-1 text-xs text-red-700">{error}</p>}
       </div>
 

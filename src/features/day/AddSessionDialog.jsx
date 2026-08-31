@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { formatDateShort } from '../../lib/dates'
 import TimeSelect from '../../components/TimeSelect'
+import { collisionKind, collisionMessage, reusePatch } from './reschedule'
 
 const inputClass =
   'w-full rounded-lg border border-zinc-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200'
@@ -61,7 +62,7 @@ export default function AddSessionDialog({ centerId, date, onClose, onCreated })
     setSaving(true)
     setError(null)
 
-    const { error } = await supabase.from('sessions').insert({
+    const row = {
       center_id: centerId,
       student_id: studentId,
       date: form.date,
@@ -69,15 +70,41 @@ export default function AddSessionDialog({ centerId, date, onClose, onCreated })
       duration: Number(form.duration),
       status: 'scheduled',
       source: 'manual',
-    })
+    }
+
+    // The unique index counts CANCELLED rows, so an insert against a corpse
+    // fails just like a real double-booking. Classify first: a cancelled
+    // occupant is revived in place as this session, a live one refuses with a
+    // message that says "scheduled" — the two are different situations.
+    const { data: existing } = await supabase
+      .from('sessions')
+      .select('id, status')
+      .eq('student_id', studentId)
+      .eq('date', row.date)
+      .eq('start_time', row.start_time)
+      .maybeSingle()
+
+    const kind = collisionKind(existing)
+    if (kind === 'live') {
+      setError(collisionMessage('live', selected?.name))
+      setSaving(false)
+      return
+    }
+
+    const { error } =
+      kind === 'cancelled'
+        ? await supabase
+            .from('sessions')
+            .update({ ...reusePatch(row), updated_at: new Date().toISOString() })
+            .eq('id', existing.id)
+        : await supabase.from('sessions').insert(row)
 
     setSaving(false)
     if (error) {
-      // The unique index on (student_id, date, start_time) is what catches a
-      // double-booking here.
+      // 23505 can still fire on a race between the check and the insert.
       setError(
         error.code === '23505'
-          ? `${selected?.name ?? 'That student'} already has a session at that time.`
+          ? collisionMessage('live', selected?.name)
           : error.message,
       )
       return

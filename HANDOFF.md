@@ -280,6 +280,24 @@ anchor). **Never call `toISOString()` for dates.**
     override). Chino D corrected in place. Diagnosed by testing the exact
     UPDATE under an admin JWT (it worked) and then reading the row: fresh
     updated_at, status inactive, boolean untouched.
+24. **Cancelled rows are REUSED at collision, never a wall** (2026-08-24).
+    The unique (student, date, start_time) index counts cancelled rows, so a
+    reschedule back to where it came from always failed against its own
+    corpse, and every retry minted another one (real trails: Grace Co,
+    Lauren D, Maggie G). `collisionKind` in `reschedule.js` classifies a
+    target as free / cancelled / live before any write:
+    - CANCELLED occupant -> revived in place via `reusePatch` (scheduled,
+      source manual, is_modified, incoming duration/notes). No duplicate row
+      is ever created; the Reschedule dialog shows "will be restored instead
+      of creating a duplicate" live as the pickers change, and Add session
+      does the same reuse silently.
+    - LIVE occupant -> refused with a message that says "already has a
+      SCHEDULED session" — distinct from the cancelled case by design.
+    - The materializer's side was decision 22's reclaim (foreign corpses
+      reclaimed; a slot's own cancelled one-off is deliberate and kept).
+    Hard delete is also reachable from the cancelled strip below the grid
+    (✕ per chip, admin, arm-then-fire) — a cancelled session has no card, so
+    the strip is its only surface.
 
 ## Importers (all preview-first; never commit on the owner's behalf)
 
