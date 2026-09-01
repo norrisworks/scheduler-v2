@@ -17,7 +17,7 @@ import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessa
 import { buildGroups } from '../src/features/day/rowGrouping.js'
 import { proposeRanking, ineligibleForStudentReason, proposalReasons, sameGender, eligibleForStudent, moveEntry } from '../src/features/assign/proposeRanking.js'
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
-import { titleCaseName, generateDisplayName, violatesNamingConvention, staleGradeInName, displayNameShape, nearlySameFirstName, isPlaceholderName, nameKey } from '../src/features/imports/namingConvention.js'
+import { cleanPersonName, titleCaseName, generateDisplayName, violatesNamingConvention, staleGradeInName, displayNameShape, nearlySameFirstName, isPlaceholderName, nameKey } from '../src/features/imports/namingConvention.js'
 import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } from '../src/features/imports/workstreamImport.js'
 import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, mapDelivery, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent, radiusKeyOf, confirmationTargets, planRadiusImport } from '../src/features/imports/radiusImport.js'
 import { planStudentImport, planStudentImportByCenter } from '../src/features/imports/studentImport.js'
@@ -1035,6 +1035,22 @@ eq('summary with none left over',
    summaryMessage({ assigned: 5, worstRank: 1, couldNotAssign: 0 }),
    'Assigned 5 students! Worst match rank: 1')
 
+// ---- parenthetical nicknames and suffixes never reach a display name
+// 'Royce (RJ) Barnes, Jr.' produced the display name 'Royce (' — the surname
+// initial was taken from the nickname.
+eq('nickname and suffix stripped', cleanPersonName('Royce (RJ) Barnes, Jr.'), 'Royce Barnes')
+eq('suffix without comma stripped', cleanPersonName('Sam Jones III'), 'Sam Jones')
+eq('a plain name passes through',  cleanPersonName('Keira Donnelly'), 'Keira Donnelly')
+eq('suffix strip backs off rather than eat a surname', cleanPersonName('Anh V'), 'Anh V')
+eq('the Royce display name is right now',
+   generateDisplayName('Royce (RJ) Barnes, Jr.', '4', []).name, 'Royce B')
+eq('rule 2 uses the real surname letters',
+   generateDisplayName('Royce (RJ) Barnes, Jr.', '4', [], { sharesFirstName: true }).name, 'Royce Ba')
+eq('matching keys ignore the nickname too',
+   displayKeyFromFullName('Royce (RJ) Barnes, Jr.'), 'royce b')
+eq('attendance candidates use the real surname',
+   displayCandidates('Royce (RJ) Barnes'), ['royce b', 'royce ba'])
+
 // ---- first-name case: Radius hands over whatever the front desk typed
 eq('ALL-CAPS becomes title case',   titleCaseName('LILY'), 'Lily')
 eq('lowercase becomes title case',  titleCaseName('himanshu'), 'Himanshu')
@@ -2004,6 +2020,14 @@ eq('a write puts the moved instructor where asked',
     }
   }
   eq('no client write names instructor_rank', rankWriters, [])
+
+  // A zero-row UPDATE is an ERROR, never a success. An RLS-filtered write (a
+  // token whose admin claim lapsed) returns no error and no rows; without the
+  // guard the client reported success and the refetch made the edit look like
+  // it "reverted" — two student renames vanished exactly this way.
+  const useStudentSrc = readSrc('src/features/roster/useStudent.js')
+  eq('updateStudent verifies the row actually changed',
+     useStudentSrc.includes(".select('id')") && useStudentSrc.includes('data.length === 0'), true)
 
   // Enrollment drives `active` on MANUAL edits too, not just in the importer.
   // Without this, setting a student Inactive in the drawer saved the status

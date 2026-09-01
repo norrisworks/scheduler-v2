@@ -85,14 +85,35 @@ export function useStudent(studentId) {
     [load],
   )
 
+  /**
+   * The update asks for the row BACK, and zero rows is an ERROR. Without
+   * that, an UPDATE filtered away by RLS — a stale token whose admin claim
+   * lapsed — returns no error and no rows: the client reports success, the
+   * refetch shows the old value, and the edit looks like it "reverted".
+   * That is exactly how two renames vanished with updated_at untouched.
+   * Proven against the real database: an admin-claim-less JWT updates 0 rows
+   * and raises nothing.
+   */
   const updateStudent = useCallback(
     (patch) =>
-      run(() =>
-        supabase
+      run(async () => {
+        const { data, error } = await supabase
           .from('students')
           .update({ ...patch, updated_at: new Date().toISOString() })
-          .eq('id', studentId),
-      ),
+          .eq('id', studentId)
+          .select('id')
+        if (error) return { error }
+        if (!data || data.length === 0) {
+          return {
+            error: {
+              message:
+                'The save did not apply — the database accepted the request but changed nothing. ' +
+                'Your session may have expired; sign out and back in, then retry.',
+            },
+          }
+        }
+        return { error: null }
+      }),
     [run, studentId],
   )
 

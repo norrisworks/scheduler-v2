@@ -1,5 +1,5 @@
 import { pick } from './parseTable'
-import { isPlaceholderName, nameKey, splitName } from './namingConvention'
+import { cleanPersonName, isPlaceholderName, nameKey, splitName } from './namingConvention'
 import { parseRadiusDate, parseRadiusTime } from './radiusImport'
 import { centerInstant } from '../../lib/dates'
 
@@ -66,7 +66,7 @@ export function attendanceRowProblem(row) {
  * three of nine misses.
  */
 export function displayCandidates(fullName) {
-  const { first, last } = splitName(fullName)
+  const { first, last } = splitName(cleanPersonName(fullName))
   if (!first || !last) return []
   const one = nameKey(`${first} ${last[0]}`)
   const two = nameKey(`${first} ${last.slice(0, 2)}`)

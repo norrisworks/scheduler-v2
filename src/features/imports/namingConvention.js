@@ -14,6 +14,23 @@ export function splitName(fullName) {
 }
 
 /**
+ * A Radius FULL name, stripped to the parts that make a display name:
+ * parenthetical nicknames and generational suffixes go. 'Royce (RJ) Barnes,
+ * Jr.' -> 'Royce Barnes' — without this, the surname initial was taken from
+ * the nickname and the display name came out as 'Royce ('.
+ *
+ * For FULL names only, never display names: rule-3 display names carry a
+ * grade parenthetical ('Aryan P (2)') that must survive. The suffix strip
+ * backs off when it would leave fewer than two words — a real surname that
+ * happens to look like a suffix must not be eaten.
+ */
+export function cleanPersonName(fullName) {
+  const noNickname = normalize(String(fullName ?? '').replace(/\([^)]*\)/g, ' '))
+  const noSuffix = normalize(noNickname.replace(/,?\s+(jr|sr|ii|iii|iv|v)\.?$/i, ''))
+  return noSuffix.split(' ').length >= 2 ? noSuffix : noNickname
+}
+
+/**
  * Radius hands over first names in whatever case the front desk typed —
  * 'LILY', 'himanshu' — and display names carried it verbatim. Title-cased per
  * hyphen-separated segment, with two deliberate exceptions:
@@ -51,7 +68,7 @@ export function violatesNamingConvention(displayName) {
  */
 export function generateDisplayName(fullName, grade, takenNames = [], options = {}) {
   const taken = new Set(takenNames.map(nameKey))
-  const { first, last } = splitName(fullName)
+  const { first, last } = splitName(cleanPersonName(fullName))
   if (!first) return { name: '', needsReview: true, reason: 'no name in the file' }
   // The DISPLAY name gets title case ('LILY' -> 'Lily'); collision checks stay
   // on the raw value, which nameKey lowercases anyway.

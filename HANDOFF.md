@@ -298,6 +298,26 @@ anchor). **Never call `toISOString()` for dates.**
     Hard delete is also reachable from the cancelled strip below the grid
     (✕ per chip, admin, arm-then-fire) — a cancelled session has no card, so
     the strip is its only surface.
+25. **A zero-row UPDATE is an error, and full names get cleaned** (2026-09-01).
+    Two student renames "reverted" with no error and untouched updated_at. The
+    component was NOT the bug: the real StudentAttributes was mounted in a
+    browser harness against a mock supabase and saved in every sequence —
+    plain typing, close-within-the-debounce (the unmount flush works), and a
+    select edit landing mid-debounce (the spinner remount race). The mechanism
+    that fits the evidence: an UPDATE filtered away by RLS — e.g. a token
+    whose admin claim lapsed — returns NO error and NO rows, so the client
+    reported success and the refetch "reverted" the field. Proven against the
+    real database: an admin-claim-less JWT updates 0 rows and raises nothing.
+    `updateStudent` now does `.select('id')` and treats zero rows as an error
+    telling the owner to re-sign-in. (Both renames were in fact present in the
+    DB by the time this was diagnosed — a retry had landed.)
+    Separately real: 'Royce (RJ) Barnes, Jr.' became display name 'Royce ('.
+    `cleanPersonName` strips parenthetical nicknames and generational suffixes
+    (Jr/Sr/II–V, backing off rather than eating a real short surname) before
+    display-name generation and the matching keys (`displayKeyFromFullName`,
+    `displayCandidates`). FULL names only — rule-3 display names keep their
+    grade parenthetical. `radius_first_name` stays verbatim ('Royce (RJ)'):
+    it is the attendance-matching fact and both files carry the same spelling.
 
 ## Importers (all preview-first; never commit on the owner's behalf)
 

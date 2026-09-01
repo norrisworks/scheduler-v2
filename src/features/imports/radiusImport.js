@@ -1,5 +1,5 @@
 import { pick } from './parseTable'
-import { nameKey, splitName } from './namingConvention'
+import { cleanPersonName, nameKey, splitName } from './namingConvention'
 
 /**
  * Radius appointment export -> v2 sessions.
@@ -59,7 +59,7 @@ export function accountKey(value) {
 
 /** The display name this full name would collapse to: 'Landon Russell' -> 'landon r'. */
 export function displayKeyFromFullName(fullName) {
-  const { first, last } = splitName(fullName)
+  const { first, last } = splitName(cleanPersonName(fullName))
   if (!first) return ''
   return nameKey(last ? `${first} ${last[0]}` : first)
 }
