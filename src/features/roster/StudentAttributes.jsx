@@ -12,17 +12,19 @@ import {
 
 const TEXT_DEBOUNCE_MS = 500
 
+// The first-day checkbox is deliberately absent: the red border is DERIVED from
+// enrollment_start_date (first_day_session_ids) — a manual flag that depends
+// on someone remembering is a flag that is always wrong.
 const FIELDS = [
   'name', 'grade', 'level', 'school', 'gender', 'radius_account',
   'academic_status', 'slot_certainty', 'default_duration', 'needs_schoolwork',
-  'first_day', 'active', 'enrollment_status',
+  'active', 'enrollment_status',
 ]
 
 function toForm(student) {
   const form = {}
   for (const key of FIELDS) form[key] = student[key] ?? (typeof student[key] === 'boolean' ? false : '')
   form.needs_schoolwork = Boolean(student.needs_schoolwork)
-  form.first_day = Boolean(student.first_day)
   form.active = student.active !== false
   return form
 }
@@ -179,7 +181,6 @@ export default function StudentAttributes({ student, saving, onSave }) {
 
       <div className="flex flex-wrap gap-4 pt-1">
         <Check label="Needs schoolwork (Supp)" checked={form.needs_schoolwork} onChange={(v) => set('needs_schoolwork', v)} />
-        <Check label="First day" checked={form.first_day} onChange={(v) => set('first_day', v)} />
         <Check label="Active" checked={form.active} onChange={(v) => set('active', v)} />
       </div>
 

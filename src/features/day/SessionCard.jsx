@@ -104,7 +104,7 @@ export default function SessionCard({
       // removed). Spread order makes red WIN when both apply — a first-day
       // student is the rarer, more important signal.
       ...(session.delivery_method === 'online' ? { border: `3px solid ${ONLINE_GREEN}` } : null),
-      ...(student?.first_day ? { border: `3px solid ${BRAND_RED}` } : null),
+      ...(session.is_first_day ? { border: `3px solid ${BRAND_RED}` } : null),
       ...(ring ? { outline: ring, outlineOffset: '-2px' } : null),
     },
   }

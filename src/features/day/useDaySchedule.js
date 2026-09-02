@@ -7,7 +7,7 @@ import { INSTRUCTOR_COLUMNS } from '../instructors/rankAccess'
 // until the binder is used rather than expiring with one session.
 const SESSION_SELECT = `
   id, center_id, student_id, date, start_time, duration, status, source, notes, is_modified, delivery_method, last_seen_in_radius,
-  student:students ( id, name, grade, level, gender, first_day,
+  student:students ( id, name, grade, level, gender,
                      needs_schoolwork, slot_certainty, academic_status,
                      enrollment_start_date, binder_status ),
   assignments ( id, instructor_id, source )
@@ -71,7 +71,7 @@ export function useDaySchedule(centerId, date) {
       const requestKey = scopeKey(centerId, date)
       if (!quiet) setLoading(true)
 
-      const [sessionRes, instructorRes, shiftRes] = await Promise.all([
+      const [sessionRes, instructorRes, shiftRes, firstDayRes] = await Promise.all([
         supabase
           .from('sessions')
           .select(SESSION_SELECT)
@@ -87,18 +87,26 @@ export function useDaySchedule(centerId, date) {
           .eq('active', true)
           .order('name'),
         supabase.from('instructor_shifts').select('*').eq('center_id', centerId).eq('date', date),
+        // First-day is DERIVED, never stored: the student's earliest scheduled
+        // session on/after their Radius enrollment_start_date, retiring the
+        // moment a completed session exists. The old manual flag on students
+        // depended on someone remembering, so it was always wrong.
+        supabase.rpc('first_day_session_ids', { p_center_id: centerId, p_date: date }),
       ])
 
       if (token !== requestRef.current) return
 
-      const failure = sessionRes.error || instructorRes.error || shiftRes.error
+      const failure = sessionRes.error || instructorRes.error || shiftRes.error || firstDayRes.error
       if (failure) {
         setError(failure.message)
         setLoading(false)
         return
       }
 
-      const daySessions = (sessionRes.data ?? []).map(normalizeSession)
+      const firstDayIds = new Set(firstDayRes.data ?? [])
+      const daySessions = (sessionRes.data ?? [])
+        .map(normalizeSession)
+        .map((s) => ({ ...s, is_first_day: firstDayIds.has(s.id) }))
       const studentIds = [...new Set(daySessions.map((s) => s.student_id).filter(Boolean))]
 
       let pinnedNotes = EMPTY

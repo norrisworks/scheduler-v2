@@ -5,7 +5,7 @@ const EMPTY = []
 
 const ROSTER_SELECT = `
   id, name, grade, level, school, gender, radius_account, enrollment_status,
-  academic_status, slot_certainty, needs_schoolwork, first_day,
+  academic_status, slot_certainty, needs_schoolwork,
   default_duration, active,
   recurring_slots ( id, day_of_week, start_time, duration, effective_until ),
   student_notes ( id, pinned, resolved )

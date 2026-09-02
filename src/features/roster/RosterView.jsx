@@ -243,11 +243,6 @@ function StudentRow({ student, selected, onSelect }) {
                 {student.grade}
               </span>
             )}
-            {student.first_day && (
-              <span className="shrink-0 rounded bg-emerald-100 px-1 text-[10px] text-emerald-800">
-                First day
-              </span>
-            )}
             {student.needs_schoolwork && (
               <span className="shrink-0 rounded bg-[#FFEB3B] px-1 text-[10px] font-bold text-black">
                 Supp

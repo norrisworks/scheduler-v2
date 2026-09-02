@@ -318,6 +318,24 @@ anchor). **Never call `toISOString()` for dates.**
     `displayCandidates`). FULL names only — rule-3 display names keep their
     grade parenthetical. `radius_first_name` stays verbatim ('Royce (RJ)'):
     it is the attendance-matching fact and both files carry the same spelling.
+26. **First-day is DERIVED, never stored** (2026-09-02). The manual
+    `students.first_day` flag depended on someone remembering, so it was
+    always wrong — Niam P and Theodore L both started the week of 9/1
+    unflagged. The red border now comes from `first_day_session_ids(center,
+    date)`: a session is first-day when it is the student's earliest SCHEDULED
+    session on/after their Radius `enrollment_start_date`, with one guard —
+    once ANY completed session exists on/after that date the student has
+    actually been here, and nothing carries the border again. That guard is
+    what makes attendance-import lag safe: a past first session stuck on
+    'scheduled' holds the crown (so the border does NOT jump to the next
+    visit), and the moment the import marks it completed the border retires.
+    A CANCELLED first appointment passes the crown to the next scheduled one.
+    Verified on live data: Niam borders 9/1 not 9/2; attendance retires it;
+    cancellation passes it forward. The day view fetches the id set alongside
+    the day and stamps `session.is_first_day`; the checkbox and roster badge
+    are gone, and a source check fails if anything reads the dead flag again.
+    Theodore L's missing border was missing SESSIONS — he has none at all —
+    which no flag anywhere could have fixed.
 
 ## Importers (all preview-first; never commit on the owner's behalf)
 
@@ -407,6 +425,10 @@ anchor). **Never call `toISOString()` for dates.**
 ## Open items
 
 - **Vercel deploy** is the owner's; repo is ready (`vercel.json` SPA rewrite).
+- **`students.first_day` (the column) stays for now, dormant.** The DEPLOYED
+  bundle still selects it, so dropping it before the client ships would break
+  production — same ship-client-first rule as the binder columns below. Safe
+  to drop together with that cleanup, after a deploy.
 - **Binder cleanup migration is DELIBERATELY UNAPPLIED.** `sessions.binder_status`
   / `binder_note`, the `sessions_instructor_binder_only` trigger and the
   `instructor_binder_update` policy on `sessions` are all still in place, dead

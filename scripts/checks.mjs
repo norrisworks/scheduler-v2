@@ -2029,6 +2029,19 @@ eq('a write puts the moved instructor where asked',
   eq('updateStudent verifies the row actually changed',
      useStudentSrc.includes(".select('id')") && useStudentSrc.includes('data.length === 0'), true)
 
+  // First-day is DERIVED (first_day_session_ids RPC over enrollment_start_date),
+  // never stored. The manual students.first_day flag depended on someone
+  // remembering and was therefore always wrong — any client code reaching for
+  // it again is reading a field nobody sets.
+  const deadFirstDay = []
+  for (const rel of srcFiles) {
+    const text = readSrc(joinPath('src', String(rel)))
+    if (/(?<!is_)first_day(?!_session_ids)/.test(text)) deadFirstDay.push(String(rel))
+  }
+  eq('nothing reads the dead manual first_day flag', deadFirstDay, [])
+  eq('the card border uses the derived flag',
+     readSrc('src/features/day/SessionCard.jsx').includes('session.is_first_day'), true)
+
   // Enrollment drives `active` on MANUAL edits too, not just in the importer.
   // Without this, setting a student Inactive in the drawer saved the status
   // and left the boolean true — "deactivating doesn't save" (Chino D).

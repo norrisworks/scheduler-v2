@@ -104,6 +104,10 @@ const MUST_BE_INVOKER = {
   bulk_insert_ranking: 'writes rankings; RLS is the gate',
   bulk_remove_ranking: 'writes rankings; RLS is the gate',
   bulk_restore_ranking: 'writes rankings; RLS is the gate',
+  // Read-only, but definer would be gratuitous surface: it only reads tables
+  // every role can already read. Its EXISTENCE matters most — the day view's
+  // first-day border is derived through it, and the manual flag is gone.
+  first_day_session_ids: 'derives the first-day border; the manual flag is dead',
 }
 
 /** Columns no client role may see or write, whatever the policies say. */
