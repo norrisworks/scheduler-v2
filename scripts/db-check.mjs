@@ -136,6 +136,8 @@ const REQUIRED_COLUMNS = [
   // Online sessions on the day view; written by the Radius import, defaulted
   // for materialized standing slots.
   ['sessions', 'delivery_method'],
+  // Three-state first-day override: null derives, true forces, false hides.
+  ['sessions', 'first_day_override'],
 ]
 
 // --------------------------------------------------------------------- runner

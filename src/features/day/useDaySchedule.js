@@ -6,7 +6,7 @@ import { INSTRUCTOR_COLUMNS } from '../instructors/rankAccess'
 // only. binder_status now rides on the STUDENT, because binder prep persists
 // until the binder is used rather than expiring with one session.
 const SESSION_SELECT = `
-  id, center_id, student_id, date, start_time, duration, status, source, notes, is_modified, delivery_method, last_seen_in_radius,
+  id, center_id, student_id, date, start_time, duration, status, source, notes, is_modified, delivery_method, first_day_override, last_seen_in_radius,
   student:students ( id, name, grade, level, gender,
                      needs_schoolwork, slot_certainty, academic_status,
                      enrollment_start_date, binder_status ),
@@ -304,6 +304,27 @@ export function useDaySchedule(centerId, date) {
     [sessions, key],
   )
 
+  /**
+   * The three-state first-day override: null derives, true forces, false
+   * suppresses. The RPC recomputes on the realtime nudge this update fires,
+   * so the border and the menu label follow within a refetch.
+   */
+  const setFirstDayOverride = useCallback(
+    async (sessionId, value) => {
+      const previous = sessions.find((s) => s.id === sessionId)?.first_day_override
+      patchSession(key, sessionId, { first_day_override: value })
+      const { error } = await supabase
+        .from('sessions')
+        .update({ first_day_override: value, updated_at: new Date().toISOString() })
+        .eq('id', sessionId)
+      if (error) {
+        patchSession(key, sessionId, { first_day_override: previous })
+        setError(error.message)
+      }
+    },
+    [sessions, key, patchSession],
+  )
+
   const setStatus = useCallback(
     async (sessionId, status) => {
       const previous = sessions.find((s) => s.id === sessionId)?.status
@@ -359,6 +380,7 @@ export function useDaySchedule(centerId, date) {
     setStatus,
     setDelivery,
     deleteSession,
+    setFirstDayOverride,
     dismissError: () => setError(null),
   }
 }

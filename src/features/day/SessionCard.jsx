@@ -6,6 +6,7 @@ import { ACADEMIC_STATUS, BRAND_RED, ONLINE_GREEN, SLOT_CERTAINTY } from './stud
 import { coverageWarning } from './shiftCoverage'
 import { INSTRUCTOR_DRAG_TYPE } from './dnd'
 import { isBinderReady } from '../binder/binderPrep'
+import { firstDayBadge } from './firstDay'
 
 /**
  * One card component for both orientations. Layout, sizing and row order in
@@ -104,7 +105,7 @@ export default function SessionCard({
       // removed). Spread order makes red WIN when both apply — a first-day
       // student is the rarer, more important signal.
       ...(session.delivery_method === 'online' ? { border: `3px solid ${ONLINE_GREEN}` } : null),
-      ...(session.is_first_day ? { border: `3px solid ${BRAND_RED}` } : null),
+      ...(firstDayBadge(session).firstDay ? { border: `3px solid ${BRAND_RED}` } : null),
       ...(ring ? { outline: ring, outlineOffset: '-2px' } : null),
     },
   }

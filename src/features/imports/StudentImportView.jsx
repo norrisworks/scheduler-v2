@@ -4,7 +4,7 @@ import { useCenter } from '../centers/CenterProvider'
 import { useAuth } from '../auth/AuthProvider'
 import { parseTableFile } from './parseTable'
 import { nameKey } from './namingConvention'
-import { planStudentImportByCenter, SKIP_REASONS, STUDENT_FIELDS } from './studentImport'
+import { planStudentImportByCenter, SKIP_REASONS, STUDENT_FIELDS, STUDENT_MATCH_COLUMNS } from './studentImport'
 
 /**
  * Student roster importer. Preview first, commit second — never the other way
@@ -37,9 +37,7 @@ export default function StudentImportView() {
         supabase.from('centers').select('id, name, short_code'),
         supabase
           .from('students')
-          .select(
-            'id, name, radius_account, radius_lead_id, radius_first_name, grade, level, school, gender, slot_certainty, academic_status, enrollment_status, needs_schoolwork, default_duration, active, center_id',
-          ),
+          .select(STUDENT_MATCH_COLUMNS),
       ])
       if (centerRes.error) throw new Error(centerRes.error.message)
       if (studentRes.error) throw new Error(studentRes.error.message)

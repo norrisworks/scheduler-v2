@@ -62,6 +62,7 @@ export default function DayView() {
     setStatus,
     setDelivery,
     deleteSession,
+    setFirstDayOverride,
     dismissError,
   } = useDaySchedule(centerId, date)
 
@@ -430,7 +431,8 @@ export default function DayView() {
               <ScheduleGrid {...gridProps} />
             )}
           </div>
-          <CancelledList sessions={offGrid} onStatusChange={setStatus} onDelete={deleteSession} />
+          <CancelledList sessions={offGrid} onStatusChange={setStatus} onDelete={deleteSession}
+        onFirstDayChange={setFirstDayOverride} />
         </div>
 
         {openStudent && (

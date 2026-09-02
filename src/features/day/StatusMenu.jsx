@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../../lib/supabase'
 import { BINDER_STATUSES } from '../binder/binderPrep'
+import { firstDayBadge, firstDayLabel } from './firstDay'
 
 /**
  * Status changes for one session. Rendered at the top of the day view rather
@@ -11,7 +12,7 @@ import { BINDER_STATUSES } from '../binder/binderPrep'
  * it (cards must not show it), so this fetches the note on open. Binder state
  * belongs to the STUDENT now, so that is what it reads.
  */
-export default function StatusMenu({ menu, onStatusChange, onDeliveryChange, onUnassign, onReschedule, onDelete, onClose }) {
+export default function StatusMenu({ menu, onStatusChange, onDeliveryChange, onUnassign, onReschedule, onDelete, onFirstDayChange, onClose }) {
   const [binder, setBinder] = useState(null)
   // Hard delete arms on first click and fires on the second — a permanent
   // action never rides on one click. Re-arms per menu open.
@@ -60,6 +61,14 @@ export default function StatusMenu({ menu, onStatusChange, onDeliveryChange, onU
     session.delivery_method === 'online'
       ? { key: 'delivery', label: 'Mark in-center', run: () => onDeliveryChange(session.id, 'in_center') }
       : { key: 'delivery', label: 'Mark online', run: () => onDeliveryChange(session.id, 'online') },
+    // First-day override: derive by default, force or suppress by hand, and
+    // one click back to the rule. One session's override changes one session.
+    firstDayBadge(session).firstDay
+      ? { key: 'firstday', label: 'Not their first day', run: () => onFirstDayChange(session.id, false) }
+      : { key: 'firstday', label: 'Mark as first day', run: () => onFirstDayChange(session.id, true) },
+    ...(session.first_day_override !== null && session.first_day_override !== undefined
+      ? [{ key: 'firstday-clear', label: 'Use derived first-day', run: () => onFirstDayChange(session.id, null) }]
+      : []),
     ...(session.instructor_id
       ? [{ key: 'unassign', label: 'Unassign instructor', run: () => onUnassign(session.id) }]
       : []),
@@ -85,6 +94,9 @@ export default function StatusMenu({ menu, onStatusChange, onDeliveryChange, onU
         <p className="truncate px-3 py-1 text-[11px] font-semibold text-zinc-400">
           {session.student?.name ?? 'Session'}
         </p>
+        {firstDayLabel(session) && (
+          <p className="px-3 pb-1 text-[10px] text-red-600">{firstDayLabel(session)}</p>
+        )}
         {items.map((item) => (
           <button
             key={item.key}

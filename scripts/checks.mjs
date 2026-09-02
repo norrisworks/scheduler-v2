@@ -20,9 +20,10 @@ import { describeMaterialize, materializeChanged } from '../src/features/materia
 import { cleanPersonName, titleCaseName, generateDisplayName, violatesNamingConvention, staleGradeInName, displayNameShape, nearlySameFirstName, isPlaceholderName, nameKey } from '../src/features/imports/namingConvention.js'
 import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } from '../src/features/imports/workstreamImport.js'
 import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, mapDelivery, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent, radiusKeyOf, confirmationTargets, planRadiusImport } from '../src/features/imports/radiusImport.js'
-import { planStudentImport, planStudentImportByCenter } from '../src/features/imports/studentImport.js'
+import { planStudentImport, planStudentImportByCenter, STUDENT_FIELDS, STUDENT_MATCH_COLUMNS } from '../src/features/imports/studentImport.js'
 import { buildChecks } from '../src/features/health/checks.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime , formatStampDate, TIME_CHOICES, centerInstant } from '../src/lib/dates.js'
+import { firstDayBadge, firstDayLabel } from '../src/features/day/firstDay.js'
 import { readAttendanceRow, attendanceRowProblem, matchAttendanceStudent, decideReset, planAttendanceImport, displayCandidates } from '../src/features/imports/attendanceImport.js'
 import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, gaugeCellClass, slotChipClass } from '../src/features/day/load.js'
 import { genderLabel, normalizeGender as normalizeGenderValue } from '../src/lib/gender.js'
@@ -2036,11 +2037,11 @@ eq('a write puts the moved instructor where asked',
   const deadFirstDay = []
   for (const rel of srcFiles) {
     const text = readSrc(joinPath('src', String(rel)))
-    if (/(?<!is_)first_day(?!_session_ids)/.test(text)) deadFirstDay.push(String(rel))
+    if (/(?<!is_)first_day(?!_session_ids|_override)/.test(text)) deadFirstDay.push(String(rel))
   }
   eq('nothing reads the dead manual first_day flag', deadFirstDay, [])
-  eq('the card border uses the derived flag',
-     readSrc('src/features/day/SessionCard.jsx').includes('session.is_first_day'), true)
+  eq('the card border goes through firstDayBadge (derived + override)',
+     readSrc('src/features/day/SessionCard.jsx').includes('firstDayBadge(session).firstDay'), true)
 
   // Enrollment drives `active` on MANUAL edits too, not just in the importer.
   // Without this, setting a student Inactive in the drawer saved the status
@@ -2095,6 +2096,40 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
   const legacy = planRadiusImport([fileRow], { ...args, existingSessions: [existing] })
   eq('a pre-column row going online is an update', legacy.centers[0].updated.length, 1)
 }
+
+// ---- first-day: derived by default, three-state override on the session
+// null = the rule (decision 26), true = force here, false = suppress here.
+// The source label is what keeps an override from masquerading as the rule.
+eq('derived border reads derived',
+   firstDayBadge({ is_first_day: true, first_day_override: null }),
+   { firstDay: true, source: 'derived' })
+eq('no border, no source',
+   firstDayBadge({ is_first_day: false, first_day_override: null }),
+   { firstDay: false, source: null })
+eq('force wins over no derivation',
+   firstDayBadge({ is_first_day: false, first_day_override: true }),
+   { firstDay: true, source: 'override' })
+eq('suppress wins over derivation',
+   firstDayBadge({ is_first_day: true, first_day_override: false }),
+   { firstDay: false, source: 'override' })
+eq('labels say which authority is speaking',
+   [firstDayLabel({ is_first_day: true, first_day_override: null }),
+    firstDayLabel({ is_first_day: false, first_day_override: true }),
+    firstDayLabel({ is_first_day: true, first_day_override: false }),
+    firstDayLabel({ is_first_day: false, first_day_override: null })],
+   ['First day — derived from enrollment', 'First day — set by hand',
+    'First day suppressed by hand', null])
+
+// ---- the import view selects every column the planner compares
+// They drifted once: enrollment_start_date was compared but never selected,
+// so every run proposed the same ~200 phantom "changes" forever.
+for (const field of STUDENT_FIELDS) {
+  eq(`the roster import selects ${field.key}`,
+     STUDENT_MATCH_COLUMNS.split(', ').includes(field.key), true)
+}
+eq('the view reads the shared column list',
+   readFileSync(joinPath(process.cwd(), 'src/features/imports/StudentImportView.jsx'), 'utf8')
+     .includes('.select(STUDENT_MATCH_COLUMNS)'), true)
 
 // ---- center-local wall clock -> a real instant
 // Departure times are naive center time; binder_status_set_at is a

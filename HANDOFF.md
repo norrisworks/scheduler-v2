@@ -336,6 +336,32 @@ anchor). **Never call `toISOString()` for dates.**
     are gone, and a source check fails if anything reads the dead flag again.
     Theodore L's missing border was missing SESSIONS — he has none at all —
     which no flag anywhere could have fixed.
+27. **The roster import's phantom ~200 date changes, and the drift guard**
+    (2026-09-02). Every run proposed the same ~200 enrollment_start_date
+    "changes" with values identical to what was stored (Emma D 2024-09-01,
+    Mia D 2024-11-18 — both already in the DB with import-era updated_at).
+    Neither hypothesis in the report was it: writes persisted fine and no
+    type/timezone mismatch existed. The import view's SELECT simply never
+    fetched enrollment_start_date, so changed(undefined, '2024-09-01') was
+    true forever — the detector was blind to the column it had written.
+    `STUDENT_MATCH_COLUMNS` is now DERIVED from STUDENT_FIELDS so the two
+    lists cannot drift, checks assert every compared key is selected, and the
+    double-run was proven offline through the real planner with the real 9/2
+    export: old select 201 phantom date patches; fixed select 5 real updates
+    / 252 already correct; same file again 0 / 257.
+28. **First-day override, three-state, on the SESSION** (2026-09-02).
+    `sessions.first_day_override`: NULL = derive (decision 26 stays the
+    default), TRUE = force the border here, FALSE = suppress it here. The
+    derivation computes its crown independent of overrides — suppressing a
+    session never silently promotes the next visit; if the real first day is
+    elsewhere, say so there with TRUE. The ⋯ menu carries the toggle
+    ("Mark as first day" / "Not their first day"), a "Use derived first-day"
+    reset when an override exists, and a source line so an override is never
+    mistaken for the rule ("derived from enrollment" / "set by hand" /
+    "suppressed by hand"). `firstDayBadge` in `firstDay.js` is the one client
+    authority; the card reads it, so an optimistic override paints instantly.
+    Verified by simulation: suppress removes 9/1's border without promoting
+    9/2, force lights 9/2, clearing returns exactly to the derivation.
 
 ## Importers (all preview-first; never commit on the owner's behalf)
 

@@ -59,6 +59,20 @@ export const STUDENT_FIELDS = [
   },
 ]
 
+/**
+ * The columns the import view must SELECT for planStudentImport to work —
+ * derived from STUDENT_FIELDS so the two lists cannot drift. They did drift
+ * once: enrollment_start_date was compared but never selected, so every run
+ * saw `undefined !== '2024-09-01'` and proposed the same ~200 "changes"
+ * forever. The writes were landing; the detector was blind to the column it
+ * had written.
+ */
+export const STUDENT_MATCH_COLUMNS = [
+  'id', 'name', 'radius_account', 'radius_lead_id', 'radius_first_name',
+  'active', 'center_id',
+  ...STUDENT_FIELDS.map((f) => f.key),
+].join(', ')
+
 function normalizeLevel(value) {
   const v = value.trim().toLowerCase()
   if (v.startsWith('elem')) return 'elementary'
