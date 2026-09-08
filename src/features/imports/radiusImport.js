@@ -230,6 +230,20 @@ export function matchStudent(row, students) {
     const byAccount = students.filter(
       (s) => s.radius_account && accountKey(s.radius_account) === rowAccount,
     )
+    // radius_first_name is Radius's OWN spelling, stored by the roster import,
+    // so comparing it to this file is Radius against Radius — it survives a
+    // nickname display name where the display comparison cannot: 'Rafie O'
+    // never equals 'Rafael Oguiwara', but radius_first_name says 'Rafael'.
+    // Tried before the display name for exactly that reason.
+    const byRadiusFirst = byAccount.filter(
+      (s) =>
+        s.radius_first_name && nameKey(splitName(s.radius_first_name).first) === rowFirst,
+    )
+    if (byRadiusFirst.length === 1) {
+      return { student: byRadiusFirst[0], via: 'account + radius first name' }
+    }
+    if (byRadiusFirst.length > 1) return { student: null, via: 'ambiguous account + name' }
+
     const withName = byAccount.filter((s) => nameKey(splitName(s.name).first) === rowFirst)
     if (withName.length === 1) return { student: withName[0], via: 'account + name' }
     if (withName.length > 1) return { student: null, via: 'ambiguous account + name' }

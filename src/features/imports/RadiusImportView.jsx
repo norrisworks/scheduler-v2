@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../auth/AuthProvider'
-import { formatTimeMeridiem } from '../../lib/dates'
+import { formatTimeMeridiem, todayISO } from '../../lib/dates'
 import { parseTableFile } from './parseTable'
 import { nameKey } from './namingConvention'
 import { planRadiusImport, radiusKeyOf, confirmationTargets } from './radiusImport'
@@ -37,7 +37,7 @@ export default function RadiusImportView() {
 
       const [centerRes, studentRes] = await Promise.all([
         supabase.from('centers').select('id, name, short_code'),
-        supabase.from('students').select('id, name, radius_account, center_id').eq('active', true),
+        supabase.from('students').select('id, name, radius_account, radius_first_name, radius_lead_id, center_id').eq('active', true),
       ])
       if (centerRes.error) throw new Error(centerRes.error.message)
       if (studentRes.error) throw new Error(studentRes.error.message)
@@ -169,7 +169,8 @@ export default function RadiusImportView() {
       (reference.slotDayDismissals ?? []).map((d) => `${d.student_id}|${d.day_of_week}`),
     )
     const nameOf = new Map(reference.students.map((s) => [s.id, s.name]))
-    const today = new Date().toISOString().slice(0, 10)
+    // Center-local calendar date, never toISOString — the v1 after-8pm bug.
+    const today = todayISO()
     const slotCounts = new Map()
     for (const slot of reference.slots ?? []) {
       if (slot.effective_until && slot.effective_until < today) continue

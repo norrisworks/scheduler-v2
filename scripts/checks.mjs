@@ -1468,6 +1468,27 @@ eq('falls back to display name when there is no account',
    matchStudent({ studentName: 'Landon Russell', accountName: '' }, rStudents).student.id, 'l')
 eq('the fallback is reported',
    matchStudent({ studentName: 'Landon Russell', accountName: '' }, rStudents).via, 'name')
+
+// A nickname display name never equals Radius's spelling, so the display
+// comparison alone re-orphaned Rafael on every import despite account, first
+// name and lead id all being stored. radius_first_name is Radius vs Radius
+// and is consulted FIRST. Real cohort: Rafie O (Rafael), Kathir K
+// (Kalaikkathir).
+const rafie = { id: 'raf', name: 'Rafie O', radius_account: 'Oguiwara, Claudia', radius_first_name: 'Rafael' }
+eq('a nickname matches through radius_first_name',
+   matchStudent({ studentName: 'Rafael Oguiwara', accountName: 'Claudia Oguiwara' }, [rafie]).student.id,
+   'raf')
+eq('and says so',
+   matchStudent({ studentName: 'Rafael Oguiwara', accountName: 'Claudia Oguiwara' }, [rafie]).via,
+   'account + radius first name')
+eq('two siblings sharing a radius first name stay ambiguous',
+   matchStudent({ studentName: 'Rafael Oguiwara', accountName: 'Claudia Oguiwara' },
+     [rafie, { ...rafie, id: 'raf2', name: 'Rafe O' }]).student,
+   null)
+eq('a stale radius_first_name does not block the display tier',
+   matchStudent({ studentName: 'Rafie Oguiwara', accountName: 'Claudia Oguiwara' },
+     [{ id: 'raf', name: 'Rafie O', radius_account: 'Oguiwara, Claudia', radius_first_name: 'Wrong' }]).student.id,
+   'raf')
 // A differing initial with no guardian to explain it stays unmatched.
 eq('a differing last initial does not match',
    matchStudent({ studentName: 'Audie Prykowski', accountName: '' },

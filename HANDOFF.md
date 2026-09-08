@@ -362,6 +362,22 @@ anchor). **Never call `toISOString()` for dates.**
     authority; the card reads it, so an optimistic override paints instantly.
     Verified by simulation: suppress removes 9/1's border without promoting
     9/2, force lights 9/2, clearing returns exactly to the derivation.
+29. **The appointments matcher consults radius_first_name** (2026-09-08).
+    A nickname display name re-orphaned Rafael Oguiwara on every import:
+    the matcher compared only account + display name, and 'Rafie O' never
+    equals 'Rafael Oguiwara' — while radius_first_name ('Rafael') sat stored
+    and ignored, and manual links never survived to the next run. Within the
+    account tier the matcher now tries radius_first_name FIRST (Radius's own
+    spelling against Radius's own file), then the display first name.
+    radius_lead_id cannot help here: the Appointments export carries no Lead
+    Id column, only Student Name + Account Name. Verified on the real 9/8
+    file — Rafael matches via 'account + radius first name' with no manual
+    link; the full nickname cohort is exactly two students, Rafie O (Rafael)
+    and Kathir K (Kalaikkathir), both covered. The RadiusImportView select
+    had the same blindness as decision 27 (radius_first_name compared but
+    never fetched would have been next); it now selects both radius fields.
+    Also fixed in passing: that view derived "today" via toISOString(), the
+    exact v1 after-8pm bug rule 1 of dates.js exists to prevent.
 
 ## Importers (all preview-first; never commit on the owner's behalf)
 
