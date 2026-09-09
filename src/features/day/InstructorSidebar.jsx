@@ -10,9 +10,10 @@ import {
   instructorLoadBySlot,
   instructorTotalCount,
   gaugeCellClass,
+  instructorNamesBySlot,
   occupiesFloor,
 } from './load'
-import LoadGauge from './LoadGauge'
+import LoadGauge, { GaugeHourRow } from './LoadGauge'
 import { isFallbackOnly } from '../assign/rankings'
 import { INSTRUCTOR_DRAG_TYPE } from './dnd'
 
@@ -52,6 +53,7 @@ export default function InstructorSidebar({
         now: instructorCurrentCount(sessions, instructor.id, nowMinutes),
         peak: peakConcurrent(mine),
         load: instructorLoadBySlot(sessions, instructor.id, axis.slots),
+        names: instructorNamesBySlot(sessions, instructor.id, axis.slots),
       })
     }
     return map
@@ -226,6 +228,8 @@ export default function InstructorSidebar({
           </p>
         )}
 
+        {onShift.length > 0 && <GaugeHourRow slots={axis.slots} />}
+
         {onShift.map((instructor) => (
           <InstructorRow
             key={instructor.id}
@@ -248,6 +252,7 @@ export default function InstructorSidebar({
             >
               {showOffShift ? '▾' : '▸'} Not on shift ({offShift.length})
             </button>
+            {showOffShift && <GaugeHourRow slots={axis.slots} />}
             {showOffShift &&
               offShift.map((instructor) => (
                 <InstructorRow
@@ -374,6 +379,7 @@ function InstructorRow({ instructor, shift, stats, slots, armed, onArm, onDragSt
         <LoadGauge
           slots={slots}
           load={stats?.load ?? []}
+          names={stats?.names}
           label={`${instructor.name} load by half hour`}
         />
       </div>

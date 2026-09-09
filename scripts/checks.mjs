@@ -25,7 +25,7 @@ import { buildChecks } from '../src/features/health/checks.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime , formatStampDate, TIME_CHOICES, centerInstant } from '../src/lib/dates.js'
 import { firstDayBadge, firstDayLabel } from '../src/features/day/firstDay.js'
 import { readAttendanceRow, attendanceRowProblem, matchAttendanceStudent, decideReset, planAttendanceImport, displayCandidates } from '../src/features/imports/attendanceImport.js'
-import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, gaugeCellClass, slotChipClass } from '../src/features/day/load.js'
+import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, gaugeHourLabel, instructorNamesBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, gaugeCellClass, slotChipClass } from '../src/features/day/load.js'
 import { genderLabel, normalizeGender as normalizeGenderValue } from '../src/lib/gender.js'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join as joinPath } from 'node:path'
@@ -172,6 +172,24 @@ eq('slot stats shape', stats[0], {
 
 // Gauge bands per the owner override: 3:1 is the working TARGET, so 3 is the
 // good state (full green), 4 is the stretch cap, 5+ is over.
+// The hour scale over the gauges: bare hour on the hour, blank between —
+// '4' for 4pm, no meridiem, because the cells are 12px wide.
+eq('4pm labels as 4',        gaugeHourLabel(16 * 60), '4')
+eq('half hours stay blank',  gaugeHourLabel(16 * 60 + 30), '')
+eq('noon labels as 12',      gaugeHourLabel(12 * 60), '12')
+eq('morning works too',      gaugeHourLabel(9 * 60), '9')
+
+// Tooltip names: who is actually with the instructor in that half hour.
+{
+  const s = (start, dur, student, instructor_id = 'i1') =>
+    ({ start_time: start, duration: dur, status: 'scheduled', instructor_id, student: { name: student } })
+  const names = instructorNamesBySlot(
+    [s('16:00:00', 60, 'Keira D'), s('16:30:00', 30, 'Ryan T'), s('16:00:00', 60, 'Zed', 'other')],
+    'i1', [16 * 60, 16 * 60 + 30, 17 * 60],
+  )
+  eq('names follow the slots', names, [['Keira D'], ['Keira D', 'Ryan T'], []])
+}
+
 eq('gauge 0 is gray',        gaugeCellClass(0), 'bg-zinc-200 text-zinc-400')
 eq('gauge 1 has room',       gaugeCellClass(1), 'bg-green-50 text-green-600')
 eq('gauge 2 has room',       gaugeCellClass(2), 'bg-green-50 text-green-600')

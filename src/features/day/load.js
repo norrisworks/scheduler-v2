@@ -39,6 +39,29 @@ export function instructorsOnShiftAtSlot(shifts, slotMinutes) {
   return count
 }
 
+/**
+ * The gauge header's label for one slot: the bare hour on the hour, nothing
+ * on the half hour. Bare means bare — '4' for 16:00, '12' for noon, no am/pm
+ * and no minutes; the gauge only spans an afternoon, so the meridiem is
+ * obvious and the cells are 12px wide.
+ */
+export function gaugeHourLabel(slotMinutes) {
+  if (slotMinutes % 60 !== 0) return ''
+  const hour = Math.floor(slotMinutes / 60) % 12
+  return String(hour === 0 ? 12 : hour)
+}
+
+/** The names behind each gauge cell, for its tooltip. */
+export function instructorNamesBySlot(sessions, instructorId, slots) {
+  const mine = sessions.filter((s) => s.instructor_id === instructorId && occupiesFloor(s))
+  return slots.map((slot) =>
+    mine
+      .filter((s) => sessionCoversSlot(s, slot))
+      .map((s) => s.student?.name ?? 'Unknown')
+      .sort(),
+  )
+}
+
 /** v1 getInstructorLoadByTime — this instructor's student count per slot. */
 export function instructorLoadBySlot(sessions, instructorId, slots) {
   const mine = sessions.filter((s) => s.instructor_id === instructorId && occupiesFloor(s))

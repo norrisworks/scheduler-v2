@@ -403,6 +403,21 @@ anchor). **Never call `toISOString()` for dates.**
     gone, an in-window enrollee still derives, day 47 does not, and the
     algorithm/new-student surfaces were checked and already windowed
     correctly — the border was her only "new" surface.
+32. **The border marks a NEW STUDENT, not one session** (2026-09-15, owner's
+    rule change superseding the crown logic of 26/31). EVERY scheduled
+    session within 45 days of enrollment_start_date wears the red border —
+    enrollment date is the ONLY input. The earliest-session crown and the
+    attended-guard are deleted from first_day_session_ids; the 45-day window
+    (day 45 inclusive, day 46 out — boundary verified) and the three-state
+    per-session override are what remain. The client (firstDayBadge, cards,
+    ⋯ menu) needed no changes: it always just read the RPC plus the override.
+33. **The load gauges grew an hour scale and named tooltips** (2026-09-15).
+    A shared GaugeHourRow sits above the on-shift rows (and again over the
+    expanded off-shift group): the bare hour over each on-the-hour cell ('4'
+    for 4pm, no meridiem — cells are 12px), blank over half hours, built with
+    the same flex structure and insets as a row's gauge so columns align.
+    Each cell's tooltip now lists WHO is with the instructor that half hour
+    (instructorNamesBySlot), not just the count.
 
 ## Importers (all preview-first; never commit on the owner's behalf)
 
