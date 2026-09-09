@@ -378,6 +378,31 @@ anchor). **Never call `toISOString()` for dates.**
     never fetched would have been next); it now selects both radius fields.
     Also fixed in passing: that view derived "today" via toISOString(), the
     exact v1 after-8pm bug rule 1 of dates.js exists to prevent.
+30. **Level is DERIVED from grade** (2026-09-09): K-5 elementary, 6-8 middle,
+    9-12 and College high, in trigger `students_derive_level` so no write
+    path can bypass it — the roster import updated grade every run without
+    recalculating level, and the September rollover left 34 active students
+    wrong (15 elementary-that-should-be-middle, 7 middle-that-should-be-high,
+    12 no level; Jordyn D among them, grade 6 stuck 'elementary'). Rules:
+    an unparseable/blank grade leaves the stored level alone (the Assessment
+    placeholders keep theirs), and a MANUAL level edit survives — the trigger
+    only recalculates on insert or when grade itself changes, so the next
+    grade change overrides a manual level. `level_from_grade(text)` is the
+    one definition, used by trigger and backfill. Backfilled 41 rows
+    (34 active + 7 inactive). Level gates auto-assign candidates, so this
+    was quietly mis-assigning.
+31. **The first-day derivation is bounded by the 45-day new-student window**
+    (2026-09-09). Jordyn D — enrolled 2026-02-10 — wore today's first-day
+    border: her standing slot was recently re-created, so her only sessions
+    were five fresh future rows, no completed anywhere, and her earliest
+    scheduled >= enrollment_start_date was today. Decision 26's rule had no
+    notion of "enrolled too long ago to be new". A session can now derive the
+    border only when it falls within enrollment_start_date + 45 days — the
+    same NEW_STUDENT_WINDOW_DAYS the algorithm rule uses. Outside the window
+    the override (decision 28) is the escape hatch. Verified: Jordyn's border
+    gone, an in-window enrollee still derives, day 47 does not, and the
+    algorithm/new-student surfaces were checked and already windowed
+    correctly — the border was her only "new" surface.
 
 ## Importers (all preview-first; never commit on the owner's behalf)
 

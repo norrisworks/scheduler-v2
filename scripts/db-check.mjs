@@ -68,6 +68,9 @@ const EXPECTED_TRIGGERS = [
   // Must sort BEFORE students_instructor_binder_only: BEFORE triggers fire in
   // name order, and the carve-out has to compare the already-stamped row.
   'students|students_binder_stamp|stamp_binder_status_set_at',
+  // Level is derived from grade on every write path (K-5/6-8/9+); dropping
+  // this re-opens the September-rollover drift (34 students wrong).
+  'students|students_derive_level|derive_student_level',
   'students|students_instructor_binder_only|enforce_instructor_binder_only_students',
 ]
 
