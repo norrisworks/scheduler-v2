@@ -19,7 +19,7 @@ import { proposeRanking, ineligibleForStudentReason, proposalReasons, sameGender
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
 import { cleanPersonName, titleCaseName, generateDisplayName, violatesNamingConvention, staleGradeInName, displayNameShape, nearlySameFirstName, isPlaceholderName, nameKey } from '../src/features/imports/namingConvention.js'
 import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } from '../src/features/imports/workstreamImport.js'
-import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, mapDelivery, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent, radiusKeyOf, confirmationTargets, planRadiusImport } from '../src/features/imports/radiusImport.js'
+import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, mapDelivery, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent, radiusKeyOf, confirmationTargets, planRadiusImport, isVirtualCenter, VIRTUAL_CENTERS } from '../src/features/imports/radiusImport.js'
 import { planStudentImport, planStudentImportByCenter, STUDENT_FIELDS, STUDENT_MATCH_COLUMNS } from '../src/features/imports/studentImport.js'
 import { buildChecks } from '../src/features/health/checks.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime , formatStampDate, TIME_CHOICES, centerInstant } from '../src/lib/dates.js'
@@ -2134,6 +2134,65 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
   // Rows written before the column existed read as in_center, the default.
   const legacy = planRadiusImport([fileRow], { ...args, existingSessions: [existing] })
   eq('a pre-column row going online is an update', legacy.centers[0].updated.length, 1)
+}
+
+// ---- MVBB: a Center value that is a bucket, not a building (decision 34)
+// Radius files cross-center online sessions under Center=MVBB. Such a row is
+// matched at EVERY center and written to the matched student's own — never an
+// unknown-center row, and never the center-mismatch question, because MVBB
+// asserts nothing about where the student belongs.
+{
+  eq('MVBB is a virtual bucket', isVirtualCenter('MVBB'), true)
+  eq('case and spacing are forgiven', isVirtualCenter(' mvbb '), true)
+  eq('a real center is not virtual', isVirtualCenter('Montgomeryville'), false)
+  eq('blank is not virtual', isVirtualCenter(''), false)
+  eq('the bucket list is configurable', isVirtualCenter('Hub', ['Hub']), true)
+  eq('MVBB is the shipped list', VIRTUAL_CENTERS, ['MVBB'])
+
+  const mv = { id: 'mv', name: 'Montgomeryville' }
+  const bb = { id: 'bb', name: 'Blue Bell' }
+  const jackson = { id: 'j', name: 'Jackson L', radius_account: 'Lewullis, Gabe | 1', radius_first_name: 'Jackson', active: true }
+  const audrey = { id: 'a', name: 'Audrey L', radius_account: 'Lee, Stella | 2', radius_first_name: 'Audrey', active: true }
+  const args = {
+    centersByName: new Map([['montgomeryville', mv], ['blue bell', bb]]),
+    centersById: new Map([['mv', mv], ['bb', bb]]),
+    studentsByCenter: new Map([['mv', [jackson]], ['bb', [audrey]]]),
+    existingSessions: [],
+  }
+  const mvbbRow = (student, account, time) => ({
+    __row: 2, student_name: student, account_name: account,
+    appointment_date: '9/9/2026', appointment_time: time,
+    session_duration: '60', session_status: 'Scheduled',
+    delivery_method: 'Online', center: 'MVBB',
+  })
+
+  const plan = planRadiusImport(
+    [mvbbRow('Jackson Lewullis', 'Gabe Lewullis', '6:00 PM'), mvbbRow('Audrey Lee', 'Stella Lee', '6:30 PM')],
+    args,
+  )
+  eq('an MVBB row is never an unknown center', plan.unknownCenter.length, 0)
+  eq('each MVBB row lands at its own student\'s center',
+     plan.centers.map((c) => [c.center.name, c.created.map((e) => e.student.name)]),
+     [['Blue Bell', ['Audrey L']], ['Montgomeryville', ['Jackson L']]])
+  eq('and keeps its online delivery',
+     plan.centers.flatMap((c) => c.created.map((e) => e.target.delivery)), ['online', 'online'])
+  eq('and never raises the center-mismatch question',
+     plan.centers.flatMap((c) => c.unmatched), [])
+
+  // Nobody anywhere, or somebody at BOTH centers: a question, never a guess.
+  const nobody = planRadiusImport([mvbbRow('Zorble Quist', 'Nobody Quist', '4:00 PM')], args)
+  eq('an unmatched MVBB row has its own bucket',
+     nobody.virtualUnmatched.map((r) => r.reason),
+     ['no student with that name or account at any center'])
+  eq('and is not an unknown center either', nobody.unknownCenter.length, 0)
+
+  const twin = planRadiusImport([mvbbRow('Jackson Lewullis', 'Gabe Lewullis', '6:00 PM')], {
+    ...args,
+    studentsByCenter: new Map([['mv', [jackson]], ['bb', [{ ...jackson, id: 'j2' }]]]),
+  })
+  eq('a student matched at two centers is refused, not guessed',
+     twin.virtualUnmatched.map((r) => r.reason), ['matches a student at 2 centers'])
+  eq('and nothing is written for the row', twin.centers.length, 0)
 }
 
 // ---- first-day: derived by default, three-state override on the session

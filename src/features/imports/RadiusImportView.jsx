@@ -286,7 +286,10 @@ export default function RadiusImportView() {
         rows_total: plan.totalRows,
         rows_created: created,
         rows_updated: updated,
-        rows_flagged: flagged + plan.centers.reduce((n, c) => n + c.unmatched.length, 0),
+        rows_flagged:
+          flagged +
+          plan.centers.reduce((n, c) => n + c.unmatched.length, 0) +
+          plan.virtualUnmatched.length,
         ran_by: user?.id ?? null,
       })
 
@@ -379,6 +382,27 @@ export default function RadiusImportView() {
               <p className="text-[11px]">
                 Not imported — the Center column did not match any center here.
               </p>
+            </Note>
+          )}
+
+          {plan.virtualUnmatched.length > 0 && (
+            <Note
+              tone="red"
+              title={`${plan.virtualUnmatched.length} cross-center (MVBB) rows without one matching student`}
+            >
+              <p className="text-[11px]">
+                MVBB is Radius's bucket for online sessions spanning both centers, not a center —
+                each row is matched against every center and written to the student's own. These
+                matched no student, or matched one at more than one center, so nothing was written.
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {plan.virtualUnmatched.map((r, i) => (
+                  <li key={i} className="text-[11px]">
+                    <span className="font-medium">{r.studentName}</span> · {r.date}{' '}
+                    {formatTimeMeridiem(r.startTime)} — {r.reason}
+                  </li>
+                ))}
+              </ul>
             </Note>
           )}
 

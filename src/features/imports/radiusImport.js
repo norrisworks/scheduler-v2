@@ -264,6 +264,20 @@ export function matchStudent(row, students) {
   return { student: null, via: null }
 }
 
+/**
+ * Center-column values that are BUCKETS, not buildings. Radius files online
+ * sessions spanning both centers under 'MVBB': the student in such a row is
+ * matched at EVERY center and the session is written to the matched student's
+ * own center — never an unknown-center row, never a center mismatch. Add to
+ * this list if Radius invents more bucket values.
+ */
+export const VIRTUAL_CENTERS = ['MVBB']
+
+export function isVirtualCenter(centerName, virtualCenters = VIRTUAL_CENTERS) {
+  const key = nameKey(centerName)
+  return key !== '' && virtualCenters.some((v) => nameKey(v) === key)
+}
+
 const sessionKey = (studentId, date, startTime) => `${studentId}|${date}|${startTime}`
 
 /**
@@ -317,7 +331,7 @@ export function confirmationTargets(centerPlan) {
  */
 export function planRadiusImport(
   rows,
-  { centersByName, centersById, studentsByCenter, existingSessions },
+  { centersByName, centersById, studentsByCenter, existingSessions, virtualCenters },
 ) {
   const parsed = rows.map(readRadiusRow).filter((r) => r.studentName || r.accountName)
 
@@ -328,8 +342,37 @@ export function planRadiusImport(
 
   const byCenter = new Map()
   const unknownCenter = []
+  const virtualUnmatched = []
 
   for (const row of kept) {
+    if (isVirtualCenter(row.centerName, virtualCenters ?? VIRTUAL_CENTERS)) {
+      // 'MVBB' is not a place. Find the student wherever they are enrolled
+      // and file the session at THEIR center — exactly one match across all
+      // centers, or the row is a question, never a guess.
+      const hits = []
+      for (const [otherId, otherStudents] of studentsByCenter) {
+        const hit = matchStudent(row, otherStudents)
+        if (hit.student) hits.push({ centerId: otherId, student: hit.student, via: hit.via })
+      }
+      const home = hits.length === 1 ? centersById?.get(hits[0].centerId) : null
+      if (home) {
+        const bucket = byCenter.get(home.id) ?? { center: home, rows: [] }
+        bucket.rows.push(row)
+        byCenter.set(home.id, bucket)
+      } else {
+        virtualUnmatched.push({
+          ...row,
+          reason:
+            hits.length > 1
+              ? `matches a student at ${hits.length} centers`
+              : hits.length === 1
+                ? 'matched a student at a center this preview does not know'
+                : 'no student with that name or account at any center',
+        })
+      }
+      continue
+    }
+
     const center = centersByName.get(nameKey(row.centerName))
     if (!center) {
       unknownCenter.push(row)
@@ -426,6 +469,7 @@ export function planRadiusImport(
     superseded,
     unparsable,
     unknownCenter,
+    virtualUnmatched,
     suspicious: kept.filter((r) => isSuspiciousActor(r.lastModifiedBy)),
     totalRows: parsed.length,
   }

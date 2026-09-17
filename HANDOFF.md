@@ -418,6 +418,21 @@ anchor). **Never call `toISOString()` for dates.**
     the same flex structure and insets as a row's gauge so columns align.
     Each cell's tooltip now lists WHO is with the instructor that half hour
     (instructorNamesBySlot), not just the count.
+34. **MVBB is a bucket, not a building** (2026-09-17). Radius started filing
+    cross-center online sessions under Center=MVBB. The appointments planner
+    treats any value in `VIRTUAL_CENTERS` (exported from `radiusImport.js`,
+    currently `['MVBB']` — extend the list if Radius invents more) as a
+    virtual bucket: the row is matched against EVERY center's students and
+    written to the matched student's own center, with its delivery method
+    (Online → green border) untouched. Never an unknown-center row, and never
+    the center-mismatch question — MVBB asserts nothing about where the
+    student belongs. No match anywhere, or a match at more than one center,
+    refuses into the plan's `virtualUnmatched` bucket (its own red note in
+    the preview, counted in rows_flagged) — a question, never a guess.
+    Verified offline: the 7 online rows from the real 9/8 export re-labelled
+    MVBB, run through the real planner against all 218 active DB students —
+    Jackson L → MV, Annabelle L → BB, Victoria F → MV, Matthias F → MV,
+    Audrey L → BB, all `delivery: online`, zero mismatch/unknown flags.
 
 ## Importers (all preview-first; never commit on the owner's behalf)
 
