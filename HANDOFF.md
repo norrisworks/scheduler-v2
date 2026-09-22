@@ -433,6 +433,39 @@ anchor). **Never call `toISOString()` for dates.**
     MVBB, run through the real planner against all 218 active DB students —
     Jackson L → MV, Annabelle L → BB, Victoria F → MV, Matthias F → MV,
     Audrey L → BB, all `delivery: online`, zero mismatch/unknown flags.
+35. **The Grid's time column is sticky** (2026-09-22). ScheduleGrid's left
+    gutter (times + slot counts) is `sticky left-0` with an opaque zinc-50
+    background at z-[15] — under the sticky top header (z-20), over the
+    columns' now-line (z-10) — so horizontal scroll slides the level columns
+    UNDER the times instead of carrying them away. Rows view needed nothing:
+    its time axis runs along the top and must scroll horizontally with its
+    columns to stay aligned.
+36. **A skipped confirmed session is a signal** (2026-09-22). A session
+    Radius itself wrote (`source='radius'`) that an earlier file confirmed
+    (`last_seen_in_radius` set), still `scheduled`, inside the new file's
+    date RANGE (min..max per center — gap days count) but absent from it,
+    was almost certainly cancelled in Radius. The planner separates these
+    into `radiusAbsent`, excluded from `flagged`; the preview shows them in
+    their own red section ('Previously confirmed by Radius, now absent from
+    this file') with a per-session cancel checkbox and a mark-all button —
+    NEVER auto-cancelled, and distinct from the standing-slot notice, which
+    stays informational because most families are not on Radius. Chosen
+    cancellations ride the commit (status='cancelled'), count into
+    rows_updated; unchosen ones stay flagged. Found live: Albert C's 9/22
+    and 9/24 6:00pm sessions sat scheduled with a stale 9/21 stamp after the
+    9/22 import confirmed their neighbours. The sessions select gained
+    last_seen_in_radius (the select-drift lesson: select what you compare).
+37. **The export defends itself** (2026-09-22). Two Radius export quirks:
+    (a) column names vary between pulls — 'Booked On Date' and 'Created
+    Date' are the same field — so RADIUS_HEADER_ALIASES lists every accepted
+    spelling per required column and missingRadiusHeaders() refuses a file
+    loudly (naming the missing field, the accepted spellings, and the file's
+    ACTUAL headers) instead of silently reading blanks — a silent missing
+    booked-on would quietly break rebooking resolution. (b) The Radius
+    Global Center Setting silently scopes exports: a pull from a machine
+    without MVBB selected omits every cross-center online session and reads
+    like mass cancellation. The plan carries virtualRowCount; when it is 0
+    the preview warns to check the setting before acting on absences.
 
 ## Importers (all preview-first; never commit on the owner's behalf)
 

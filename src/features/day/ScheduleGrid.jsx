@@ -60,7 +60,12 @@ export default function ScheduleGrid({
       </div>
 
       <div className="flex gap-3">
-        <div style={{ width: GUTTER, height: axis.height }} className="relative shrink-0">
+        {/* Sticky, so the times survive a horizontal scroll; opaque, so the
+            columns slide UNDER it rather than through it. */}
+        <div
+          style={{ width: GUTTER, height: axis.height }}
+          className="sticky left-0 z-[15] shrink-0 bg-zinc-50"
+        >
           {/* Time labels sit ON the tick, because a tick is an instant. */}
           {axis.slots.map((minutes, i) => (
             <span

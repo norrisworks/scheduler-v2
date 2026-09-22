@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { formatTimeMeridiem, todayISO } from '../../lib/dates'
 import { parseTableFile } from './parseTable'
 import { nameKey } from './namingConvention'
-import { planRadiusImport, radiusKeyOf, confirmationTargets } from './radiusImport'
+import { planRadiusImport, radiusKeyOf, confirmationTargets, missingRadiusHeaders } from './radiusImport'
 import { conflictKey, planSourceConflicts, planCrossDayConflicts } from '../day/sourceConflicts'
 import { DAYS } from '../roster/studentFields'
 
@@ -30,10 +30,24 @@ export default function RadiusImportView() {
     setError(null)
     setDone(null)
     setLinks({})
+    setAbsentCancels({})
     setFileName(file.name)
 
     try {
-      const { rows: parsed } = await parseTableFile(file)
+      const { headers, rows: parsed } = await parseTableFile(file)
+
+      // Radius renames columns between pulls ('Booked On Date' vs 'Created
+      // Date'). Any accepted spelling passes; a column with NO accepted
+      // spelling fails here, loudly, with the file's actual header list —
+      // never a silent import with the field blank.
+      const missing = missingRadiusHeaders(headers)
+      if (missing.length > 0) {
+        throw new Error(
+          `This file is missing ${missing.length === 1 ? 'a required column' : 'required columns'}: ` +
+            missing.map((m) => `${m.field} (accepts: ${m.accepted.join(', ')})`).join('; ') +
+            `. Headers found: ${headers.filter(Boolean).join(', ') || '(none)'}.`,
+        )
+      }
 
       const [centerRes, studentRes] = await Promise.all([
         supabase.from('centers').select('id, name, short_code'),
@@ -56,7 +70,7 @@ export default function RadiusImportView() {
         ? await Promise.all([
             supabase
               .from('sessions')
-              .select('id, student_id, center_id, date, start_time, duration, status, source, delivery_method')
+              .select('id, student_id, center_id, date, start_time, duration, status, source, delivery_method, last_seen_in_radius')
               .gte('date', dates[0])
               .lte('date', dates[dates.length - 1]),
             supabase
@@ -156,6 +170,11 @@ export default function RadiusImportView() {
   // flagged on the day view and data health after import).
   const [conflictChoices, setConflictChoices] = useState({})
 
+  // session id -> true = cancel at commit. A Radius-confirmed session the
+  // file now skips is ALMOST certainly cancelled in Radius, but it is still
+  // a choice — never auto-applied.
+  const [absentCancels, setAbsentCancels] = useState({})
+
   // The cross-day NOTICE, shown at import time: a standing-slot session the
   // file skipped while the same student has a file session elsewhere in the
   // week. Information only — the file cannot tell a move from an addition,
@@ -185,6 +204,11 @@ export default function RadiusImportView() {
     }
     return out
   }, [plan, reference])
+  const studentNameById = useMemo(
+    () => new Map((reference?.students ?? []).map((s) => [s.id, s.name])),
+    [reference],
+  )
+
   async function commit() {
     if (!plan) return
     setBusy(true)
@@ -194,6 +218,7 @@ export default function RadiusImportView() {
       let created = 0
       let updated = 0
       let flagged = 0
+      let cancelled = 0
       // One timestamp for the whole commit: every matched row — created,
       // linked, updated, or unchanged — is stamped as seen by this file.
       const seenAt = new Date().toISOString()
@@ -224,7 +249,18 @@ export default function RadiusImportView() {
           created += center.created.length + center.linked.length
           updated += center.updated.length
         }
-        flagged += center.flagged.length
+        // Radius-confirmed sessions absent from this file, chosen for
+        // cancellation in the preview. The rest stay flagged.
+        const cancelIds = center.radiusAbsent.filter((s) => absentCancels[s.id]).map((s) => s.id)
+        if (cancelIds.length > 0) {
+          const { error } = await supabase
+            .from('sessions')
+            .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+            .in('id', cancelIds)
+          if (error) throw new Error(error.message)
+          cancelled += cancelIds.length
+        }
+        flagged += center.flagged.length + (center.radiusAbsent.length - cancelIds.length)
 
         // Matched-UNCHANGED rows: the file listed them, so they must carry
         // the confirmation too — but never through the upsert, which would
@@ -285,7 +321,7 @@ export default function RadiusImportView() {
         date_to: allDates.length ? allDates.reduce((a, b) => (a > b ? a : b)) : null,
         rows_total: plan.totalRows,
         rows_created: created,
-        rows_updated: updated,
+        rows_updated: updated + cancelled,
         rows_flagged:
           flagged +
           plan.centers.reduce((n, c) => n + c.unmatched.length, 0) +
@@ -293,7 +329,7 @@ export default function RadiusImportView() {
         ran_by: user?.id ?? null,
       })
 
-      setDone({ created, updated, flagged })
+      setDone({ created, updated, flagged, cancelled })
       setRows(null)
       setReference(null)
     } catch (err) {
@@ -304,6 +340,12 @@ export default function RadiusImportView() {
 
   const totalWrites = plan
     ? plan.centers.reduce((n, c) => n + c.created.length + c.linked.length + c.updated.length, 0)
+    : 0
+  const totalCancels = plan
+    ? plan.centers.reduce(
+        (n, c) => n + c.radiusAbsent.filter((s) => absentCancels[s.id]).length,
+        0,
+      )
     : 0
 
   return (
@@ -339,7 +381,8 @@ export default function RadiusImportView() {
 
       {done && (
         <p className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-          Imported — {done.created} created, {done.updated} updated, {done.flagged} existing
+          Imported — {done.created} created, {done.updated} updated,
+          {done.cancelled > 0 && ` ${done.cancelled} cancelled,`} {done.flagged} existing
           sessions flagged for review.
         </p>
       )}
@@ -406,6 +449,17 @@ export default function RadiusImportView() {
             </Note>
           )}
 
+          {plan.virtualRowCount === 0 && (
+            <Note tone="amber" title="No MVBB rows in this file">
+              <p className="text-[11px]">
+                Your Radius Global Center Setting may have excluded the virtual center from this
+                export. MVBB carries the cross-center online sessions — without it, every online
+                session is missing from the file and can read like a mass cancellation. Check the
+                setting in Radius before acting on absences below.
+              </p>
+            </Note>
+          )}
+
           {plan.centers.map((c) => (
             <div key={c.center.id} className="overflow-hidden rounded-xl border border-zinc-200 bg-white">
               <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 bg-zinc-50 px-3 py-2">
@@ -465,6 +519,67 @@ export default function RadiusImportView() {
                           <option value="cancel">Keep Radius, cancel the standing-slot session</option>
                           <option value="both">Keep both — genuine double session</option>
                         </select>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {c.radiusAbsent.length > 0 && (
+                <div className="border-b border-red-200 bg-red-50 p-3">
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-semibold text-red-900">
+                      Previously confirmed by Radius, now absent from this file
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAbsentCancels((prev) => ({
+                          ...prev,
+                          ...Object.fromEntries(c.radiusAbsent.map((s) => [s.id, true])),
+                        }))
+                      }
+                      className="ml-auto rounded border border-red-300 bg-white px-1.5 py-0.5 text-[11px] font-medium text-red-800 hover:bg-red-100"
+                    >
+                      Mark all cancel
+                    </button>
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-red-800">
+                    These sessions came from Radius and an earlier file confirmed them, but this
+                    file — which covers their dates — does not list them. Unlike a standing-slot
+                    absence, that almost certainly means they were cancelled in Radius. Ticked
+                    sessions are cancelled at import; unticked ones are left untouched and stay
+                    flagged.
+                  </p>
+                  <ul className="mt-1.5 space-y-1">
+                    {c.radiusAbsent.map((s) => (
+                      <li key={s.id} className="flex flex-wrap items-center gap-2 text-[11px] text-red-900">
+                        <label className="flex cursor-pointer items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={!!absentCancels[s.id]}
+                            onChange={(e) =>
+                              setAbsentCancels((prev) => ({
+                                ...prev,
+                                [s.id]: e.target.checked || undefined,
+                              }))
+                            }
+                          />
+                          <span className="font-semibold">
+                            {studentNameById.get(s.student_id) ?? 'Unknown'}
+                          </span>
+                          <span>
+                            {s.date} {formatTimeMeridiem(s.start_time)}
+                          </span>
+                          {s.delivery_method === 'online' && (
+                            <span className="rounded bg-green-100 px-1 py-0.5 text-[10px] font-medium text-green-800">
+                              online
+                            </span>
+                          )}
+                          <span className="text-red-700">
+                            last confirmed {String(s.last_seen_in_radius).slice(0, 10)}
+                          </span>
+                        </label>
                       </li>
                     ))}
                   </ul>
@@ -619,7 +734,8 @@ export default function RadiusImportView() {
 
           <div className="flex items-center gap-2">
             <span className="flex-1 text-[11px] text-zinc-500">
-              {plan.totalRows} rows in file · {totalWrites} sessions will be written.
+              {plan.totalRows} rows in file · {totalWrites} sessions will be written
+              {totalCancels > 0 && `, ${totalCancels} cancelled`}.
             </span>
             <button
               type="button"
@@ -634,10 +750,12 @@ export default function RadiusImportView() {
             <button
               type="button"
               onClick={commit}
-              disabled={busy || totalWrites === 0}
+              disabled={busy || (totalWrites === 0 && totalCancels === 0)}
               className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-40"
             >
-              {busy ? 'Importing…' : `Import ${totalWrites} sessions`}
+              {busy
+                ? 'Importing…'
+                : `Import ${totalWrites} sessions${totalCancels > 0 ? ` · cancel ${totalCancels}` : ''}`}
             </button>
           </div>
         </div>

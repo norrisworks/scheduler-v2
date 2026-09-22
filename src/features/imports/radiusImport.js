@@ -1,4 +1,4 @@
-import { pick } from './parseTable'
+import { headerKey, pick } from './parseTable'
 import { cleanPersonName, nameKey, splitName } from './namingConvention'
 
 /**
@@ -145,6 +145,33 @@ export function mapDelivery(value) {
   return String(value ?? '').trim().toLowerCase() === 'online' ? 'online' : 'in_center'
 }
 
+/**
+ * The columns the planner consumes, with every spelling Radius has used for
+ * each. The export renames columns between pulls — 'Booked On Date' and
+ * 'Created Date' are the SAME field — so a file is checked against these
+ * groups up front and refused loudly, never silently read with a column
+ * missing (a missing booked-on would quietly break rebooking resolution).
+ */
+export const RADIUS_HEADER_ALIASES = {
+  'Student Name': ['student_name', 'student'],
+  'Account Name': ['account_name', 'account'],
+  'Appointment Date': ['appointment_date', 'date'],
+  'Appointment Time': ['appointment_time', 'time'],
+  'Session Status': ['session_status', 'status'],
+  'Session Duration': ['session_duration', 'duration'],
+  'Delivery Method': ['delivery_method'],
+  'Center': ['center'],
+  'Booked On Date / Created Date': ['booked_on_date', 'booked_on', 'created_date'],
+}
+
+/** Required columns this file lacks, each with the spellings that satisfy it. */
+export function missingRadiusHeaders(headers) {
+  const present = new Set((headers ?? []).map(headerKey))
+  return Object.entries(RADIUS_HEADER_ALIASES)
+    .filter(([, aliases]) => !aliases.some((a) => present.has(a)))
+    .map(([field, aliases]) => ({ field, accepted: aliases }))
+}
+
 export function readRadiusRow(row) {
   const studentName = pick(row, 'student_name', 'student')
   return {
@@ -159,7 +186,7 @@ export function readRadiusRow(row) {
     sessionType: pick(row, 'session_type'),
     delivery: mapDelivery(pick(row, 'delivery_method')),
     grade: pick(row, 'grade'),
-    bookedOn: parseRadiusDate(pick(row, 'booked_on_date', 'booked_on')),
+    bookedOn: parseRadiusDate(pick(row, 'booked_on_date', 'booked_on', 'created_date')),
     lastModified: parseRadiusDate(pick(row, 'last_modified')),
     lastModifiedBy: pick(row, 'last_modified_by'),
     centerName: pick(row, 'center'),
@@ -447,10 +474,33 @@ export function planRadiusImport(
       }
     }
 
-    // Anything the DB has in the window that the file did not mention.
-    const dates = new Set(bucket.rows.map((r) => r.date))
+    // A Radius-CONFIRMED session the file now skips is a different animal
+    // from a standing-slot absence. The slot absence means nothing (most
+    // families are not on Radius); but a session that Radius itself wrote
+    // (source) and a previous file listed (last_seen_in_radius), sitting
+    // inside this file's date range and absent from it, was almost certainly
+    // cancelled in Radius. Surfaced with a cancel ACTION — never auto-applied.
+    const sortedDates = [...new Set(bucket.rows.map((r) => r.date))].sort()
+    const dateFrom = sortedDates[0]
+    const dateTo = sortedDates[sortedDates.length - 1]
+    const radiusAbsent = [...existing.entries()]
+      .filter(
+        ([key, s]) =>
+          !seenKeys.has(key) &&
+          s.source === 'radius' &&
+          s.last_seen_in_radius &&
+          s.status === 'scheduled' &&
+          s.date >= dateFrom &&
+          s.date <= dateTo,
+      )
+      .map(([, s]) => s)
+    const radiusAbsentIds = new Set(radiusAbsent.map((s) => s.id))
+
+    // Anything ELSE the DB has in the window that the file did not mention —
+    // informational only, absence carries no information for these.
+    const dates = new Set(sortedDates)
     const flagged = [...existing.entries()]
-      .filter(([key, s]) => dates.has(s.date) && !seenKeys.has(key))
+      .filter(([key, s]) => dates.has(s.date) && !seenKeys.has(key) && !radiusAbsentIds.has(s.id))
       .map(([, s]) => s)
 
     results.push({
@@ -460,7 +510,8 @@ export function planRadiusImport(
       unchanged,
       unmatched,
       flagged,
-      dates: [...dates].sort(),
+      radiusAbsent,
+      dates: sortedDates,
     })
   }
 
@@ -471,6 +522,10 @@ export function planRadiusImport(
     unknownCenter,
     virtualUnmatched,
     suspicious: kept.filter((r) => isSuspiciousActor(r.lastModifiedBy)),
+    // Zero MVBB rows in a file usually means the Radius Global Center
+    // Setting excluded the virtual center from the export — every online
+    // session is then missing and would read as mass cancellation.
+    virtualRowCount: kept.filter((r) => isVirtualCenter(r.centerName, virtualCenters ?? VIRTUAL_CENTERS)).length,
     totalRows: parsed.length,
   }
 }

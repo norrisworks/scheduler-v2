@@ -19,7 +19,7 @@ import { proposeRanking, ineligibleForStudentReason, proposalReasons, sameGender
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
 import { cleanPersonName, titleCaseName, generateDisplayName, violatesNamingConvention, staleGradeInName, displayNameShape, nearlySameFirstName, isPlaceholderName, nameKey } from '../src/features/imports/namingConvention.js'
 import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } from '../src/features/imports/workstreamImport.js'
-import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, mapDelivery, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent, radiusKeyOf, confirmationTargets, planRadiusImport, isVirtualCenter, VIRTUAL_CENTERS } from '../src/features/imports/radiusImport.js'
+import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, mapDelivery, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent, radiusKeyOf, confirmationTargets, planRadiusImport, isVirtualCenter, VIRTUAL_CENTERS, missingRadiusHeaders, readRadiusRow } from '../src/features/imports/radiusImport.js'
 import { planStudentImport, planStudentImportByCenter, STUDENT_FIELDS, STUDENT_MATCH_COLUMNS } from '../src/features/imports/studentImport.js'
 import { buildChecks } from '../src/features/health/checks.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime , formatStampDate, TIME_CHOICES, centerInstant } from '../src/lib/dates.js'
@@ -2193,6 +2193,86 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
   eq('a student matched at two centers is refused, not guessed',
      twin.virtualUnmatched.map((r) => r.reason), ['matches a student at 2 centers'])
   eq('and nothing is written for the row', twin.centers.length, 0)
+
+  eq('the plan counts its MVBB rows for the Global Center Setting warning',
+     plan.virtualRowCount, 2)
+}
+
+// ---- header drift: Radius renames columns between pulls
+// 'Booked On Date' and 'Created Date' are the same field. Either spelling
+// passes; a required column with NO accepted spelling is reported loudly —
+// silently reading it as blank would quietly break rebooking resolution.
+{
+  const full = ['Student Name', 'Account Name', 'Appointment Date', 'Appointment Time',
+    'Session Status', 'Session Duration', 'Delivery Method', 'Center', 'Booked On Date']
+  eq('the classic header set passes', missingRadiusHeaders(full), [])
+  eq('the Created Date variant passes',
+     missingRadiusHeaders(full.map((h) => (h === 'Booked On Date' ? 'Created Date' : h))), [])
+  eq('neither spelling is reported with what would be accepted',
+     missingRadiusHeaders(full.filter((h) => h !== 'Booked On Date'))
+       .map((m) => [m.field, m.accepted]),
+     [['Booked On Date / Created Date', ['booked_on_date', 'booked_on', 'created_date']]])
+  eq('a missing delivery column is loud too',
+     missingRadiusHeaders(full.filter((h) => h !== 'Delivery Method')).map((m) => m.field),
+     ['Delivery Method'])
+
+  eq('readRadiusRow drinks from Created Date',
+     readRadiusRow({ __row: 2, student_name: 'A B', created_date: '9/1/2026' }).bookedOn,
+     '2026-09-01')
+  eq('and still from Booked On Date',
+     readRadiusRow({ __row: 2, student_name: 'A B', booked_on_date: '9/1/2026' }).bookedOn,
+     '2026-09-01')
+}
+
+// ---- Radius-confirmed absences: a skipped confirmed session is a signal
+// A session Radius itself wrote (source) that a previous file confirmed
+// (last_seen_in_radius), inside this file's date range but absent from it,
+// is almost certainly cancelled in Radius — surfaced as radiusAbsent with a
+// cancel action. A standing-slot absence stays informational (flagged):
+// most families are not on Radius, so THEIR absence carries no information.
+{
+  const mv = { id: 'mv', name: 'Montgomeryville' }
+  const student = { id: 'stu', name: 'Ryan T', radius_account: 'Tocci, Stacey | 1', radius_first_name: 'Ryan', active: true }
+  const fileRow = (date, time) => ({
+    __row: 2, student_name: 'Ryan T', account_name: 'Stacey Tocci',
+    appointment_date: date, appointment_time: time,
+    session_duration: '60', session_status: 'Scheduled',
+    delivery_method: 'In-Center', center: 'Montgomeryville',
+  })
+  const sess = (id, date, time, over = {}) => ({
+    id, student_id: 'stu', center_id: 'mv', date, start_time: time, duration: 60,
+    status: 'scheduled', source: 'radius', last_seen_in_radius: '2026-09-15T12:00:00Z',
+    delivery_method: 'in_center', ...over,
+  })
+
+  const plan = planRadiusImport(
+    [fileRow('9/22/2026', '4:00 PM'), fileRow('9/24/2026', '4:00 PM')],
+    {
+      centersByName: new Map([['montgomeryville', mv]]),
+      centersById: new Map([['mv', mv]]),
+      studentsByCenter: new Map([['mv', [student]]]),
+      existingSessions: [
+        sess('matched', '2026-09-22', '16:00:00'),                              // in the file
+        sess('gap-day', '2026-09-23', '15:30:00'),                              // range, not a file date
+        sess('same-day', '2026-09-22', '17:00:00'),                             // a file date
+        sess('slot', '2026-09-22', '17:30:00', { source: null, last_seen_in_radius: null }),
+        sess('never-seen', '2026-09-22', '18:00:00', { last_seen_in_radius: null }),
+        sess('done', '2026-09-22', '18:30:00', { status: 'completed' }),
+        sess('outside', '2026-09-30', '16:00:00'),                              // after the range
+      ],
+    },
+  )
+  const c = plan.centers[0]
+  eq('a matched confirmed session is not an absence', c.unchanged.length, 1)
+  eq('confirmed absences inside the RANGE are caught — gap days included',
+     c.radiusAbsent.map((s) => s.id).sort(), ['gap-day', 'same-day'])
+  eq('and are not double-listed as flagged',
+     c.flagged.map((s) => s.id).sort(), ['done', 'never-seen', 'slot'])
+  eq('a session outside the range is neither',
+     [...c.radiusAbsent, ...c.flagged].some((s) => s.id === 'outside'), false)
+  eq('only still-scheduled sessions get the cancel offer',
+     c.radiusAbsent.every((s) => s.status === 'scheduled'), true)
+  eq('a file with no MVBB rows says so', plan.virtualRowCount, 0)
 }
 
 // ---- first-day: derived by default, three-state override on the session
