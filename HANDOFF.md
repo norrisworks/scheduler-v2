@@ -467,11 +467,14 @@ anchor). **Never call `toISOString()` for dates.**
     like mass cancellation. The plan carries virtualRowCount; when it is 0
     the preview warns to check the setting before acting on absences.
 
-38. **The sidebar hour scale is sticky** (2026-10-02). The GaugeHourRow above
-    the on-shift instructors pins to the top of the sidebar's scroll area
-    (sticky top-0, opaque white, z-10) so the time reference survives
-    scrolling past the first instructor. The off-shift group keeps its own
-    inline copy when expanded.
+38. **Every instructor carries their own hour scale** (2026-10-02; revised
+    same week). First attempt pinned ONE GaugeHourRow sticky at the top of
+    the sidebar — useless in practice: a scale half a screen above a gauge
+    cannot be lined up against its cells (owner's report). Now each
+    InstructorRow renders the scale directly above its own gauge, same flex
+    structure so columns align, and the hour number is LEFT-aligned in its
+    cell — the label sits at the start of its hour, reading like a time
+    axis, not centered over the cell.
 39. **New shifts prefill by day of week** (2026-10-02). defaultShiftTimes():
     Mon–Fri 3:00–7:30pm, Saturday 10:00am–1:00pm, Sunday follows Saturday
     (owner left Sunday to my call). suggestTimes() still reuses the
@@ -479,12 +482,9 @@ anchor). **Never call `toISOString()` for dates.**
     day — a Tuesday afternoon never prefills a Saturday morning. Fully
     editable; prefill only. Both the week grid's cell editor and the
     day-view shift editor use it.
-40. **Radius sessions wear a small red R** (2026-10-02). SessionCard shows a
-    tiny bold 'R' (title "From Radius") inline next to the time row in both
-    orientations, keyed on source='radius' and nothing else — standing slots
-    and manual adds show nothing. Inline rather than a corner overlay so it
-    never collides with the ⋯ button, the Supp badge, or the first-day and
-    online borders.
+40. **Radius sessions wore a small red R** (2026-10-02). Superseded the same
+    week by decision 43's unified marker — the inline R and the certainty
+    dot merged into one top-left glyph.
 41. **Students have a default delivery method** (2026-10-02).
     students.default_delivery_method ('in_center' default, check-constrained)
     — for virtual students like Ryan V whose sessions are scheduled directly
@@ -507,6 +507,27 @@ anchor). **Never call `toISOString()` for dates.**
     day view's StatusMenu was never passed onFirstDayChange (the prop went
     to CancelledList, which doesn't take it), so the menu's first-day items
     threw on click; now wired, with a source-scan check.
+43. **One marker says how firm the booking is** (2026-10-02). The card's
+    top-left glyph (sessionMarker.js) replaced the certainty dot AND the
+    inline Radius R, in both orientations: green R = Radius booked by a
+    parent (or booker unknown); gray R = Radius booked by staff; green S =
+    standing slot with certainty fixed or BLANK (a new standing-slot student
+    defaults to reliable, so blank is the green S); orange dot = standing
+    slot flexible/drop-in; green dot = manual, reschedules included. Every
+    marker wears a thin black outline (text-stroke on letters, border on
+    dots) for legibility on any instructor fill. The booker feeds it:
+    sessions.radius_booked_by stores the export's Booked By / Created By
+    (one header-alias group — Radius renames it between pulls) from
+    SCHEDULED non-Drop-In rows only — on Drop-In rows that column holds the
+    INSTRUCTOR, and other statuses are unvouched-for — written as a per-row
+    stamp after the upsert (PostgREST upserts need homogeneous keys) and
+    never overwritten with null, so an Attended session keeps the booker
+    recorded while it was Scheduled. Staff = the dotted logins
+    William.Griffin / Allison.Griffin (STAFF_BOOKERS, case-insensitive);
+    parents appear as plain names. Real 9/8 export: 45 parent bookers, 8
+    staff, 15 unvouched rows skipped. slot_certainty stays editable per
+    student in the drawer; TransposedGrid's row-label certainty dot is
+    untouched (it belongs to the row label, not the card).
 
 ## Importers (all preview-first; never commit on the owner's behalf)
 

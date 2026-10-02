@@ -162,6 +162,7 @@ export const RADIUS_HEADER_ALIASES = {
   'Delivery Method': ['delivery_method'],
   'Center': ['center'],
   'Booked On Date / Created Date': ['booked_on_date', 'booked_on', 'created_date'],
+  'Booked By / Created By': ['booked_by', 'created_by'],
 }
 
 /** Required columns this file lacks, each with the spellings that satisfy it. */
@@ -187,6 +188,7 @@ export function readRadiusRow(row) {
     delivery: mapDelivery(pick(row, 'delivery_method')),
     grade: pick(row, 'grade'),
     bookedOn: parseRadiusDate(pick(row, 'booked_on_date', 'booked_on', 'created_date')),
+    bookedBy: pick(row, 'booked_by', 'created_by'),
     lastModified: parseRadiusDate(pick(row, 'last_modified')),
     lastModifiedBy: pick(row, 'last_modified_by'),
     centerName: pick(row, 'center'),
@@ -303,6 +305,20 @@ export const VIRTUAL_CENTERS = ['MVBB']
 export function isVirtualCenter(centerName, virtualCenters = VIRTUAL_CENTERS) {
   const key = nameKey(centerName)
   return key !== '' && virtualCenters.some((v) => nameKey(v) === key)
+}
+
+/**
+ * The booker worth storing on the session, or null when the column cannot be
+ * trusted. Only Scheduled rows vouch for it: on Drop-In rows the same column
+ * holds the INSTRUCTOR, and what other statuses carry there is unverified.
+ * Null is never written over a previously stored booker — a session that
+ * later reads Attended keeps the booker recorded while it was Scheduled.
+ */
+export function sessionBooker(row) {
+  if (row.status !== 'scheduled') return null
+  if (/drop.?in/i.test(String(row.sessionType ?? ''))) return null
+  const name = String(row.bookedBy ?? '').trim()
+  return name || null
 }
 
 const sessionKey = (studentId, date, startTime) => `${studentId}|${date}|${startTime}`

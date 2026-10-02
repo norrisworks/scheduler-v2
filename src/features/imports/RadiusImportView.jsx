@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { formatTimeMeridiem, todayISO } from '../../lib/dates'
 import { parseTableFile } from './parseTable'
 import { nameKey } from './namingConvention'
-import { planRadiusImport, radiusKeyOf, confirmationTargets, missingRadiusHeaders } from './radiusImport'
+import { planRadiusImport, radiusKeyOf, confirmationTargets, missingRadiusHeaders, sessionBooker } from './radiusImport'
 import { conflictKey, planSourceConflicts, planCrossDayConflicts } from '../day/sourceConflicts'
 import { DAYS } from '../roster/studentFields'
 
@@ -261,6 +261,28 @@ export default function RadiusImportView() {
           cancelled += cancelIds.length
         }
         flagged += center.flagged.length + (center.radiusAbsent.length - cancelIds.length)
+
+        // The booker, stamped separately for every matched row that carries
+        // one: it cannot ride the upsert (PostgREST needs every row to have
+        // identical keys, and only Scheduled non-Drop-In rows vouch for the
+        // column), and writing it only when KNOWN means a session that went
+        // Attended keeps the booker recorded while it was Scheduled.
+        for (const { row, student } of [
+          ...center.created,
+          ...center.linked,
+          ...center.updated,
+          ...center.unchanged,
+        ]) {
+          const booker = row && student ? sessionBooker(row) : null
+          if (!booker) continue
+          const { error } = await supabase
+            .from('sessions')
+            .update({ radius_booked_by: booker })
+            .eq('student_id', student.id)
+            .eq('date', row.date)
+            .eq('start_time', row.startTime)
+          if (error) throw new Error(error.message)
+        }
 
         // Matched-UNCHANGED rows: the file listed them, so they must carry
         // the confirmation too — but never through the upsert, which would

@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
 import { formatTime } from '../../lib/dates'
 import { STATUSES } from './levels'
-import { ACADEMIC_STATUS, BRAND_RED, ONLINE_GREEN, SLOT_CERTAINTY } from './studentOptions'
+import { ACADEMIC_STATUS, BRAND_RED, ONLINE_GREEN } from './studentOptions'
+import { sessionMarker } from './sessionMarker'
 import { coverageWarning } from './shiftCoverage'
 import { INSTRUCTOR_DRAG_TYPE } from './dnd'
 import { isBinderReady } from '../binder/binderPrep'
@@ -41,7 +42,6 @@ export default function SessionCard({
 
   const student = session.student
   const status = STATUSES[session.status] ?? STATUSES.scheduled
-  const certainty = SLOT_CERTAINTY[student?.slot_certainty]
   const academic = ACADEMIC_STATUS[student?.academic_status]
   const warning = coverageWarning(instructor, shift, session)
   const noteText = [session.notes, ...notes.map((n) => n.body)].filter(Boolean).join(' · ')
@@ -136,17 +136,28 @@ export default function SessionCard({
       </span>
     )
 
-  // A quiet mark for a session Radius wrote — standing slots and manual adds
-  // show nothing. Inline next to the time, clear of the name and the borders.
-  const radiusMark = session.source === 'radius' && (
-    <span
-      className="shrink-0 text-[8px] leading-none font-bold text-red-500"
-      title="From Radius"
-      aria-label="From Radius"
-    >
-      R
-    </span>
-  )
+  // Top-left: ONE marker for source + certainty (green/gray R, green S,
+  // orange/green dot — see sessionMarker.js). The thin black outline keeps
+  // it legible on every instructor fill.
+  const marker = sessionMarker(session)
+  const markerEl =
+    marker.shape === 'letter' ? (
+      <span
+        className="shrink-0 text-[9px] leading-none font-extrabold"
+        style={{ color: marker.color, WebkitTextStroke: '0.5px #000' }}
+        title={marker.title}
+        aria-label={marker.title}
+      >
+        {marker.glyph}
+      </span>
+    ) : (
+      <span
+        className="h-2 w-2 shrink-0 rounded-full border border-black"
+        style={{ backgroundColor: marker.color }}
+        title={marker.title}
+        aria-label={marker.title}
+      />
+    )
 
   const unassignButton = instructor && isAdmin && (
     <button
@@ -175,6 +186,7 @@ export default function SessionCard({
         }
       >
         <div className="flex items-center gap-1">
+          {markerEl}
           <span
             className={
               'shrink-0 text-[9px] text-zinc-600 ' +
@@ -184,7 +196,6 @@ export default function SessionCard({
             {formatTime(session.start_time)} • {session.duration}m
           </span>
           {binderTick}
-          {radiusMark}
           {warning && (
             <span className="shrink-0 text-[9px] text-amber-600" title={warning} aria-label={warning}>
               ⚠
@@ -232,16 +243,11 @@ export default function SessionCard({
         (status.muted ? 'opacity-60' : '')
       }
     >
-      {/* Row 1: certainty dot and name. The grade chip used to sit inline
-          here and cost the name most of the card's width. */}
+      {/* Row 1: the source/certainty marker and the name. The grade chip
+          used to sit inline here and cost the name most of the card's
+          width. */}
       <div className="flex items-center gap-1">
-        {certainty && (
-          <span
-            className="h-1.5 w-1.5 shrink-0 rounded-full"
-            style={{ backgroundColor: certainty.color }}
-            title={certainty.label}
-          />
-        )}
+        {markerEl}
         <div
           className={
             'min-w-0 flex-1 truncate text-[11px] font-medium ' +
@@ -264,7 +270,6 @@ export default function SessionCard({
           {formatTime(session.start_time)} • {session.duration}m
         </span>
         {binderTick}
-        {radiusMark}
         {student?.grade && (
           <span className="shrink-0 rounded bg-zinc-200 px-1 py-0.5 text-[9px] text-zinc-600">
             {student.grade}

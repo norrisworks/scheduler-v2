@@ -19,7 +19,8 @@ import { proposeRanking, ineligibleForStudentReason, proposalReasons, sameGender
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
 import { cleanPersonName, titleCaseName, generateDisplayName, violatesNamingConvention, staleGradeInName, displayNameShape, nearlySameFirstName, isPlaceholderName, nameKey } from '../src/features/imports/namingConvention.js'
 import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } from '../src/features/imports/workstreamImport.js'
-import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, mapDelivery, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent, radiusKeyOf, confirmationTargets, planRadiusImport, isVirtualCenter, VIRTUAL_CENTERS, missingRadiusHeaders, readRadiusRow } from '../src/features/imports/radiusImport.js'
+import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, mapDelivery, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent, radiusKeyOf, confirmationTargets, planRadiusImport, isVirtualCenter, VIRTUAL_CENTERS, missingRadiusHeaders, readRadiusRow, sessionBooker } from '../src/features/imports/radiusImport.js'
+import { sessionMarker, isStaffBooker, STAFF_BOOKERS } from '../src/features/day/sessionMarker.js'
 import { planStudentImport, planStudentImportByCenter, STUDENT_FIELDS, STUDENT_MATCH_COLUMNS } from '../src/features/imports/studentImport.js'
 import { buildChecks } from '../src/features/health/checks.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime , formatStampDate, TIME_CHOICES, centerInstant } from '../src/lib/dates.js'
@@ -2232,10 +2233,11 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
 // silently reading it as blank would quietly break rebooking resolution.
 {
   const full = ['Student Name', 'Account Name', 'Appointment Date', 'Appointment Time',
-    'Session Status', 'Session Duration', 'Delivery Method', 'Center', 'Booked On Date']
+    'Session Status', 'Session Duration', 'Delivery Method', 'Center', 'Booked On Date', 'Booked By']
   eq('the classic header set passes', missingRadiusHeaders(full), [])
-  eq('the Created Date variant passes',
-     missingRadiusHeaders(full.map((h) => (h === 'Booked On Date' ? 'Created Date' : h))), [])
+  eq('the Created Date/By variant passes',
+     missingRadiusHeaders(full.map((h) =>
+       h === 'Booked On Date' ? 'Created Date' : h === 'Booked By' ? 'Created By' : h)), [])
   eq('neither spelling is reported with what would be accepted',
      missingRadiusHeaders(full.filter((h) => h !== 'Booked On Date'))
        .map((m) => [m.field, m.accepted]),
@@ -2250,6 +2252,59 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
   eq('and still from Booked On Date',
      readRadiusRow({ __row: 2, student_name: 'A B', booked_on_date: '9/1/2026' }).bookedOn,
      '2026-09-01')
+  eq('the booker reads either spelling too',
+     [readRadiusRow({ __row: 2, student_name: 'A B', booked_by: 'Gabe Lewullis' }).bookedBy,
+      readRadiusRow({ __row: 2, student_name: 'A B', created_by: 'Gabe Lewullis' }).bookedBy],
+     ['Gabe Lewullis', 'Gabe Lewullis'])
+}
+
+// ---- who booked it: the stored booker and the card's marker
+// Only Scheduled non-Drop-In rows vouch for the Booked By column (on
+// Drop-In rows it holds the INSTRUCTOR); staff logins are dotted
+// ('William.Griffin'), parents are plain names. The marker turns source +
+// booker + certainty into one top-left glyph.
+{
+  const row = (over = {}) => ({
+    status: 'scheduled', sessionType: 'Standard', bookedBy: 'Gabe Lewullis', ...over,
+  })
+  eq('a Scheduled row stores its booker', sessionBooker(row()), 'Gabe Lewullis')
+  eq('a Drop-In row is ignored — that column holds the instructor',
+     sessionBooker(row({ sessionType: 'Drop-In' })), null)
+  eq('so is Drop In without the hyphen', sessionBooker(row({ sessionType: 'Drop In' })), null)
+  eq('a non-Scheduled row is unvouched-for',
+     [sessionBooker(row({ status: 'completed' })), sessionBooker(row({ status: 'cancelled' }))],
+     [null, null])
+  eq('a blank booker stores nothing', sessionBooker(row({ bookedBy: '  ' })), null)
+
+  eq('the staff list is exactly the two logins',
+     STAFF_BOOKERS, ['william.griffin', 'allison.griffin'])
+  eq('staff detection ignores case and spacing',
+     [isStaffBooker(' William.Griffin '), isStaffBooker('ALLISON.GRIFFIN'), isStaffBooker('Gabe Lewullis'), isStaffBooker('')],
+     [true, true, false, false])
+
+  const mark = (source, over = {}, certainty) =>
+    sessionMarker({ source, student: { slot_certainty: certainty }, ...over })
+  eq('Radius booked by a parent: green R',
+     mark('radius', { radius_booked_by: 'Gabe Lewullis' }),
+     { shape: 'letter', glyph: 'R', color: '#22C55E', title: 'Radius — booked by parent' })
+  eq('Radius booked by staff: gray R',
+     mark('radius', { radius_booked_by: 'William.Griffin' }),
+     { shape: 'letter', glyph: 'R', color: '#9CA3AF', title: 'Radius — booked by staff' })
+  eq('Radius with no stored booker reads as parent',
+     mark('radius', {}).color, '#22C55E')
+  eq('a fixed standing slot: green S',
+     mark('recurring', {}, 'fixed'),
+     { shape: 'letter', glyph: 'S', color: '#22C55E', title: 'Standing slot' })
+  eq('a BLANK certainty is the default-reliable green S',
+     [mark('recurring', {}, '').glyph, mark('recurring', {}, undefined).glyph], ['S', 'S'])
+  eq('a flexible slot: orange dot',
+     mark('recurring', {}, 'flexible'),
+     { shape: 'dot', color: '#F97316', title: 'Standing slot — flexible' })
+  eq('a drop-in slot: orange dot too',
+     mark('recurring', {}, 'dropin').color, '#F97316')
+  eq('manual (reschedules included): green dot',
+     mark('manual', {}),
+     { shape: 'dot', color: '#22C55E', title: 'Manually scheduled' })
 }
 
 // ---- Radius-confirmed absences: a skipped confirmed session is a signal
@@ -2330,13 +2385,31 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
   eq('and the one-off duration handler',
      dayView.includes('onDurationChange={setDuration}'), true)
 
+  // The card's top-left marker: one vocabulary for source + certainty,
+  // outlined so it reads on any instructor fill. The old certainty dot and
+  // inline R are gone — nothing else on the card keys on either.
   const card = readSrc('src/features/day/SessionCard.jsx')
-  eq("the R mark keys on source === 'radius' and nothing else",
-     card.includes("session.source === 'radius'"), true)
+  eq('the card renders the unified marker', card.includes('sessionMarker(session)'), true)
+  eq('letters wear the thin black outline', card.includes("WebkitTextStroke: '0.5px #000'"), true)
+  eq('dots wear it too', card.includes('rounded-full border border-black'), true)
+  eq('the old inline Radius R is gone', card.includes('From Radius'), false)
+  eq('the old certainty dot is gone', card.includes('SLOT_CERTAINTY'), false)
 
+  // Decision 38 revised: the sticky scale could not be lined up against a
+  // gauge half a screen below it, so EVERY instructor row carries its own.
   const sidebar = readSrc('src/features/day/InstructorSidebar.jsx')
-  eq('the sidebar hour scale is sticky with an opaque back',
-     sidebar.includes('sticky top-0 z-10 -mx-2 -mt-2 bg-white px-2 pt-2'), true)
+  eq('the hour scale is no longer sticky', sidebar.includes('sticky top-0'), false)
+  eq('every instructor row carries its own hour scale',
+     sidebar.includes('<GaugeHourRow slots={slots} />') &&
+       sidebar.indexOf('<GaugeHourRow slots={slots} />') < sidebar.indexOf('<LoadGauge'), true)
+  const gauge = readSrc('src/features/day/LoadGauge.jsx')
+  eq('the hour number sits at the START of its hour',
+     gauge.split('function GaugeHourRow')[1].includes('text-left'), true)
+
+  // The day query must select what the marker reads (select-drift guard).
+  const daySelect = readSrc('src/features/day/useDaySchedule.js')
+  eq('the day select carries radius_booked_by', daySelect.includes('radius_booked_by'), true)
+  eq('and still slot_certainty on the student embed', daySelect.includes('slot_certainty'), true)
 }
 
 // ---- first-day: derived by default, three-state override on the session

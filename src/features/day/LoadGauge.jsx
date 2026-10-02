@@ -30,20 +30,20 @@ export default function LoadGauge({ slots, load, names, label }) {
 }
 
 /**
- * The shared hour scale for every gauge below it: the bare hour over each
- * on-the-hour cell, blank over the half hours. Rendered with the SAME flex
- * structure and horizontal insets as a row's gauge, so the columns line up.
+ * The hour scale rendered directly above ONE gauge — every instructor gets
+ * their own, because a single scale pinned at the top of the sidebar cannot
+ * be lined up against a gauge half a screen below it. Same flex structure as
+ * the gauge so the columns align; the bare hour sits LEFT-aligned in its
+ * cell, at the start of that hour, reading like a time axis.
  */
 export function GaugeHourRow({ slots }) {
   return (
-    <div className="mb-0.5 border border-transparent px-2" aria-hidden="true">
-      <div className="flex gap-px">
-        {slots.map((minutes) => (
-          <span key={minutes} className="flex-1 text-center text-[9px] leading-3 text-slate-400">
-            {gaugeHourLabel(minutes)}
-          </span>
-        ))}
-      </div>
+    <div className="flex gap-px" aria-hidden="true">
+      {slots.map((minutes) => (
+        <span key={minutes} className="flex-1 text-left text-[9px] leading-3 text-slate-400">
+          {gaugeHourLabel(minutes)}
+        </span>
+      ))}
     </div>
   )
 }

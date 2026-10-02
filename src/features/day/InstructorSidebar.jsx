@@ -228,14 +228,6 @@ export default function InstructorSidebar({
           </p>
         )}
 
-        {/* Sticky, so the hour scale survives scrolling past the first few
-            instructors; opaque, so rows slide under it rather than through. */}
-        {onShift.length > 0 && (
-          <div className="sticky top-0 z-10 -mx-2 -mt-2 bg-white px-2 pt-2">
-            <GaugeHourRow slots={axis.slots} />
-          </div>
-        )}
-
         {onShift.map((instructor) => (
           <InstructorRow
             key={instructor.id}
@@ -258,7 +250,6 @@ export default function InstructorSidebar({
             >
               {showOffShift ? '▾' : '▸'} Not on shift ({offShift.length})
             </button>
-            {showOffShift && <GaugeHourRow slots={axis.slots} />}
             {showOffShift &&
               offShift.map((instructor) => (
                 <InstructorRow
@@ -382,6 +373,10 @@ function InstructorRow({ instructor, shift, stats, slots, armed, onArm, onDragSt
       </div>
 
       <div className="mt-1.5">
+        {/* Every instructor carries their own hour scale: a single scale at
+            the top of the list cannot be lined up against a gauge half a
+            screen below it (the sticky attempt proved that). */}
+        <GaugeHourRow slots={slots} />
         <LoadGauge
           slots={slots}
           load={stats?.load ?? []}

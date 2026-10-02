@@ -6,7 +6,7 @@ import { INSTRUCTOR_COLUMNS } from '../instructors/rankAccess'
 // only. binder_status now rides on the STUDENT, because binder prep persists
 // until the binder is used rather than expiring with one session.
 const SESSION_SELECT = `
-  id, center_id, student_id, date, start_time, duration, status, source, notes, is_modified, delivery_method, first_day_override, last_seen_in_radius,
+  id, center_id, student_id, date, start_time, duration, status, source, notes, is_modified, delivery_method, first_day_override, last_seen_in_radius, radius_booked_by,
   student:students ( id, name, grade, level, gender,
                      needs_schoolwork, slot_certainty, academic_status,
                      enrollment_start_date, binder_status ),

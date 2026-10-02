@@ -144,6 +144,9 @@ const REQUIRED_COLUMNS = [
   // Student-level delivery default: new sessions inherit it (materializer,
   // manual adds, reschedules); Radius-sourced sessions take the file's value.
   ['students', 'default_delivery_method'],
+  // Who made the Radius booking (export's Booked By / Created By, Scheduled
+  // non-Drop-In rows only); the card's marker reads staff vs parent off it.
+  ['sessions', 'radius_booked_by'],
 ]
 
 // --------------------------------------------------------------------- runner
