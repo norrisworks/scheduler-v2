@@ -136,28 +136,22 @@ export default function SessionCard({
       </span>
     )
 
-  // Top-left: ONE marker for source + certainty (green/gray R, green S,
-  // orange/green dot — see sessionMarker.js). The thin black outline keeps
-  // it legible on every instructor fill.
+  // Top-left: ONE marker for source + certainty (see sessionMarker.js).
+  // Always the same circle — thin black border, filled with the marker's
+  // color, the letter inside in bold white. Bare outlined letters came
+  // first and blurred into illegible rings; the filled circle is what
+  // actually reads at this size.
   const marker = sessionMarker(session)
-  const markerEl =
-    marker.shape === 'letter' ? (
-      <span
-        className="shrink-0 text-[9px] leading-none font-extrabold"
-        style={{ color: marker.color, WebkitTextStroke: '0.5px #000' }}
-        title={marker.title}
-        aria-label={marker.title}
-      >
-        {marker.glyph}
-      </span>
-    ) : (
-      <span
-        className="h-2 w-2 shrink-0 rounded-full border border-black"
-        style={{ backgroundColor: marker.color }}
-        title={marker.title}
-        aria-label={marker.title}
-      />
-    )
+  const markerEl = (
+    <span
+      className="flex h-3 w-3 shrink-0 items-center justify-center rounded-full border border-black text-[8px] leading-none font-bold text-white"
+      style={{ backgroundColor: marker.color }}
+      title={marker.title}
+      aria-label={marker.title}
+    >
+      {marker.glyph}
+    </span>
+  )
 
   const unassignButton = instructor && isAdmin && (
     <button

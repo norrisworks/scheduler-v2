@@ -507,15 +507,19 @@ anchor). **Never call `toISOString()` for dates.**
     day view's StatusMenu was never passed onFirstDayChange (the prop went
     to CancelledList, which doesn't take it), so the menu's first-day items
     threw on click; now wired, with a source-scan check.
-43. **One marker says how firm the booking is** (2026-10-02). The card's
-    top-left glyph (sessionMarker.js) replaced the certainty dot AND the
-    inline Radius R, in both orientations: green R = Radius booked by a
-    parent (or booker unknown); gray R = Radius booked by staff; green S =
-    standing slot with certainty fixed or BLANK (a new standing-slot student
-    defaults to reliable, so blank is the green S); orange dot = standing
-    slot flexible/drop-in; green dot = manual, reschedules included. Every
-    marker wears a thin black outline (text-stroke on letters, border on
-    dots) for legibility on any instructor fill. The booker feeds it:
+43. **One marker says how firm the booking is** (2026-10-02; rendering
+    revised after the owner found the text-stroke letters illegible). The
+    card's top-left marker (sessionMarker.js) replaced the certainty dot AND
+    the inline Radius R, in both orientations — always the SAME small filled
+    circle with a thin black border, letter inside in bold white: green
+    circle white R = Radius booked by a parent (or booker unknown); gray
+    circle white R = Radius booked by staff; green circle white S = standing
+    slot with certainty fixed or BLANK (a new standing-slot student defaults
+    to reliable, so blank is the green S); bare orange circle = standing
+    slot flexible/drop-in; bare green circle = manual, reschedules included.
+    (First cut drew bare colored letters with a 0.5px text-stroke — the
+    stroke blurred the R into a ring. Never outline tiny glyphs; fill a
+    shape behind them.) The booker feeds it:
     sessions.radius_booked_by stores the export's Booked By / Created By
     (one header-alias group — Radius renames it between pulls) from
     SCHEDULED non-Drop-In rows only — on Drop-In rows that column holds the

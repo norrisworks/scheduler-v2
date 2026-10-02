@@ -2284,27 +2284,27 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
 
   const mark = (source, over = {}, certainty) =>
     sessionMarker({ source, student: { slot_certainty: certainty }, ...over })
-  eq('Radius booked by a parent: green R',
+  eq('Radius booked by a parent: green circle, white R',
      mark('radius', { radius_booked_by: 'Gabe Lewullis' }),
-     { shape: 'letter', glyph: 'R', color: '#22C55E', title: 'Radius — booked by parent' })
-  eq('Radius booked by staff: gray R',
+     { glyph: 'R', color: '#22C55E', title: 'Radius — booked by parent' })
+  eq('Radius booked by staff: gray circle, white R',
      mark('radius', { radius_booked_by: 'William.Griffin' }),
-     { shape: 'letter', glyph: 'R', color: '#9CA3AF', title: 'Radius — booked by staff' })
+     { glyph: 'R', color: '#9CA3AF', title: 'Radius — booked by staff' })
   eq('Radius with no stored booker reads as parent',
      mark('radius', {}).color, '#22C55E')
-  eq('a fixed standing slot: green S',
+  eq('a fixed standing slot: green circle, white S',
      mark('recurring', {}, 'fixed'),
-     { shape: 'letter', glyph: 'S', color: '#22C55E', title: 'Standing slot' })
+     { glyph: 'S', color: '#22C55E', title: 'Standing slot' })
   eq('a BLANK certainty is the default-reliable green S',
      [mark('recurring', {}, '').glyph, mark('recurring', {}, undefined).glyph], ['S', 'S'])
-  eq('a flexible slot: orange dot',
+  eq('a flexible slot: bare orange circle',
      mark('recurring', {}, 'flexible'),
-     { shape: 'dot', color: '#F97316', title: 'Standing slot — flexible' })
-  eq('a drop-in slot: orange dot too',
+     { glyph: null, color: '#F97316', title: 'Standing slot — flexible' })
+  eq('a drop-in slot: orange too',
      mark('recurring', {}, 'dropin').color, '#F97316')
-  eq('manual (reschedules included): green dot',
+  eq('manual (reschedules included): bare green circle',
      mark('manual', {}),
-     { shape: 'dot', color: '#22C55E', title: 'Manually scheduled' })
+     { glyph: null, color: '#22C55E', title: 'Manually scheduled' })
 }
 
 // ---- Radius-confirmed absences: a skipped confirmed session is a signal
@@ -2390,8 +2390,9 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
   // inline R are gone — nothing else on the card keys on either.
   const card = readSrc('src/features/day/SessionCard.jsx')
   eq('the card renders the unified marker', card.includes('sessionMarker(session)'), true)
-  eq('letters wear the thin black outline', card.includes("WebkitTextStroke: '0.5px #000'"), true)
-  eq('dots wear it too', card.includes('rounded-full border border-black'), true)
+  eq('every marker is the bordered circle with a white letter inside',
+     card.includes('rounded-full border border-black') && card.includes('text-white'), true)
+  eq('the illegible text-stroke is gone', card.includes('WebkitTextStroke'), false)
   eq('the old inline Radius R is gone', card.includes('From Radius'), false)
   eq('the old certainty dot is gone', card.includes('SLOT_CERTAINTY'), false)
 
