@@ -12,7 +12,7 @@ import { firstDayBadge, firstDayLabel } from './firstDay'
  * it (cards must not show it), so this fetches the note on open. Binder state
  * belongs to the STUDENT now, so that is what it reads.
  */
-export default function StatusMenu({ menu, onStatusChange, onDeliveryChange, onUnassign, onReschedule, onDelete, onFirstDayChange, onClose }) {
+export default function StatusMenu({ menu, onStatusChange, onDeliveryChange, onDurationChange, onUnassign, onReschedule, onDelete, onFirstDayChange, onClose }) {
   const [binder, setBinder] = useState(null)
   // Hard delete arms on first click and fires on the second — a permanent
   // action never rides on one click. Re-arms per menu open.
@@ -108,6 +108,35 @@ export default function StatusMenu({ menu, onStatusChange, onDeliveryChange, onU
             {item.label}
           </button>
         ))}
+        {/* One-off duration for THIS session (a 90-minute makeup). Writes one
+            row with is_modified, so neither the materializer nor a change to
+            the student's default duration flattens it. */}
+        {isAdmin && (
+          <div className="border-t border-zinc-100 px-3 py-1.5">
+            <p className="mb-1 text-[10px] text-zinc-400">Duration — this session only</p>
+            <div className="flex gap-1">
+              {[30, 45, 60, 90, 120].map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => {
+                    onDurationChange(session.id, m)
+                    onClose()
+                  }}
+                  aria-pressed={(session.duration ?? 60) === m}
+                  className={
+                    'rounded px-1.5 py-0.5 text-[11px] font-medium ' +
+                    ((session.duration ?? 60) === m
+                      ? 'bg-brand-500 text-white'
+                      : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200')
+                  }
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {isAdmin && (
           <button
             type="button"

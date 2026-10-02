@@ -467,6 +467,47 @@ anchor). **Never call `toISOString()` for dates.**
     like mass cancellation. The plan carries virtualRowCount; when it is 0
     the preview warns to check the setting before acting on absences.
 
+38. **The sidebar hour scale is sticky** (2026-10-02). The GaugeHourRow above
+    the on-shift instructors pins to the top of the sidebar's scroll area
+    (sticky top-0, opaque white, z-10) so the time reference survives
+    scrolling past the first instructor. The off-shift group keeps its own
+    inline copy when expanded.
+39. **New shifts prefill by day of week** (2026-10-02). defaultShiftTimes():
+    Mon–Fri 3:00–7:30pm, Saturday 10:00am–1:00pm, Sunday follows Saturday
+    (owner left Sunday to my call). suggestTimes() still reuses the
+    instructor's existing shift that week but only one of the same KIND of
+    day — a Tuesday afternoon never prefills a Saturday morning. Fully
+    editable; prefill only. Both the week grid's cell editor and the
+    day-view shift editor use it.
+40. **Radius sessions wear a small red R** (2026-10-02). SessionCard shows a
+    tiny bold 'R' (title "From Radius") inline next to the time row in both
+    orientations, keyed on source='radius' and nothing else — standing slots
+    and manual adds show nothing. Inline rather than a corner overlay so it
+    never collides with the ⋯ button, the Supp badge, or the first-day and
+    online borders.
+41. **Students have a default delivery method** (2026-10-02).
+    students.default_delivery_method ('in_center' default, check-constrained)
+    — for virtual students like Ryan V whose sessions are scheduled directly
+    rather than through Radius. NEW sessions inherit it: the materializer's
+    insert and reclaim passes (migration materializer_inherits_default_delivery),
+    manual adds, and reschedules (which carry the SESSION's own delivery
+    forward, whatever set it). Radius-sourced sessions keep taking the
+    file's value — it is authoritative — and existing rows are never
+    retro-synced; the default shapes what is born. Edited in the drawer next
+    to default duration. Proved by rolled-back SQL simulation: a materialized
+    session for an online-default student was born delivery_method='online'.
+42. **Per-session duration is back, as the exception** (2026-10-02). Duration
+    stays a student-level property (decision 20), but one-off exceptions (a
+    90-minute makeup on a 60-minute student) are editable per session: chips
+    on the card ⋯ menu and a select on the drawer's upcoming rows, writing
+    ONLY that session with is_modified=true. propagate_default_duration now
+    skips is_modified rows (migration duration_propagation_spares_hand_edits)
+    — proved by rolled-back simulation: default 60→45 left a hand-set 90
+    alone while the plain session followed. Found and fixed in passing: the
+    day view's StatusMenu was never passed onFirstDayChange (the prop went
+    to CancelledList, which doesn't take it), so the menu's first-day items
+    threw on click; now wired, with a source-scan check.
+
 ## Importers (all preview-first; never commit on the owner's behalf)
 
 - **Students export** (`studentImport.js`): splits by the file's Center

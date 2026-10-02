@@ -5,7 +5,7 @@ import { centerHours, buildTimeAxis, sessionGeometry, packSubColumns, columnWidt
 import { getRole, getPinnedCenter, centerMatchesPin, resolveCenterAccess } from '../src/features/auth/roles.js'
 import { emptyToNull, missingAttributes, GENDER_OPTIONS, normalizeEnrollmentStatus, activeFromEnrollment } from '../src/features/roster/studentFields.js'
 import { capabilityString, instructorWarnings, nextColor, INSTRUCTOR_PALETTE, ASSIGNABILITY_OPTIONS, GENDER_OPTIONS as INSTRUCTOR_GENDER_OPTIONS } from '../src/features/instructors/instructorFields.js'
-import { weekDays, validateShift, shiftHours, totalHours, planCopyWeek, indexShifts, suggestTimes } from '../src/features/shifts/weekShifts.js'
+import { weekDays, validateShift, shiftHours, totalHours, planCopyWeek, indexShifts, suggestTimes, defaultShiftTimes } from '../src/features/shifts/weekShifts.js'
 import { ineligibleReason, buildCandidates, isFallbackOnly, unrankedStudents, explainUnplaced } from '../src/features/assign/rankings.js'
 import { placeAtRank, visibleRanking } from '../src/features/assign/rankOrder.js'
 import { BINDER_RESET, binderCounts, binderRows, binderStatusOf, isBinderReady } from '../src/features/binder/binderPrep.js'
@@ -445,8 +445,25 @@ eq('split shifts share a cell', idx.get('i1|2026-08-17').length, 2)
 eq('cell is time-ordered', idx.get('i1|2026-08-17').map(s => s.start_time), ['09:00:00', '18:00:00'])
 eq('other instructor is separate', idx.get('i2|2026-08-17').length, 1)
 
-eq('new shift defaults', suggestTimes([]), { start: '15:00', end: '19:00' })
+eq('new shift defaults', suggestTimes([]), { start: '15:00', end: '19:30' })
 eq('new shift reuses the week', suggestTimes([{ start_time: '14:30:00', end_time: '18:30:00' }]),
+   { start: '14:30', end: '18:30' })
+
+// ---- shift prefills by day of week (2026-10-02)
+// Weekdays open 3:00–7:30pm, Saturday 10:00am–1:00pm, Sunday follows
+// Saturday. Reuse-the-week only reuses the same KIND of day, so a Tuesday
+// afternoon never prefills a Saturday morning.
+eq('a weekday prefills the afternoon floor', defaultShiftTimes('2026-10-02'), { start: '15:00', end: '19:30' })  // Friday
+eq('Saturday prefills the morning', defaultShiftTimes('2026-10-03'), { start: '10:00', end: '13:00' })
+eq('Sunday follows Saturday', defaultShiftTimes('2026-10-04'), { start: '10:00', end: '13:00' })
+eq('a weekday cell ignores their Saturday shift',
+   suggestTimes([{ date: '2026-10-03', start_time: '10:00:00', end_time: '13:00:00' }], '2026-10-05'),
+   { start: '15:00', end: '19:30' })
+eq('a Saturday cell ignores their weekday shifts',
+   suggestTimes([{ date: '2026-10-02', start_time: '14:30:00', end_time: '18:30:00' }], '2026-10-03'),
+   { start: '10:00', end: '13:00' })
+eq('same-kind shifts are still reused',
+   suggestTimes([{ date: '2026-10-01', start_time: '14:30:00', end_time: '18:30:00' }], '2026-10-05'),
    { start: '14:30', end: '18:30' })
 
 // ---- auto-assign: rankings are the SOLE input
@@ -568,8 +585,17 @@ eq('the original is cancelled, not deleted',
 eq('the new row is a real scheduled session',
    moved.create, {
      center_id: 'c1', student_id: 'st1', date: '2026-08-20', start_time: '17:30:00',
-     duration: 90, status: 'scheduled', source: 'manual', notes: 'bring packet',
+     duration: 90, status: 'scheduled', source: 'manual',
+     delivery_method: 'in_center', notes: 'bring packet',
    })
+// A rescheduled online session stays online, whatever made it online.
+eq('reschedule keeps the session online',
+   rescheduleRows({ ...moving, delivery_method: 'online' }, '2026-08-20', '17:30').create.delivery_method,
+   'online')
+eq('reviving a corpse takes the incoming delivery',
+   reusePatch({ duration: 60, delivery_method: 'online' }).delivery_method, 'online')
+eq('and defaults in_center like the column',
+   reusePatch({ duration: 60 }).delivery_method, 'in_center')
 eq('a full hh:mm:ss time is not double-suffixed',
    rescheduleRows(moving, '2026-08-20', '17:30:00').create.start_time, '17:30:00')
 eq('duration defaults to an hour',
@@ -598,10 +624,12 @@ eq('a free target has no message', collisionMessage('free', 'Keira D'), null)
 // the materializer leaves it alone.
 eq('reuse revives as scheduled manual hand-edit',
    reusePatch({ duration: 90, notes: 'leaving early' }),
-   { status: 'scheduled', source: 'manual', is_modified: true, duration: 90, notes: 'leaving early' })
+   { status: 'scheduled', source: 'manual', is_modified: true, duration: 90,
+     delivery_method: 'in_center', notes: 'leaving early' })
 eq('reuse defaults duration and clears stale notes',
    reusePatch({}),
-   { status: 'scheduled', source: 'manual', is_modified: true, duration: 60, notes: null })
+   { status: 'scheduled', source: 'manual', is_modified: true, duration: 60,
+     delivery_method: 'in_center', notes: null })
 
 // ---- instructor_rank flags: OFF must be EXACTLY today's behavior
 // Fixture: three instructors, four overlapping sessions with identical
@@ -2273,6 +2301,42 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
   eq('only still-scheduled sessions get the cancel offer',
      c.radiusAbsent.every((s) => s.status === 'scheduled'), true)
   eq('a file with no MVBB rows says so', plan.virtualRowCount, 0)
+}
+
+// ---- wiring that must not drift (2026-10-02): the five-tweaks surfaces.
+// Each is the client half of a contract whose other half lives in the DB
+// (materializer inherits default_delivery_method; duration propagation spares
+// is_modified rows — both proved by rolled-back SQL simulation, HANDOFF 39).
+{
+  const readSrc = (rel) =>
+    readFileSync(joinPath(process.cwd(), rel), 'utf8').replace(/\r\n/g, '\n')
+
+  // Select-drift guards: what a surface compares or forwards, it must select.
+  const upcoming = readSrc('src/features/roster/UpcomingSessions.jsx')
+  eq('the drawer session select carries delivery_method and is_modified',
+     upcoming.includes('delivery_method, is_modified, student:students'), true)
+  eq('the drawer duration editor marks the row hand-edited',
+     upcoming.includes('duration: minutes, is_modified: true'), true)
+
+  const addDialog = readSrc('src/features/day/AddSessionDialog.jsx')
+  eq('manual adds select the student delivery default',
+     addDialog.includes('default_delivery_method'), true)
+  eq("and write it to the new session",
+     addDialog.includes("selected?.default_delivery_method ?? 'in_center'"), true)
+
+  const dayView = readSrc('src/features/day/DayView.jsx')
+  eq('the card menu gets the first-day handler (was silently missing)',
+     dayView.includes('onFirstDayChange={setFirstDayOverride}'), true)
+  eq('and the one-off duration handler',
+     dayView.includes('onDurationChange={setDuration}'), true)
+
+  const card = readSrc('src/features/day/SessionCard.jsx')
+  eq("the R mark keys on source === 'radius' and nothing else",
+     card.includes("session.source === 'radius'"), true)
+
+  const sidebar = readSrc('src/features/day/InstructorSidebar.jsx')
+  eq('the sidebar hour scale is sticky with an opaque back',
+     sidebar.includes('sticky top-0 z-10 -mx-2 -mt-2 bg-white px-2 pt-2'), true)
 }
 
 // ---- first-day: derived by default, three-state override on the session

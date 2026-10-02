@@ -1,7 +1,22 @@
-import { addDays, timeToMinutes } from '../../lib/dates'
+import { addDays, dayOfWeek, timeToMinutes } from '../../lib/dates'
 
 export const DEFAULT_START = '15:00'
-export const DEFAULT_END = '19:00'
+export const DEFAULT_END = '19:30'
+export const WEEKEND_START = '10:00'
+export const WEEKEND_END = '13:00'
+
+/**
+ * The prefill for a new shift, by day of week: weekdays run the 3:00–7:30pm
+ * floor, Saturday the 10:00am–1:00pm morning — and Sunday follows Saturday,
+ * because a weekend shift looks like a weekend shift. Always editable; this
+ * only decides what the form opens with.
+ */
+export function defaultShiftTimes(date) {
+  const dow = dayOfWeek(date)
+  return dow === 0 || dow === 6
+    ? { start: WEEKEND_START, end: WEEKEND_END }
+    : { start: DEFAULT_START, end: DEFAULT_END }
+}
 
 /** The seven ISO dates of a week, Sunday first (matches day_of_week 0..6). */
 export function weekDays(weekStart) {
@@ -75,12 +90,19 @@ export function indexShifts(shifts) {
 
 /**
  * Sensible times for a new shift: reuse what this instructor is already
- * working that week, so filling a row is a few clicks rather than retyping.
+ * working that week — but only shifts of the same KIND of day, so their
+ * Tuesday 3–7:30 never prefills a Saturday morning — falling back to the
+ * day-of-week default.
  */
-export function suggestTimes(shiftsForInstructor) {
-  const latest = shiftsForInstructor[shiftsForInstructor.length - 1]
+export function suggestTimes(shiftsForInstructor, date) {
+  const weekend = date ? [0, 6].includes(dayOfWeek(date)) : false
+  const comparable = date
+    ? shiftsForInstructor.filter((s) => [0, 6].includes(dayOfWeek(s.date)) === weekend)
+    : shiftsForInstructor
+  const latest = comparable[comparable.length - 1]
+  const fallback = date ? defaultShiftTimes(date) : { start: DEFAULT_START, end: DEFAULT_END }
   return {
-    start: latest?.start_time?.slice(0, 5) ?? DEFAULT_START,
-    end: latest?.end_time?.slice(0, 5) ?? DEFAULT_END,
+    start: latest?.start_time?.slice(0, 5) ?? fallback.start,
+    end: latest?.end_time?.slice(0, 5) ?? fallback.end,
   }
 }

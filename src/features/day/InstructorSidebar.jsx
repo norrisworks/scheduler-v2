@@ -228,7 +228,13 @@ export default function InstructorSidebar({
           </p>
         )}
 
-        {onShift.length > 0 && <GaugeHourRow slots={axis.slots} />}
+        {/* Sticky, so the hour scale survives scrolling past the first few
+            instructors; opaque, so rows slide under it rather than through. */}
+        {onShift.length > 0 && (
+          <div className="sticky top-0 z-10 -mx-2 -mt-2 bg-white px-2 pt-2">
+            <GaugeHourRow slots={axis.slots} />
+          </div>
+        )}
 
         {onShift.map((instructor) => (
           <InstructorRow

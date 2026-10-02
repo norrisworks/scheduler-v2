@@ -3,6 +3,7 @@ import { useAuth } from '../auth/AuthProvider'
 import {
   ACADEMIC_OPTIONS,
   CERTAINTY_OPTIONS,
+  DELIVERY_OPTIONS,
   ENROLLMENT_OPTIONS,
   GENDER_OPTIONS,
   LEVEL_OPTIONS,
@@ -18,7 +19,7 @@ const TEXT_DEBOUNCE_MS = 500
 const FIELDS = [
   'name', 'grade', 'level', 'school', 'gender', 'radius_account',
   'academic_status', 'slot_certainty', 'default_duration', 'needs_schoolwork',
-  'active', 'enrollment_status',
+  'active', 'enrollment_status', 'default_delivery_method',
 ]
 
 function toForm(student) {
@@ -156,6 +157,16 @@ export default function StudentAttributes({ student, saving, onSave }) {
             value={form.default_duration}
             onChange={(e) => set('default_duration', e.target.value, { text: true })}
             className={inputClass}
+          />
+        </Field>
+        <Field
+          label="Default delivery"
+          hint="New sessions start with this; Radius-imported sessions take the file's value"
+        >
+          <Select
+            value={form.default_delivery_method}
+            onChange={(v) => set('default_delivery_method', v)}
+            options={DELIVERY_OPTIONS}
           />
         </Field>
       </div>

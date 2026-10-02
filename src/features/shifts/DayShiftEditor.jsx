@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useCenter } from '../centers/CenterProvider'
 import { formatDateLong } from '../../lib/dates'
 import TimeSelect from '../../components/TimeSelect'
-import { DEFAULT_END, DEFAULT_START, validateShift } from './weekShifts'
+import { defaultShiftTimes, validateShift } from './weekShifts'
 
 /**
  * One day's shifts, editable in place. Opened from the unplaced panel when
@@ -24,7 +24,7 @@ export default function DayShiftEditor({ date, instructors, shiftByInstructor, o
     const shift = shiftByInstructor.get(instructor.id)
     return shift
       ? { start: shift.start_time.slice(0, 5), end: shift.end_time.slice(0, 5) }
-      : { start: DEFAULT_START, end: DEFAULT_END }
+      : defaultShiftTimes(date)
   }
 
   const setDraft = (instructor, patch) => {

@@ -141,6 +141,9 @@ const REQUIRED_COLUMNS = [
   ['sessions', 'delivery_method'],
   // Three-state first-day override: null derives, true forces, false hides.
   ['sessions', 'first_day_override'],
+  // Student-level delivery default: new sessions inherit it (materializer,
+  // manual adds, reschedules); Radius-sourced sessions take the file's value.
+  ['students', 'default_delivery_method'],
 ]
 
 // --------------------------------------------------------------------- runner

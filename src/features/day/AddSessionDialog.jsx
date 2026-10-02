@@ -23,7 +23,7 @@ export default function AddSessionDialog({ centerId, date, onClose, onCreated })
   useEffect(() => {
     supabase
       .from('students')
-      .select('id, name, grade, level, default_duration')
+      .select('id, name, grade, level, default_duration, default_delivery_method')
       .eq('center_id', centerId)
       .eq('active', true)
       .order('name')
@@ -70,6 +70,9 @@ export default function AddSessionDialog({ centerId, date, onClose, onCreated })
       duration: Number(form.duration),
       status: 'scheduled',
       source: 'manual',
+      // A virtual-by-default student's manual sessions are born online —
+      // nobody should have to re-mark every makeup by hand (Ryan V).
+      delivery_method: selected?.default_delivery_method ?? 'in_center',
     }
 
     // The unique index counts CANCELLED rows, so an insert against a corpse

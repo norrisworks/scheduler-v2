@@ -276,6 +276,29 @@ export function useDaySchedule(centerId, date) {
   )
 
   /**
+   * One-off duration for one session — a 90-minute makeup on a 60-minute
+   * student. Writes only this row; is_modified so the materializer AND the
+   * student-default propagation trigger both leave it alone.
+   */
+  const setDuration = useCallback(
+    async (sessionId, minutes) => {
+      const previous = sessions.find((s) => s.id === sessionId)?.duration
+      patchSession(key, sessionId, { duration: minutes, is_modified: true })
+
+      const { error } = await supabase
+        .from('sessions')
+        .update({ duration: minutes, is_modified: true, updated_at: new Date().toISOString() })
+        .eq('id', sessionId)
+
+      if (error) {
+        patchSession(key, sessionId, { duration: previous })
+        setError(error.message)
+      }
+    },
+    [sessions, key, patchSession],
+  )
+
+  /**
    * HARD delete — the row ceases to exist, unlike cancel, which keeps it as
    * history (and keeps its (date, time) occupied). This is the UI's way out of
    * a session that should never have existed; its assignment goes with it
@@ -379,6 +402,7 @@ export function useDaySchedule(centerId, date) {
     unassign,
     setStatus,
     setDelivery,
+    setDuration,
     deleteSession,
     setFirstDayOverride,
     dismissError: () => setError(null),

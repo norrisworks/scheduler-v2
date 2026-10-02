@@ -97,6 +97,12 @@ export const DAYS = [
 
 export const DURATION_OPTIONS = [30, 45, 60, 75, 90, 120]
 
+/** New sessions inherit this; Radius-sourced sessions take the file's value. */
+export const DELIVERY_OPTIONS = [
+  { value: 'in_center', label: 'In-center' },
+  { value: 'online', label: 'Online' },
+]
+
 /**
  * Empty strings from <select> and <input> have to become NULL, not ''.
  * `level` and `performance` carry check constraints that reject ''.

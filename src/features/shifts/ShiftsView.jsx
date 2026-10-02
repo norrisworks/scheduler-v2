@@ -44,7 +44,7 @@ export default function ShiftsView() {
   function openCell(instructor, date, shift, event) {
     const rect = event.currentTarget.getBoundingClientRect()
     const mine = shifts.filter((s) => s.instructor_id === instructor.id)
-    const suggested = suggestTimes(mine)
+    const suggested = suggestTimes(mine, date)
     setCell({
       instructor,
       date,

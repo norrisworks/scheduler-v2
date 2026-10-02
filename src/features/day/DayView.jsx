@@ -61,6 +61,7 @@ export default function DayView() {
     unassign,
     setStatus,
     setDelivery,
+    setDuration,
     deleteSession,
     setFirstDayOverride,
     dismissError,
@@ -431,8 +432,7 @@ export default function DayView() {
               <ScheduleGrid {...gridProps} />
             )}
           </div>
-          <CancelledList sessions={offGrid} onStatusChange={setStatus} onDelete={deleteSession}
-        onFirstDayChange={setFirstDayOverride} />
+          <CancelledList sessions={offGrid} onStatusChange={setStatus} onDelete={deleteSession} />
         </div>
 
         {openStudent && (
@@ -511,9 +511,13 @@ export default function DayView() {
         menu={statusMenu}
         onStatusChange={setStatus}
         onDeliveryChange={setDelivery}
+        onDurationChange={setDuration}
         onDelete={deleteSession}
         onUnassign={unassign}
         onReschedule={(session) => setRescheduling(session)}
+        // Was missing: the menu's first-day items threw on click because the
+        // handler only reached CancelledList.
+        onFirstDayChange={setFirstDayOverride}
         onClose={() => setStatusMenu(null)}
       />
 

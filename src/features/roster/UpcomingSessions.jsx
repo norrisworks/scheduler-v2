@@ -6,6 +6,7 @@ import { useCenter } from '../centers/CenterProvider'
 import { formatDateShort, formatTimeMeridiem, todayISO } from '../../lib/dates'
 import { MATERIALIZE_DAYS, materializeSessions } from '../materializer/materialize'
 import RescheduleDialog from '../day/RescheduleDialog'
+import { DURATION_OPTIONS } from './studentFields'
 
 /** How much further ahead "Generate more" reaches, in days. */
 const EXTENDED_DAYS = 60
@@ -36,7 +37,9 @@ export default function UpcomingSessions({ studentId, slots = [], refreshKey = 0
   const load = useCallback(async () => {
     const { data, error } = await supabase
       .from('sessions')
-      .select('id, center_id, student_id, date, start_time, duration, status, notes, student:students(id, name)')
+      // delivery_method rides along so a reschedule from here keeps an online
+      // session online; is_modified so the duration editor can show its state.
+      .select('id, center_id, student_id, date, start_time, duration, status, notes, delivery_method, is_modified, student:students(id, name)')
       .eq('student_id', studentId)
       .gte('date', todayISO())
       .eq('status', 'scheduled')
@@ -75,6 +78,23 @@ export default function UpcomingSessions({ studentId, slots = [], refreshKey = 0
     setExtending(false)
   }
 
+  /**
+   * One-off duration for ONE session (a 90-minute makeup): writes only this
+   * row and marks it hand-edited, so the materializer and the student-default
+   * propagation both leave it alone. The student default is still the normal
+   * path and keeps flowing to unmodified sessions.
+   */
+  async function setDuration(session, minutes) {
+    setSaving(true)
+    const { error } = await supabase
+      .from('sessions')
+      .update({ duration: minutes, is_modified: true, updated_at: new Date().toISOString() })
+      .eq('id', session.id)
+    setSaving(false)
+    if (error) setError(error.message)
+    else await load()
+  }
+
   async function cancel(session) {
     setSaving(true)
     const { error } = await supabase
@@ -111,11 +131,28 @@ export default function UpcomingSessions({ studentId, slots = [], refreshKey = 0
             >
               <span className="min-w-0 flex-1 text-sm text-zinc-800">
                 {formatDateShort(session.date)} · {formatTimeMeridiem(session.start_time)}
-                {/* Display only. Duration is a student-level property, set on
-                    the student record and applied to every session. */}
-                <span className="text-xs text-zinc-400"> · {session.duration ?? 60}m</span>
+                {!isAdmin && (
+                  <span className="text-xs text-zinc-400"> · {session.duration ?? 60}m</span>
+                )}
               </span>
               {isAdmin && (<>
+              {/* One-off exception for THIS session only — the student-level
+                  default stays the normal path and keeps propagating. */}
+              <select
+                value={session.duration ?? 60}
+                disabled={saving}
+                onChange={(e) => setDuration(session, Number(e.target.value))}
+                aria-label={`Duration for ${formatDateShort(session.date)}`}
+                className="shrink-0 rounded border border-zinc-300 px-1 py-0.5 text-[11px] text-zinc-700"
+              >
+                {[...new Set([...DURATION_OPTIONS, session.duration ?? 60])]
+                  .sort((a, b) => a - b)
+                  .map((m) => (
+                    <option key={m} value={m}>
+                      {m}m
+                    </option>
+                  ))}
+              </select>
               <button
                 type="button"
                 disabled={saving}

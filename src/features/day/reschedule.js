@@ -54,6 +54,7 @@ export function reusePatch(fields) {
     source: 'manual',
     is_modified: true,
     duration: fields.duration ?? 60,
+    delivery_method: fields.delivery_method ?? 'in_center',
     notes: fields.notes ?? null,
   }
 }
@@ -77,6 +78,10 @@ export function rescheduleRows(session, date, time) {
       duration: session.duration ?? 60,
       status: 'scheduled',
       source: 'manual',
+      // A rescheduled online session stays online: the new row inherits the
+      // session's own delivery, which itself came from Radius, the student
+      // default, or a hand toggle.
+      delivery_method: session.delivery_method ?? 'in_center',
       notes: session.notes ?? null,
     },
   }

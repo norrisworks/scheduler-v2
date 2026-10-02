@@ -136,6 +136,18 @@ export default function SessionCard({
       </span>
     )
 
+  // A quiet mark for a session Radius wrote — standing slots and manual adds
+  // show nothing. Inline next to the time, clear of the name and the borders.
+  const radiusMark = session.source === 'radius' && (
+    <span
+      className="shrink-0 text-[8px] leading-none font-bold text-red-500"
+      title="From Radius"
+      aria-label="From Radius"
+    >
+      R
+    </span>
+  )
+
   const unassignButton = instructor && isAdmin && (
     <button
       type="button"
@@ -172,6 +184,7 @@ export default function SessionCard({
             {formatTime(session.start_time)} • {session.duration}m
           </span>
           {binderTick}
+          {radiusMark}
           {warning && (
             <span className="shrink-0 text-[9px] text-amber-600" title={warning} aria-label={warning}>
               ⚠
@@ -251,6 +264,7 @@ export default function SessionCard({
           {formatTime(session.start_time)} • {session.duration}m
         </span>
         {binderTick}
+        {radiusMark}
         {student?.grade && (
           <span className="shrink-0 rounded bg-zinc-200 px-1 py-0.5 text-[9px] text-zinc-600">
             {student.grade}
