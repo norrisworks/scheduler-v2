@@ -540,10 +540,13 @@ anchor). **Never call `toISOString()` for dates.**
 
 44. **The Week tab plans shifts from demand** (2026-10-02). Admin-only,
     read-only route /week (features/week): next week's scheduled sessions
-    per half hour, as ONE full-width table: each day is a PAIR of columns
-    (in-center, then online) under one spanning date header with In/Online
-    subheads, on a shared zinc-50 band with a divider between days so the
-    pair reads as a unit. Counting is the day-view axis rule (a session
+    per half hour, as ONE full-width HEATMAP table: cells paint edge to
+    edge (1px padding gap, h-8 rows, text-sm numbers; zero stays on the
+    uncolored zinc-50 ground), each day a TIGHT pair of columns — in-center,
+    then a narrower online (table-fixed + colgroup split the day width
+    ≈ 1 : 0.62; the time axes take fixed px so the Saturday axis hugs its
+    column) — under one spanning date header with In/Online subheads and a
+    hairline-plus-gap boundary between days. Counting is the day-view axis rule (a session
     counts in every half hour it overlaps; occupiesFloor excludes cancelled
     and no-show), but colors are two INDEPENDENT fixed scales so weeks stay
     comparable: in-center ramps light gray → red on the old axis
