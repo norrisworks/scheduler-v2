@@ -540,11 +540,17 @@ anchor). **Never call `toISOString()` for dates.**
 
 44. **The Week tab plans shifts from demand** (2026-10-02). Admin-only,
     read-only route /week (features/week): next week's scheduled sessions
-    per half hour, split into two identically laid-out stacked tables —
-    in-center and online — using the day-view axis counting rule (a session
+    per half hour, as ONE full-width table: each day is a PAIR of columns
+    (in-center, then online) under one spanning date header with In/Online
+    subheads, on a shared zinc-50 band with a divider between days so the
+    pair reads as a unit. Counting is the day-view axis rule (a session
     counts in every half hour it overlaps; occupiesFloor excludes cancelled
-    and no-show) and the axis chip color bands (slotChipClass with onShift
-    pinned to 1, since there is deliberately no shift comparison yet).
+    and no-show), but colors are two INDEPENDENT fixed scales so weeks stay
+    comparable: in-center ramps light gray → red on the old axis
+    breakpoints (≤5 / ≤8 / ≤10 / 11+, zero blank); online ramps gray →
+    amber → orange tuned to its small counts (1 and 2 already register,
+    5+ saturates). The earlier three stacked cards (and their invisible
+    alignment header) are gone.
     Layout is ONE row scale: weekday time axis, a column per weekday with
     ≥1 counting session, then a narrow Saturday axis and column — Saturday's
     FIRST slot sits beside the weekday 4:00pm row (SATURDAY_ANCHOR), so MV's
@@ -558,13 +564,12 @@ anchor). **Never call `toISOString()` for dates.**
     already owns `centerHours`, the day view's hardcoded DISPLAY window,
     which is a different thing and was left alone. Week navigation defaults
     to NEXT week (defaultPlanWeekStart: the owner plans Thursday/Friday for
-    the following Mon–Sat). Daily totals: each table ends in a Total row
-    and an "All sessions" combined row sits below both — SESSION counts,
-    never cell sums (a 90-minute session spans three cells but is one
-    session); the combined table clones the header invisibly so all three
-    tables take identical column widths. Column headers stack the date over
-    the weekday ('9/28' over 'Mon' — the first cut used formatDateShort,
-    which already contains the weekday, so the day name printed twice).
+    the following Mon–Sat). Totals at the bottom: per-day in-center and
+    online totals in their own columns, plus an "All" combined row spanning
+    each pair — SESSION counts, never cell sums (a 90-minute session spans
+    three cells but is one session). Column headers stack the date over the
+    weekday ('9/28' over 'Mon' — the first cut used formatDateShort, which
+    already contains the weekday, so the day name printed twice).
     Note: the hours columns are not covered by
     db_schema_facts (it does not inventory the centers table), so db-check
     carries no REQUIRED_COLUMNS row for them.

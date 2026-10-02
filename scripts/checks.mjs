@@ -21,7 +21,7 @@ import { cleanPersonName, titleCaseName, generateDisplayName, violatesNamingConv
 import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } from '../src/features/imports/workstreamImport.js'
 import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, mapDelivery, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent, radiusKeyOf, confirmationTargets, planRadiusImport, isVirtualCenter, VIRTUAL_CENTERS, missingRadiusHeaders, readRadiusRow, sessionBooker } from '../src/features/imports/radiusImport.js'
 import { sessionMarker, isStaffBooker, STAFF_BOOKERS } from '../src/features/day/sessionMarker.js'
-import { centerOperatingHours, defaultPlanWeekStart, planWeekDates, extendRange, bands, alignRows, planWeekGrid, monthDay } from '../src/features/week/weekPlan.js'
+import { centerOperatingHours, defaultPlanWeekStart, planWeekDates, extendRange, bands, alignRows, planWeekGrid, monthDay, inCenterCellClass, onlineCellClass } from '../src/features/week/weekPlan.js'
 import { planStudentImport, planStudentImportByCenter, STUDENT_FIELDS, STUDENT_MATCH_COLUMNS } from '../src/features/imports/studentImport.js'
 import { buildChecks } from '../src/features/health/checks.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime , formatStampDate, TIME_CHOICES, centerInstant } from '../src/lib/dates.js'
@@ -2387,6 +2387,24 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
   eq('Saturday gets totals too', totals.saturday.totals, { inCenter: 1, online: 0 })
 
   eq('the stacked header date reads month/day', monthDay('2026-09-28'), '9/28')
+
+  // Two INDEPENDENT fixed scales, so weeks stay comparable. In-center keeps
+  // the old axis breakpoints; online is tuned so 1–2 already registers.
+  eq('in-center: zero is blank', inCenterCellClass(0), '')
+  eq('in-center ramps on 5 / 8 / 10+',
+     [1, 5, 6, 8, 9, 10, 11].map(inCenterCellClass),
+     ['bg-zinc-100 text-zinc-700', 'bg-zinc-100 text-zinc-700',
+      'bg-red-100 text-red-700', 'bg-red-100 text-red-700',
+      'bg-red-300 text-red-950', 'bg-red-300 text-red-950',
+      'bg-red-500 text-white'])
+  eq('online: zero is blank', onlineCellClass(0), '')
+  eq('online registers at 1 and 2 and saturates early',
+     [1, 2, 3, 4, 5].map(onlineCellClass),
+     ['bg-zinc-100 text-zinc-700', 'bg-amber-100 text-amber-800',
+      'bg-amber-300 text-amber-950', 'bg-amber-300 text-amber-950',
+      'bg-orange-500 text-white'])
+  eq('the two scales really are different at the same count',
+     inCenterCellClass(2) === onlineCellClass(2), false)
 
   // Wiring that must not drift.
   const readSrc = (rel) =>

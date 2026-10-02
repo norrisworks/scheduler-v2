@@ -99,6 +99,32 @@ export function monthDay(iso) {
   return `${Number(m)}/${Number(d)}`
 }
 
+/**
+ * The in-center cell ramp: light gray deepening to red on FIXED thresholds
+ * (the day-view axis breakpoints — 5, 8, 10+) so one week reads against
+ * another. Zero is blank, not a faint chip.
+ */
+export function inCenterCellClass(n) {
+  if (n <= 0) return ''
+  if (n <= 5) return 'bg-zinc-100 text-zinc-700'
+  if (n <= 8) return 'bg-red-100 text-red-700'
+  if (n <= 10) return 'bg-red-300 text-red-950'
+  return 'bg-red-500 text-white'
+}
+
+/**
+ * The online ramp is its OWN scale, gray to amber/orange, tuned to online's
+ * much smaller counts — 1 or 2 must already register where the in-center
+ * ramp would still read as nothing.
+ */
+export function onlineCellClass(n) {
+  if (n <= 0) return ''
+  if (n === 1) return 'bg-zinc-100 text-zinc-700'
+  if (n === 2) return 'bg-amber-100 text-amber-800'
+  if (n <= 4) return 'bg-amber-300 text-amber-950'
+  return 'bg-orange-500 text-white'
+}
+
 /** Count per band, day-view rule: a session counts in every band it overlaps. */
 function countsFor(sessions, bandList) {
   return bandList.map((m) => sessions.reduce((n, s) => n + (sessionCoversSlot(s, m) ? 1 : 0), 0))

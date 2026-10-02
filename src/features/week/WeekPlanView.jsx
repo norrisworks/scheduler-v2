@@ -5,16 +5,23 @@ import { useCenter } from '../centers/CenterProvider'
 import Spinner from '../../components/Spinner'
 import QueryError from '../../components/QueryError'
 import { addDays, formatDateShort, formatTime, minutesToTime, todayISO } from '../../lib/dates'
-import { slotChipClass } from '../day/load'
-import { centerOperatingHours, defaultPlanWeekStart, monthDay, planWeekDates, planWeekGrid } from './weekPlan'
+import {
+  centerOperatingHours,
+  defaultPlanWeekStart,
+  inCenterCellClass,
+  monthDay,
+  onlineCellClass,
+  planWeekDates,
+  planWeekGrid,
+} from './weekPlan'
 
 const DAY_LABEL = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 /**
  * The Week tab: next week's demand, half hour by half hour, for planning
- * instructor shifts before they are entered. Read-only counts — in-center
- * and online stacked as two identically laid-out tables — with Saturday's
- * axis offset so its morning sits beside the weekday 4:00pm rows.
+ * instructor shifts before they are entered. ONE table — each day is a
+ * shaded pair of columns (in-center, then online), each metric on its own
+ * fixed color scale so weeks stay comparable. Read-only counts.
  */
 export default function WeekPlanView() {
   const { isAdmin } = useAuth()
@@ -119,28 +126,95 @@ export default function WeekPlanView() {
           No scheduled sessions that week yet.
         </p>
       ) : (
-        <div className="mt-5 space-y-6">
-          <CountTable grid={grid} metric="inCenter" title="In-center students" />
-          <CountTable grid={grid} metric="online" title="Online students" />
-          <CombinedTotals grid={grid} />
-        </div>
+        <WeekTable grid={grid} />
       )}
     </div>
   )
 }
 
+/** The day-pair band: shared shade, with a divider on the pair's left edge. */
+const BAND = 'bg-zinc-50'
+const DIVIDER = 'border-l border-zinc-200'
+
 /**
- * One table, both metrics share it so the two stack in perfect alignment:
- * weekday axis · weekday columns · Saturday axis · Saturday column. The
- * Saturday axis repeats per table because each table must read on its own.
+ * One table for everything. Each day is TWO columns — in-center, then
+ * online — under one spanning date header, on a shared shaded band so the
+ * pair reads as one unit; each metric keeps its own fixed color scale.
+ * Saturday keeps its own time axis, offset per decision 44.
  */
-function CountTable({ grid, metric, title }) {
+function WeekTable({ grid }) {
   const hasSaturday = Boolean(grid.saturday)
+  const cell = (n, ramp) => (
+    <span
+      className={
+        'inline-block min-w-[24px] rounded px-1 text-center text-[11px] leading-5 font-semibold tabular-nums ' +
+        ramp(n)
+      }
+    >
+      {n > 0 ? n : ''}
+    </span>
+  )
+
+  const dayPair = (day, bandMinutes, bandList) => {
+    if (bandMinutes === null) {
+      return (
+        <>
+          <td className={`${BAND} ${DIVIDER}`} />
+          <td className={BAND} />
+        </>
+      )
+    }
+    const i = bandList.indexOf(bandMinutes)
+    return (
+      <>
+        <td className={`px-0.5 py-px text-center ${BAND} ${DIVIDER}`}>
+          {cell(day.inCenter[i] ?? 0, inCenterCellClass)}
+        </td>
+        <td className={`px-0.5 py-px text-center ${BAND}`}>
+          {cell(day.online[i] ?? 0, onlineCellClass)}
+        </td>
+      </>
+    )
+  }
+
   return (
-    <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white p-3">
-      <p className="mb-2 text-xs font-semibold tracking-wide text-zinc-600 uppercase">{title}</p>
-      <table className="border-separate border-spacing-0">
-        <HeaderRow grid={grid} />
+    <div className="mt-5 overflow-x-auto rounded-xl border border-zinc-200 bg-white p-3">
+      <table className="w-full border-separate border-spacing-0">
+        <thead>
+          <tr>
+            <th className="w-14" />
+            {grid.weekdays.map(({ date }) => (
+              <th
+                key={date}
+                colSpan={2}
+                className={`px-1 pt-1 text-center text-[11px] font-semibold text-zinc-700 ${BAND} ${DIVIDER}`}
+              >
+                <span className="block">{monthDay(date)}</span>
+                <span className="block font-normal text-zinc-400">
+                  {DAY_LABEL[new Date(`${date}T12:00:00`).getDay()]}
+                </span>
+              </th>
+            ))}
+            {hasSaturday && <th className="w-14" />}
+            {hasSaturday && (
+              <th
+                colSpan={2}
+                className={`px-1 pt-1 text-center text-[11px] font-semibold text-zinc-700 ${BAND} ${DIVIDER}`}
+              >
+                <span className="block">{monthDay(grid.saturday.date)}</span>
+                <span className="block font-normal text-zinc-400">Sat</span>
+              </th>
+            )}
+          </tr>
+          <tr>
+            <th />
+            {grid.weekdays.map(({ date }) => (
+              <SubHeads key={date} />
+            ))}
+            {hasSaturday && <th />}
+            {hasSaturday && <SubHeads />}
+          </tr>
+        </thead>
         <tbody>
           {grid.rows.map((row, i) => (
             <tr key={i}>
@@ -148,11 +222,9 @@ function CountTable({ grid, metric, title }) {
                 {row.w !== null ? formatTime(minutesToTime(row.w)) : ''}
               </td>
               {grid.weekdays.map((day) => (
-                <td key={day.date} className="px-1 py-px text-center">
-                  {row.w !== null && (
-                    <Chip n={day[metric][grid.weekdayBands.indexOf(row.w)] ?? 0} />
-                  )}
-                </td>
+                <DayCells key={day.date}>
+                  {dayPair(day, row.w, grid.weekdayBands)}
+                </DayCells>
               ))}
               {hasSaturday && (
                 <td className="pr-2 pl-3 text-right text-[11px] text-zinc-500 tabular-nums">
@@ -160,102 +232,41 @@ function CountTable({ grid, metric, title }) {
                 </td>
               )}
               {hasSaturday && (
-                <td className="px-1 py-px text-center">
-                  {row.s !== null && (
-                    <Chip n={grid.saturday[metric][grid.saturdayBands.indexOf(row.s)] ?? 0} />
-                  )}
-                </td>
+                <DayCells>{dayPair(grid.saturday, row.s, grid.saturdayBands)}</DayCells>
               )}
             </tr>
           ))}
-          {/* SESSION counts, not cell sums — a 90-minute session spans three
-              cells but is one session. */}
+
+          {/* SESSION counts, never cell sums — a 90-minute session spans
+              three cells but is one session. */}
           <tr>
             <td className="border-t border-zinc-200 pt-1 pr-2 text-right text-[11px] font-semibold text-zinc-500">
               Total
             </td>
             {grid.weekdays.map((day) => (
-              <td
-                key={day.date}
-                className="border-t border-zinc-200 px-1 pt-1 text-center text-[11px] font-bold text-zinc-800 tabular-nums"
-              >
-                {day.totals[metric]}
-              </td>
+              <TotalsPair key={day.date} totals={day.totals} />
             ))}
             {hasSaturday && <td className="border-t border-zinc-200 pt-1" />}
-            {hasSaturday && (
-              <td className="border-t border-zinc-200 px-1 pt-1 text-center text-[11px] font-bold text-zinc-800 tabular-nums">
-                {grid.saturday.totals[metric]}
-              </td>
-            )}
+            {hasSaturday && <TotalsPair totals={grid.saturday.totals} />}
           </tr>
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-/**
- * The stacked column header: date over weekday ('9/28' over 'Mon'). Shared
- * by every table; the combined-totals table renders it invisible so its
- * columns take the SAME widths and the three tables line up.
- */
-function HeaderRow({ grid, invisible = false }) {
-  const hasSaturday = Boolean(grid.saturday)
-  const dayHead = (date) => (
-    <>
-      <span className="block">{monthDay(date)}</span>
-      <span className="block font-normal text-zinc-400">
-        {DAY_LABEL[new Date(`${date}T12:00:00`).getDay()]}
-      </span>
-    </>
-  )
-  return (
-    <thead>
-      <tr className={invisible ? 'invisible' : undefined}>
-        <th className="w-16" />
-        {grid.weekdays.map(({ date }) => (
-          <th key={date} className="px-1 pb-1 text-center text-[11px] font-semibold text-zinc-600">
-            {dayHead(date)}
-          </th>
-        ))}
-        {hasSaturday && <th className="w-16" />}
-        {hasSaturday && (
-          <th className="px-1 pb-1 text-center text-[11px] font-semibold text-zinc-600">
-            {dayHead(grid.saturday.date)}
-          </th>
-        )}
-      </tr>
-    </thead>
-  )
-}
-
-/** In-center plus online per day, one row below both tables. */
-function CombinedTotals({ grid }) {
-  const hasSaturday = Boolean(grid.saturday)
-  const sum = (t) => t.inCenter + t.online
-  return (
-    <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white p-3">
-      <p className="mb-2 text-xs font-semibold tracking-wide text-zinc-600 uppercase">
-        All sessions
-      </p>
-      <table className="border-separate border-spacing-0">
-        <HeaderRow grid={grid} invisible />
-        <tbody>
           <tr>
-            <td className="pr-2 text-right text-[11px] font-semibold text-zinc-500">Total</td>
+            <td className="pr-2 pb-0.5 text-right text-[11px] font-semibold text-zinc-500">All</td>
             {grid.weekdays.map((day) => (
               <td
                 key={day.date}
-                className="px-1 text-center text-[11px] font-bold text-zinc-800 tabular-nums"
+                colSpan={2}
+                className={`px-1 pb-0.5 text-center text-[11px] font-bold text-zinc-900 tabular-nums ${BAND} ${DIVIDER}`}
               >
-                {sum(day.totals)}
+                {day.totals.inCenter + day.totals.online}
               </td>
             ))}
             {hasSaturday && <td />}
             {hasSaturday && (
-              <td className="px-1 text-center text-[11px] font-bold text-zinc-800 tabular-nums">
-                {sum(grid.saturday.totals)}
+              <td
+                colSpan={2}
+                className={`px-1 pb-0.5 text-center text-[11px] font-bold text-zinc-900 tabular-nums ${BAND} ${DIVIDER}`}
+              >
+                {grid.saturday.totals.inCenter + grid.saturday.totals.online}
               </td>
             )}
           </tr>
@@ -265,16 +276,33 @@ function CombinedTotals({ grid }) {
   )
 }
 
-/** The day-view axis chip bands, without the uncovered-red (no shifts here). */
-function Chip({ n }) {
+function SubHeads() {
   return (
-    <span
-      className={
-        'inline-block min-w-[26px] rounded px-1 text-center text-[11px] leading-5 font-semibold tabular-nums ' +
-        slotChipClass(n, 1)
-      }
-    >
-      {n}
-    </span>
+    <>
+      <th className={`px-0.5 pb-1 text-center text-[10px] font-medium text-zinc-400 ${BAND} ${DIVIDER}`}>
+        In
+      </th>
+      <th className={`px-0.5 pb-1 text-center text-[10px] font-medium text-zinc-400 ${BAND}`}>
+        Online
+      </th>
+    </>
+  )
+}
+
+/** Fragment passthrough — the pair's two <td>s come from dayPair. */
+function DayCells({ children }) {
+  return children
+}
+
+function TotalsPair({ totals }) {
+  return (
+    <>
+      <td className={`border-t border-zinc-200 px-0.5 pt-1 text-center text-[11px] font-bold text-zinc-800 tabular-nums ${BAND} ${DIVIDER}`}>
+        {totals.inCenter}
+      </td>
+      <td className={`border-t border-zinc-200 px-0.5 pt-1 text-center text-[11px] font-bold text-zinc-800 tabular-nums ${BAND}`}>
+        {totals.online}
+      </td>
+    </>
   )
 }
