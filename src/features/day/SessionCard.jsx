@@ -180,7 +180,6 @@ export default function SessionCard({
         }
       >
         <div className="flex items-center gap-1">
-          {markerEl}
           <span
             className={
               'shrink-0 text-[9px] text-zinc-600 ' +
@@ -204,9 +203,12 @@ export default function SessionCard({
               ●
             </span>
           )}
-          <span className="ml-auto flex shrink-0 items-center">
+          {/* The marker holds the top-right corner; the hover-only controls
+              appear beside it. */}
+          <span className="ml-auto flex shrink-0 items-center gap-0.5">
             {unassignButton}
             {menuButton}
+            {markerEl}
           </span>
         </div>
 
@@ -237,11 +239,11 @@ export default function SessionCard({
         (status.muted ? 'opacity-60' : '')
       }
     >
-      {/* Row 1: the source/certainty marker and the name. The grade chip
-          used to sit inline here and cost the name most of the card's
-          width. */}
-      <div className="flex items-center gap-1">
-        {markerEl}
+      {/* Row 1: the name alone, full width — the marker moved to the
+          top-right corner (pr-3.5 keeps the name from running under it).
+          The grade chip used to sit inline here and cost the name most of
+          the card's width. */}
+      <div className="flex items-center gap-1 pr-3.5">
         <div
           className={
             'min-w-0 flex-1 truncate text-[11px] font-medium ' +
@@ -253,9 +255,10 @@ export default function SessionCard({
         </div>
       </div>
 
-      {/* Floated rather than inline: as a flex sibling it permanently reserved
-          ~13px of a 95px card and truncated names that would otherwise fit.
-          It paints nothing until hover, so the corner is not dead space. */}
+      {/* The marker owns the top-right corner; the hover-only ⋯ sits on top
+          of it (rendered after, with its white hover wash), which is fine —
+          the marker shows whenever the menu is not being summoned. */}
+      <div className="absolute top-0.5 right-0.5">{markerEl}</div>
       <div className="absolute top-0.5 right-0.5">{menuButton}</div>
 
       {/* Row 2: time, duration and grade (session_card spec styling) */}

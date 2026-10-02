@@ -509,8 +509,11 @@ anchor). **Never call `toISOString()` for dates.**
     threw on click; now wired, with a source-scan check.
 43. **One marker says how firm the booking is** (2026-10-02; rendering
     revised after the owner found the text-stroke letters illegible). The
-    card's top-left marker (sessionMarker.js) replaced the certainty dot AND
-    the inline Radius R, in both orientations — always the SAME small filled
+    card's marker (sessionMarker.js) replaced the certainty dot AND the
+    inline Radius R, in both orientations. It holds the TOP-RIGHT corner,
+    sharing it with the hover-only ⋯ menu (the menu covers it while
+    hovering, deliberately), which gives the student name the full top-left
+    width — always the SAME small filled
     circle, letter inside in bold white (borderless — every card fill is a
     light pastel under a saturated marker, so the circle separates on its
     own; the black border was dropped to give the letter the room): green

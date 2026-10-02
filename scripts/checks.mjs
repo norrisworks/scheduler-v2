@@ -2394,6 +2394,8 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
      card.includes('rounded-full') && card.includes('text-white'), true)
   eq('and is borderless — the saturated fill separates on its own',
      card.includes('border-black'), false)
+  eq('the marker holds the top-right corner, under the hover-only menu',
+     card.includes('absolute top-0.5 right-0.5">{markerEl}'), true)
   eq('the illegible text-stroke is gone', card.includes('WebkitTextStroke'), false)
   eq('the old inline Radius R is gone', card.includes('From Radius'), false)
   eq('the old certainty dot is gone', card.includes('SLOT_CERTAINTY'), false)
