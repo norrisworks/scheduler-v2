@@ -511,7 +511,9 @@ anchor). **Never call `toISOString()` for dates.**
     revised after the owner found the text-stroke letters illegible). The
     card's top-left marker (sessionMarker.js) replaced the certainty dot AND
     the inline Radius R, in both orientations — always the SAME small filled
-    circle with a thin black border, letter inside in bold white: green
+    circle, letter inside in bold white (borderless — every card fill is a
+    light pastel under a saturated marker, so the circle separates on its
+    own; the black border was dropped to give the letter the room): green
     circle white R = Radius booked by a parent (or booker unknown); gray
     circle white R = Radius booked by staff; green circle white S = standing
     slot with certainty fixed or BLANK (a new standing-slot student defaults

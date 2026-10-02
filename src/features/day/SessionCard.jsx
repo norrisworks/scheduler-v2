@@ -137,14 +137,14 @@ export default function SessionCard({
     )
 
   // Top-left: ONE marker for source + certainty (see sessionMarker.js).
-  // Always the same circle — thin black border, filled with the marker's
-  // color, the letter inside in bold white. Bare outlined letters came
-  // first and blurred into illegible rings; the filled circle is what
-  // actually reads at this size.
+  // Always the same circle, filled with the marker's color, the letter
+  // inside in bold white — and NO border: every card fill is a light
+  // pastel (a 12.5% instructor tint or gray-100) under a saturated marker,
+  // so the circle separates on its own and the letter keeps all 12px.
   const marker = sessionMarker(session)
   const markerEl = (
     <span
-      className="flex h-3 w-3 shrink-0 items-center justify-center rounded-full border border-black text-[8px] leading-none font-bold text-white"
+      className="flex h-3 w-3 shrink-0 items-center justify-center rounded-full text-[8px] leading-none font-bold text-white"
       style={{ backgroundColor: marker.color }}
       title={marker.title}
       aria-label={marker.title}

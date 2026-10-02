@@ -2390,8 +2390,10 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
   // inline R are gone — nothing else on the card keys on either.
   const card = readSrc('src/features/day/SessionCard.jsx')
   eq('the card renders the unified marker', card.includes('sessionMarker(session)'), true)
-  eq('every marker is the bordered circle with a white letter inside',
-     card.includes('rounded-full border border-black') && card.includes('text-white'), true)
+  eq('every marker is the filled circle with a white letter inside',
+     card.includes('rounded-full') && card.includes('text-white'), true)
+  eq('and is borderless — the saturated fill separates on its own',
+     card.includes('border-black'), false)
   eq('the illegible text-stroke is gone', card.includes('WebkitTextStroke'), false)
   eq('the old inline Radius R is gone', card.includes('From Radius'), false)
   eq('the old certainty dot is gone', card.includes('SLOT_CERTAINTY'), false)
