@@ -538,6 +538,30 @@ anchor). **Never call `toISOString()` for dates.**
     student in the drawer; TransposedGrid's row-label certainty dot is
     untouched (it belongs to the row label, not the card).
 
+44. **The Week tab plans shifts from demand** (2026-10-02). Admin-only,
+    read-only route /week (features/week): next week's scheduled sessions
+    per half hour, split into two identically laid-out stacked tables —
+    in-center and online — using the day-view axis counting rule (a session
+    counts in every half hour it overlaps; occupiesFloor excludes cancelled
+    and no-show) and the axis chip color bands (slotChipClass with onShift
+    pinned to 1, since there is deliberately no shift comparison yet).
+    Layout is ONE row scale: weekday time axis, a column per weekday with
+    ≥1 counting session, then a narrow Saturday axis and column — Saturday's
+    FIRST slot sits beside the weekday 4:00pm row (SATURDAY_ANCHOR), so MV's
+    Sat 10:00–12:30 runs beside weekday 4:00–6:30 and Blue Bell's 11:00
+    start also lands beside 4:00pm. Empty days hide, Saturday included; a
+    session outside hours EXTENDS its axis (snapped to the half hour) rather
+    than dropping. Hours are a per-center SETTING: centers gained
+    weekday_open/weekday_close/saturday_open/saturday_close (defaults = MV
+    15:00/19:30/10:00/13:00; Blue Bell's Saturday set to 11:00/14:00), read
+    through centerOperatingHours() — named so because day/timeGrid.js
+    already owns `centerHours`, the day view's hardcoded DISPLAY window,
+    which is a different thing and was left alone. Week navigation defaults
+    to NEXT week (defaultPlanWeekStart: the owner plans Thursday/Friday for
+    the following Mon–Sat). Note: the hours columns are not covered by
+    db_schema_facts (it does not inventory the centers table), so db-check
+    carries no REQUIRED_COLUMNS row for them.
+
 ## Importers (all preview-first; never commit on the owner's behalf)
 
 - **Students export** (`studentImport.js`): splits by the file's Center

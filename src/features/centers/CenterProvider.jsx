@@ -23,7 +23,7 @@ export function CenterProvider({ children }) {
 
     supabase
       .from('centers')
-      .select('id, name, short_code')
+      .select('id, name, short_code, weekday_open, weekday_close, saturday_open, saturday_close')
       .order('short_code')
       .then(({ data, error }) => {
         if (cancelled) return

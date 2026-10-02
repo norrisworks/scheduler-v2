@@ -21,6 +21,7 @@ import { cleanPersonName, titleCaseName, generateDisplayName, violatesNamingConv
 import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } from '../src/features/imports/workstreamImport.js'
 import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, mapDelivery, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent, radiusKeyOf, confirmationTargets, planRadiusImport, isVirtualCenter, VIRTUAL_CENTERS, missingRadiusHeaders, readRadiusRow, sessionBooker } from '../src/features/imports/radiusImport.js'
 import { sessionMarker, isStaffBooker, STAFF_BOOKERS } from '../src/features/day/sessionMarker.js'
+import { centerOperatingHours, defaultPlanWeekStart, planWeekDates, extendRange, bands, alignRows, planWeekGrid } from '../src/features/week/weekPlan.js'
 import { planStudentImport, planStudentImportByCenter, STUDENT_FIELDS, STUDENT_MATCH_COLUMNS } from '../src/features/imports/studentImport.js'
 import { buildChecks } from '../src/features/health/checks.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime , formatStampDate, TIME_CHOICES, centerInstant } from '../src/lib/dates.js'
@@ -2305,6 +2306,79 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
   eq('manual (reschedules included): bare green circle',
      mark('manual', {}),
      { glyph: null, color: '#22C55E', title: 'Manually scheduled' })
+}
+
+// ---- the Week planner: next week's demand on one row scale
+// Admin-only, read-only. Hours are a per-center SETTING (centers columns);
+// Saturday's axis is offset so its FIRST slot sits beside the weekday
+// 4:00pm row; counting follows the day-view axis rule.
+{
+  eq('center hours read the row (Blue Bell Saturday differs)',
+     centerOperatingHours({ weekday_open: '15:00:00', weekday_close: '19:30:00', saturday_open: '11:00:00', saturday_close: '14:00:00' }),
+     { weekdayOpen: 900, weekdayClose: 1170, saturdayOpen: 660, saturdayClose: 840 })
+  eq('a bare row falls back to Montgomeryville hours', centerOperatingHours({}),
+     { weekdayOpen: 900, weekdayClose: 1170, saturdayOpen: 600, saturdayClose: 780 })
+
+  // Planned on a Thursday or Friday for the FOLLOWING Mon–Sat.
+  eq('a Thursday defaults to next Monday', defaultPlanWeekStart('2026-10-01'), '2026-10-05')
+  eq('a Monday still plans the NEXT week', defaultPlanWeekStart('2026-10-05'), '2026-10-12')
+  eq('the plan week runs Mon–Sat', planWeekDates('2026-10-05'),
+     ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10'])
+
+  eq('bands are half-hour starts', bands(900, 1170).length, 9)
+  eq('a session outside hours EXTENDS the axis, snapped to the half hour',
+     extendRange(900, 1170, [{ start_time: '14:45:00', duration: 60 }]), [870, 1170])
+  eq('and past the close too',
+     extendRange(900, 1170, [{ start_time: '19:00:00', duration: 45 }]), [900, 1200])
+
+  // Saturday 10:00am sits beside weekday 4:00pm, through 12:30 beside 6:30.
+  const rows = alignRows(bands(900, 1170), bands(600, 780))
+  eq('Sat 10:00 aligns with weekday 4:00pm', rows[2], { w: 960, s: 600 })
+  eq('Sat 12:30 aligns with weekday 6:30pm', rows[7], { w: 1110, s: 750 })
+  eq('rows above the Saturday range are blank on the Saturday side', rows[0], { w: 900, s: null })
+  eq('and below it', rows[8], { w: 1140, s: null })
+  eq("Blue Bell's 11:00 FIRST slot also sits beside 4:00pm",
+     alignRows(bands(900, 1170), bands(660, 840))[2], { w: 960, s: 660 })
+  eq('a long Saturday adds rows the weekday side leaves blank',
+     alignRows(bands(900, 990), bands(600, 780)).map((r) => r.w),
+     [900, 930, 960, null, null, null, null, null])
+
+  const mk = (date, time, over = {}) =>
+    ({ date, start_time: time, duration: 60, status: 'scheduled', delivery_method: 'in_center', ...over })
+  const hours = { weekdayOpen: 900, weekdayClose: 1170, saturdayOpen: 600, saturdayClose: 780 }
+  const grid = planWeekGrid({
+    weekStart: '2026-10-05',
+    hours,
+    sessions: [
+      mk('2026-10-05', '16:00:00'),
+      mk('2026-10-05', '16:30:00', { delivery_method: 'online' }),
+      mk('2026-10-06', '15:00:00', { status: 'cancelled' }),
+      mk('2026-10-10', '10:00:00'),
+    ],
+  })
+  eq('days with no counting session are hidden — cancelled does not count',
+     grid.weekdays.map((d) => d.date), ['2026-10-05'])
+  eq('a 60-minute session counts in BOTH bands it overlaps (day-view rule)',
+     [grid.weekdays[0].inCenter[2], grid.weekdays[0].inCenter[3]], [1, 1])
+  eq('online counts in its own table only',
+     [grid.weekdays[0].online[3], grid.weekdays[0].online[2]], [1, 0])
+  eq('Saturday shows when it has sessions', grid.saturday?.inCenter[0], 1)
+
+  const noSat = planWeekGrid({ weekStart: '2026-10-05', hours, sessions: [mk('2026-10-05', '16:00:00')] })
+  eq('an empty Saturday is hidden entirely', noSat.saturday, null)
+  eq('and its axis with it', noSat.saturdayBands, [])
+
+  // Wiring that must not drift.
+  const readSrc = (rel) =>
+    readFileSync(joinPath(process.cwd(), rel), 'utf8').replace(/\r\n/g, '\n')
+  eq('the centers select carries the hours columns',
+     readSrc('src/features/centers/CenterProvider.jsx')
+       .includes('weekday_open, weekday_close, saturday_open, saturday_close'), true)
+  eq('the Week tab is admin-only in the nav',
+     readSrc('src/components/TopBar.jsx').includes("{ to: '/week', label: 'Week', adminOnly: true }"), true)
+  eq('the week query selects what the grid counts',
+     readSrc('src/features/week/WeekPlanView.jsx')
+       .includes("select('date, start_time, duration, status, delivery_method')"), true)
 }
 
 // ---- Radius-confirmed absences: a skipped confirmed session is a signal
