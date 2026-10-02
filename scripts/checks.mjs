@@ -21,7 +21,7 @@ import { cleanPersonName, titleCaseName, generateDisplayName, violatesNamingConv
 import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } from '../src/features/imports/workstreamImport.js'
 import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, mapDelivery, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent, radiusKeyOf, confirmationTargets, planRadiusImport, isVirtualCenter, VIRTUAL_CENTERS, missingRadiusHeaders, readRadiusRow, sessionBooker } from '../src/features/imports/radiusImport.js'
 import { sessionMarker, isStaffBooker, STAFF_BOOKERS } from '../src/features/day/sessionMarker.js'
-import { centerOperatingHours, defaultPlanWeekStart, planWeekDates, extendRange, bands, alignRows, planWeekGrid } from '../src/features/week/weekPlan.js'
+import { centerOperatingHours, defaultPlanWeekStart, planWeekDates, extendRange, bands, alignRows, planWeekGrid, monthDay } from '../src/features/week/weekPlan.js'
 import { planStudentImport, planStudentImportByCenter, STUDENT_FIELDS, STUDENT_MATCH_COLUMNS } from '../src/features/imports/studentImport.js'
 import { buildChecks } from '../src/features/health/checks.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime , formatStampDate, TIME_CHOICES, centerInstant } from '../src/lib/dates.js'
@@ -2367,6 +2367,26 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
   const noSat = planWeekGrid({ weekStart: '2026-10-05', hours, sessions: [mk('2026-10-05', '16:00:00')] })
   eq('an empty Saturday is hidden entirely', noSat.saturday, null)
   eq('and its axis with it', noSat.saturdayBands, [])
+
+  // Daily totals count SESSIONS, not cells: the 90-minute session below
+  // spans three half-hour cells but totals as one.
+  const totals = planWeekGrid({
+    weekStart: '2026-10-05',
+    hours,
+    sessions: [
+      mk('2026-10-05', '16:00:00', { duration: 90 }),
+      mk('2026-10-05', '16:00:00', { delivery_method: 'online' }),
+      mk('2026-10-05', '17:00:00', { status: 'cancelled' }),
+      mk('2026-10-10', '10:00:00', { duration: 120 }),
+    ],
+  })
+  eq('a 90-minute session totals as ONE session, cancelled as none',
+     totals.weekdays[0].totals, { inCenter: 1, online: 1 })
+  eq('but still fills three half-hour cells',
+     totals.weekdays[0].inCenter.filter((n) => n > 0).length, 3)
+  eq('Saturday gets totals too', totals.saturday.totals, { inCenter: 1, online: 0 })
+
+  eq('the stacked header date reads month/day', monthDay('2026-09-28'), '9/28')
 
   // Wiring that must not drift.
   const readSrc = (rel) =>

@@ -93,6 +93,12 @@ export function alignRows(weekdayBands, saturdayBands, anchor = SATURDAY_ANCHOR)
 
 const deliveryOf = (s) => (s.delivery_method === 'online' ? 'online' : 'in_center')
 
+/** '2026-09-28' -> '9/28', for the stacked column headers. */
+export function monthDay(iso) {
+  const [, m, d] = String(iso ?? '').split('-')
+  return `${Number(m)}/${Number(d)}`
+}
+
 /** Count per band, day-view rule: a session counts in every band it overlaps. */
 function countsFor(sessions, bandList) {
   return bandList.map((m) => sessions.reduce((n, s) => n + (sessionCoversSlot(s, m) ? 1 : 0), 0))
@@ -129,10 +135,15 @@ export function planWeekGrid({ sessions, weekStart, hours }) {
     rows: alignRows(weekdayBands, saturdayBands),
     weekdays: visibleWeekdays.map((date) => {
       const mine = byDate.get(date)
+      const inCenterSessions = mine.filter((s) => deliveryOf(s) === 'in_center')
+      const onlineSessions = mine.filter((s) => deliveryOf(s) === 'online')
       return {
         date,
-        inCenter: countsFor(mine.filter((s) => deliveryOf(s) === 'in_center'), weekdayBands),
-        online: countsFor(mine.filter((s) => deliveryOf(s) === 'online'), weekdayBands),
+        inCenter: countsFor(inCenterSessions, weekdayBands),
+        online: countsFor(onlineSessions, weekdayBands),
+        // SESSION counts, not cell sums — a 90-minute session spans three
+        // cells but is one session.
+        totals: { inCenter: inCenterSessions.length, online: onlineSessions.length },
       }
     }),
     saturday: saturdayVisible
@@ -146,6 +157,10 @@ export function planWeekGrid({ sessions, weekStart, hours }) {
             saturdaySessions.filter((s) => deliveryOf(s) === 'online'),
             saturdayBands,
           ),
+          totals: {
+            inCenter: saturdaySessions.filter((s) => deliveryOf(s) === 'in_center').length,
+            online: saturdaySessions.filter((s) => deliveryOf(s) === 'online').length,
+          },
         }
       : null,
   }

@@ -558,7 +558,14 @@ anchor). **Never call `toISOString()` for dates.**
     already owns `centerHours`, the day view's hardcoded DISPLAY window,
     which is a different thing and was left alone. Week navigation defaults
     to NEXT week (defaultPlanWeekStart: the owner plans Thursday/Friday for
-    the following Mon–Sat). Note: the hours columns are not covered by
+    the following Mon–Sat). Daily totals: each table ends in a Total row
+    and an "All sessions" combined row sits below both — SESSION counts,
+    never cell sums (a 90-minute session spans three cells but is one
+    session); the combined table clones the header invisibly so all three
+    tables take identical column widths. Column headers stack the date over
+    the weekday ('9/28' over 'Mon' — the first cut used formatDateShort,
+    which already contains the weekday, so the day name printed twice).
+    Note: the hours columns are not covered by
     db_schema_facts (it does not inventory the centers table), so db-check
     carries no REQUIRED_COLUMNS row for them.
 

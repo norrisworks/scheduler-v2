@@ -6,7 +6,7 @@ import Spinner from '../../components/Spinner'
 import QueryError from '../../components/QueryError'
 import { addDays, formatDateShort, formatTime, minutesToTime, todayISO } from '../../lib/dates'
 import { slotChipClass } from '../day/load'
-import { centerOperatingHours, defaultPlanWeekStart, planWeekDates, planWeekGrid } from './weekPlan'
+import { centerOperatingHours, defaultPlanWeekStart, monthDay, planWeekDates, planWeekGrid } from './weekPlan'
 
 const DAY_LABEL = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -122,6 +122,7 @@ export default function WeekPlanView() {
         <div className="mt-5 space-y-6">
           <CountTable grid={grid} metric="inCenter" title="In-center students" />
           <CountTable grid={grid} metric="online" title="Online students" />
+          <CombinedTotals grid={grid} />
         </div>
       )}
     </div>
@@ -139,23 +140,7 @@ function CountTable({ grid, metric, title }) {
     <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white p-3">
       <p className="mb-2 text-xs font-semibold tracking-wide text-zinc-600 uppercase">{title}</p>
       <table className="border-separate border-spacing-0">
-        <thead>
-          <tr>
-            <th className="w-16" />
-            {grid.weekdays.map(({ date }) => (
-              <th key={date} className="px-1 pb-1 text-center text-[11px] font-semibold text-zinc-600">
-                {DAY_LABEL[new Date(`${date}T12:00:00`).getDay()]}{' '}
-                <span className="font-normal text-zinc-400">{formatDateShort(date)}</span>
-              </th>
-            ))}
-            {hasSaturday && <th className="w-16" />}
-            {hasSaturday && (
-              <th className="px-1 pb-1 text-center text-[11px] font-semibold text-zinc-600">
-                Sat <span className="font-normal text-zinc-400">{formatDateShort(grid.saturday.date)}</span>
-              </th>
-            )}
-          </tr>
-        </thead>
+        <HeaderRow grid={grid} />
         <tbody>
           {grid.rows.map((row, i) => (
             <tr key={i}>
@@ -183,6 +168,97 @@ function CountTable({ grid, metric, title }) {
               )}
             </tr>
           ))}
+          {/* SESSION counts, not cell sums — a 90-minute session spans three
+              cells but is one session. */}
+          <tr>
+            <td className="border-t border-zinc-200 pt-1 pr-2 text-right text-[11px] font-semibold text-zinc-500">
+              Total
+            </td>
+            {grid.weekdays.map((day) => (
+              <td
+                key={day.date}
+                className="border-t border-zinc-200 px-1 pt-1 text-center text-[11px] font-bold text-zinc-800 tabular-nums"
+              >
+                {day.totals[metric]}
+              </td>
+            ))}
+            {hasSaturday && <td className="border-t border-zinc-200 pt-1" />}
+            {hasSaturday && (
+              <td className="border-t border-zinc-200 px-1 pt-1 text-center text-[11px] font-bold text-zinc-800 tabular-nums">
+                {grid.saturday.totals[metric]}
+              </td>
+            )}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/**
+ * The stacked column header: date over weekday ('9/28' over 'Mon'). Shared
+ * by every table; the combined-totals table renders it invisible so its
+ * columns take the SAME widths and the three tables line up.
+ */
+function HeaderRow({ grid, invisible = false }) {
+  const hasSaturday = Boolean(grid.saturday)
+  const dayHead = (date) => (
+    <>
+      <span className="block">{monthDay(date)}</span>
+      <span className="block font-normal text-zinc-400">
+        {DAY_LABEL[new Date(`${date}T12:00:00`).getDay()]}
+      </span>
+    </>
+  )
+  return (
+    <thead>
+      <tr className={invisible ? 'invisible' : undefined}>
+        <th className="w-16" />
+        {grid.weekdays.map(({ date }) => (
+          <th key={date} className="px-1 pb-1 text-center text-[11px] font-semibold text-zinc-600">
+            {dayHead(date)}
+          </th>
+        ))}
+        {hasSaturday && <th className="w-16" />}
+        {hasSaturday && (
+          <th className="px-1 pb-1 text-center text-[11px] font-semibold text-zinc-600">
+            {dayHead(grid.saturday.date)}
+          </th>
+        )}
+      </tr>
+    </thead>
+  )
+}
+
+/** In-center plus online per day, one row below both tables. */
+function CombinedTotals({ grid }) {
+  const hasSaturday = Boolean(grid.saturday)
+  const sum = (t) => t.inCenter + t.online
+  return (
+    <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white p-3">
+      <p className="mb-2 text-xs font-semibold tracking-wide text-zinc-600 uppercase">
+        All sessions
+      </p>
+      <table className="border-separate border-spacing-0">
+        <HeaderRow grid={grid} invisible />
+        <tbody>
+          <tr>
+            <td className="pr-2 text-right text-[11px] font-semibold text-zinc-500">Total</td>
+            {grid.weekdays.map((day) => (
+              <td
+                key={day.date}
+                className="px-1 text-center text-[11px] font-bold text-zinc-800 tabular-nums"
+              >
+                {sum(day.totals)}
+              </td>
+            ))}
+            {hasSaturday && <td />}
+            {hasSaturday && (
+              <td className="px-1 text-center text-[11px] font-bold text-zinc-800 tabular-nums">
+                {sum(grid.saturday.totals)}
+              </td>
+            )}
+          </tr>
         </tbody>
       </table>
     </div>
