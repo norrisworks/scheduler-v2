@@ -164,7 +164,7 @@ export default function WeekPlanView() {
 /** Day boundary: a HEAVY divider plus extra air, so pairs read separately. */
 const DAY_EDGE = 'border-l-2 border-zinc-300 pl-2'
 /** Alternating day-pair shading; odd days get the tint. */
-const stripeOf = (i) => (i % 2 === 1 ? 'bg-zinc-50' : '')
+// Days separate by DIVIDER alone — the alternating bands read as weight.
 
 /**
  * One center's heatmap. Cells paint edge to edge on each center's OWN
@@ -198,7 +198,7 @@ function WeekTable({ grid, max, inHue }) {
       <div
         className={
           'flex h-8 items-center justify-center rounded-[2px] text-sm font-semibold tabular-nums' +
-          (n > 0 ? '' : ' bg-zinc-100')
+          (n > 0 ? '' : ' bg-zinc-50/60')
         }
         // Continuous: interpolated from the value against the SHARED max,
         // so every distinct count is a visibly distinct shade.
@@ -209,20 +209,20 @@ function WeekTable({ grid, max, inHue }) {
     </td>
   )
 
-  const dayPair = (day, bandMinutes, bandList, stripe) => {
+  const dayPair = (day, bandMinutes, bandList) => {
     if (bandMinutes === null) {
       return (
         <>
-          <td className={`p-px ${DAY_EDGE} ${stripe}`} />
-          <td className={`p-px ${stripe}`} />
+          <td className={`p-px ${DAY_EDGE}`} />
+          <td className="p-px" />
         </>
       )
     }
     const i = bandList.indexOf(bandMinutes)
     return (
       <>
-        {heatCell(day.inCenter[i] ?? 0, inHue, `${DAY_EDGE} ${stripe}`)}
-        {heatCell(day.online[i] ?? 0, 'green', stripe)}
+        {heatCell(day.inCenter[i] ?? 0, inHue, DAY_EDGE)}
+        {heatCell(day.online[i] ?? 0, 'green', '')}
       </>
     )
   }
@@ -246,7 +246,7 @@ function WeekTable({ grid, max, inHue }) {
               <th
                 key={date}
                 colSpan={2}
-                className={`px-1 pt-1 text-center ${DAY_EDGE} ${stripeOf(i)}`}
+                className={`px-1 pt-1 text-center ${DAY_EDGE}`}
               >
                 <span className="block text-base leading-tight font-bold text-zinc-900">
                   {monthDay(date)}
@@ -258,7 +258,7 @@ function WeekTable({ grid, max, inHue }) {
             ))}
             {hasSaturday && <th />}
             {hasSaturday && (
-              <th colSpan={2} className={`px-1 pt-1 text-center ${DAY_EDGE} ${stripeOf(satIndex)}`}>
+              <th colSpan={2} className={`px-1 pt-1 text-center ${DAY_EDGE}`}>
                 <span className="block text-base leading-tight font-bold text-zinc-900">
                   {monthDay(grid.saturday.date)}
                 </span>
@@ -272,10 +272,10 @@ function WeekTable({ grid, max, inHue }) {
           <tr>
             <th />
             {grid.weekdays.map(({ date }, i) => (
-              <SubHeads key={date} stripe={stripeOf(i)} />
+              <SubHeads key={date} />
             ))}
             {hasSaturday && <th />}
-            {hasSaturday && <SubHeads stripe={stripeOf(satIndex)} />}
+            {hasSaturday && <SubHeads />}
             <th className={DAY_EDGE} />
           </tr>
         </thead>
@@ -285,13 +285,13 @@ function WeekTable({ grid, max, inHue }) {
               {axisLabel(row.w)}
               {grid.weekdays.map((day, d) => (
                 <DayCells key={day.date}>
-                  {dayPair(day, row.w, grid.weekdayBands, stripeOf(d))}
+                  {dayPair(day, row.w, grid.weekdayBands)}
                 </DayCells>
               ))}
               {hasSaturday && axisLabel(row.s, 'pl-1')}
               {hasSaturday && (
                 <DayCells>
-                  {dayPair(grid.saturday, row.s, grid.saturdayBands, stripeOf(satIndex))}
+                  {dayPair(grid.saturday, row.s, grid.saturdayBands)}
                 </DayCells>
               )}
               <td className={`text-center text-sm font-semibold text-zinc-700 tabular-nums ${DAY_EDGE}`}>
@@ -309,10 +309,10 @@ function WeekTable({ grid, max, inHue }) {
               Total
             </td>
             {grid.weekdays.map((day, i) => (
-              <TotalsPair key={day.date} totals={day.totals} stripe={stripeOf(i)} />
+              <TotalsPair key={day.date} totals={day.totals} />
             ))}
             {hasSaturday && <td className="border-t border-zinc-200 pt-1.5" />}
-            {hasSaturday && <TotalsPair totals={grid.saturday.totals} stripe={stripeOf(satIndex)} />}
+            {hasSaturday && <TotalsPair totals={grid.saturday.totals} />}
             {/* The WHOLE week, Saturday included. */}
             <td className={`border-t border-zinc-200 pt-1.5 text-center text-sm font-bold text-zinc-900 tabular-nums ${DAY_EDGE}`}>
               {weekGrandTotal(grid)}
@@ -324,7 +324,7 @@ function WeekTable({ grid, max, inHue }) {
               <td
                 key={day.date}
                 colSpan={2}
-                className={`px-1 pb-0.5 text-center text-sm font-bold text-zinc-900 tabular-nums ${DAY_EDGE} ${stripeOf(i)}`}
+                className={`px-1 pb-0.5 text-center text-sm font-bold text-zinc-900 tabular-nums ${DAY_EDGE}`}
               >
                 {day.totals.inCenter + day.totals.online}
               </td>
@@ -333,7 +333,7 @@ function WeekTable({ grid, max, inHue }) {
             {hasSaturday && (
               <td
                 colSpan={2}
-                className={`px-1 pb-0.5 text-center text-sm font-bold text-zinc-900 tabular-nums ${DAY_EDGE} ${stripeOf(satIndex)}`}
+                className={`px-1 pb-0.5 text-center text-sm font-bold text-zinc-900 tabular-nums ${DAY_EDGE}`}
               >
                 {grid.saturday.totals.inCenter + grid.saturday.totals.online}
               </td>
@@ -355,13 +355,13 @@ function WeekCols({ inPct, onPct }) {
   )
 }
 
-function SubHeads({ stripe = '' }) {
+function SubHeads() {
   return (
     <>
-      <th className={`pb-1 text-center text-xs font-semibold text-zinc-500 ${DAY_EDGE} ${stripe}`}>
+      <th className={`pb-1 text-center text-xs font-semibold text-zinc-500 ${DAY_EDGE}`}>
         In-center
       </th>
-      <th className={`pb-1 text-center text-xs font-semibold text-zinc-500 ${stripe}`}>Online</th>
+      <th className="pb-1 text-center text-xs font-semibold text-zinc-500">Online</th>
     </>
   )
 }
@@ -371,13 +371,13 @@ function DayCells({ children }) {
   return children
 }
 
-function TotalsPair({ totals, stripe = '' }) {
+function TotalsPair({ totals }) {
   return (
     <>
-      <td className={`border-t border-zinc-200 pt-1.5 text-center text-sm font-bold text-zinc-800 tabular-nums ${DAY_EDGE} ${stripe}`}>
+      <td className={`border-t border-zinc-200 pt-1.5 text-center text-sm font-bold text-zinc-800 tabular-nums ${DAY_EDGE}`}>
         {totals.inCenter}
       </td>
-      <td className={`border-t border-zinc-200 pt-1.5 text-center text-sm font-bold text-zinc-800 tabular-nums ${stripe}`}>
+      <td className="border-t border-zinc-200 pt-1.5 text-center text-sm font-bold text-zinc-800 tabular-nums">
         {totals.online}
       </td>
     </>

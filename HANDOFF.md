@@ -549,8 +549,10 @@ anchor). **Never call `toISOString()` for dates.**
     TIGHT pair of columns — in-center, then a narrower online (table-fixed
     + colgroup split the day width ≈ 1 : 0.62; the time axes take fixed px
     so the Saturday axis hugs its column) — under one spanning date header
-    with In-center/Online subheads, days separated by a HEAVY divider plus
-    air and alternating zinc-50 pair shading. Counting is the day-view axis rule (a session
+    with In-center/Online subheads, days separated by the HEAVY divider
+    plus air ALONE — the alternating pair shading was removed as visual
+    weight, and empty cells faded to a near-invisible zinc-50/60 so
+    blanks recede and only data draws the eye. Counting is the day-view axis rule (a session
     counts in every half hour it overlaps; occupiesFloor excludes cancelled
     and no-show), but colors are two INDEPENDENT fixed scales so weeks stay
     comparable within a week, and gray means ZERO everywhere. Scales are
@@ -571,7 +573,10 @@ anchor). **Never call `toISOString()` for dates.**
     edge). Checks measure the output's OKLab lightness and hold all
     three hues equal at every count. Clamping above the max and
     deepest-when-count-IS-the-max behave as before; ink flips to white
-    past t ≈ 0.6. Hues:
+    past t ≈ 0.6. The ramps are DESATURATED by design (chroma 0.055 →
+    0.12 in every hue): the deepest shade is a muted brick/dusty-blue/
+    sage, never a pure bright primary, and the shared cLight makes every
+    hue's 1 equally pale. Hues:
     MV in-center RED, Blue Bell in-center BLUE (IN_CENTER_HUE map in the
     view), online GREEN at both. Time labels sit calendar-style ON the
     boundary at the top of the row they begin (both axes). A far-right

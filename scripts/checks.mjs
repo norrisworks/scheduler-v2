@@ -2415,11 +2415,13 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
   const near = (rgb, want, tol = 3) =>
     channels(rgb).every((c, i) => Math.abs(c - want[i]) <= tol)
   eq('zero has no style', heatStyle(0, 10, 'red'), null)
-  eq("red's floor still IS the owner-approved red-200 shade",
-     near(bg(1, 10, 'red'), [254, 202, 202]), true)
-  eq("red's ceiling still lands on red-600, in white ink",
-     [near(bg(10, 10, 'red'), [220, 38, 38]), heatStyle(10, 10, 'red').color],
+  eq("red's floor is the pale muted pink, red-200's lightness kept",
+     near(bg(1, 10, 'red'), [251, 203, 203]), true)
+  eq("red's ceiling is a muted brick, never pure bright red, in white ink",
+     [near(bg(10, 10, 'red'), [182, 90, 81]), heatStyle(10, 10, 'red').color],
      [true, '#ffffff'])
+  eq("green's 1 is exactly as pale as red's (same L, same chroma)",
+     near(bg(1, 10, 'green'), [189, 228, 202]), true)
 
   // The OKLCH ramp: ONE lightness curve for all three hues, so a given
   // count reads equally dark in red, blue and green — RGB interpolation

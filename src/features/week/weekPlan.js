@@ -149,10 +149,16 @@ export function rgbOklabLightness(r, g, b) {
  */
 const HEAT_L = { light: 0.8845, deep: 0.5771 }
 
+/**
+ * Deliberately DESATURATED (owner: the table should read calm, not loud):
+ * chroma runs 0.055 → 0.12 in every hue — the deepest shade is a muted
+ * brick/dusty-blue/sage, never a pure bright primary — and the identical
+ * cLight makes every hue's 1 equally pale.
+ */
 export const HEAT_HUES = {
-  red: { hLight: 18.3, hDeep: 27.3, cLight: 0.0593, cDeep: 0.2152, ink: '#450a0a' },
-  blue: { hLight: -105.9, hDeep: -97.1, cLight: 0.0571, cDeep: 0.2152, ink: '#172554' },
-  green: { hLight: 156.0, hDeep: 149.2, cLight: 0.0806, cDeep: 0.1699, ink: '#052e16' },
+  red: { hLight: 18.3, hDeep: 27.3, cLight: 0.055, cDeep: 0.12, ink: '#450a0a' },
+  blue: { hLight: -105.9, hDeep: -97.1, cLight: 0.055, cDeep: 0.12, ink: '#172554' },
+  green: { hLight: 156.0, hDeep: 149.2, cLight: 0.055, cDeep: 0.12, ink: '#052e16' },
 }
 
 /**
