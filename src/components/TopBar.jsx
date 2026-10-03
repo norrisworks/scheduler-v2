@@ -14,7 +14,7 @@ const NAV_GROUPS = [
     key: 'today',
     items: [
       { to: '/day', label: 'Day' },
-      { to: '/binder', label: 'Binder' },
+      { to: '/binder', label: 'Binders' },
     ],
   },
   {
@@ -27,7 +27,7 @@ const NAV_GROUPS = [
   {
     key: 'people',
     items: [
-      { to: '/roster', label: 'Roster' },
+      { to: '/roster', label: 'Students' },
       { to: '/instructors', label: 'Instructors', adminOnly: true },
       { to: '/rankings', label: 'Rankings', adminOnly: true },
     ],

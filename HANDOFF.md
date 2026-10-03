@@ -675,7 +675,11 @@ anchor). **Never call `toISOString()` for dates.**
     adjacent groups read as one run. No labels. The signed-in email and
     Sign out collapsed into one round account button at the far right
     (AccountMenu: person glyph, dropdown with the email and Sign out,
-    backdrop and Escape to close). Admin-only flags stay per tab (NAV_GROUPS), so an
+    backdrop and Escape to close). Renamed: the Binder tab is 'Binders'
+    (heading too — was 'Binder prep') and Roster is 'Students'; routes,
+    file names and code identifiers keep their old names, and every
+    user-facing string that pointed at "the Roster" now says the
+    Students tab. Admin-only flags stay per tab (NAV_GROUPS), so an
     instructor account sees Day, Binder | Shifts | Roster | Imports,
     Data health in the same grouped order.
 

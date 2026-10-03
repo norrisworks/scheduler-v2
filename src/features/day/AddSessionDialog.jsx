@@ -164,7 +164,7 @@ export default function AddSessionDialog({ centerId, date, onClose, onCreated })
             )}
             {query.trim() && matches.length === 0 && !studentId && (
               <p className="mt-1 text-[11px] text-zinc-400">
-                No active student matches. Add them on the Roster first.
+                No active student matches. Add them on the Students tab first.
               </p>
             )}
           </div>

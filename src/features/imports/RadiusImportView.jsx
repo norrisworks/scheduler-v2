@@ -394,7 +394,7 @@ export default function RadiusImportView() {
         The Appointments export carries no id columns, so rows are matched on account name and the
         student's display name — which is why a name that drifted needs a manual link. The{' '}
         <span className="font-medium">Students export</span> does carry Student Id and Account Id:
-        importing one on the Roster tab populates <code>radius_account</code> and makes every future
+        importing one on the Students tab populates <code>radius_account</code> and makes every future
         appointment import id-stable. Montgomeryville currently has none populated, so all of its
         rows match by name today.
       </p>
@@ -651,7 +651,7 @@ export default function RadiusImportView() {
                   <p className="mt-0.5 text-[11px] text-red-700">
                     The file puts these at {c.center.name}, but they exist at another center. This
                     is always a question, never an assumption: fix it in Radius, or move the student
-                    on the Roster.
+                    on the Students tab.
                   </p>
                   <ul className="mt-1 space-y-0.5">
                     {[

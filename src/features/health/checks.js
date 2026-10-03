@@ -137,7 +137,7 @@ export function buildChecks(students, instructors, rankings) {
       entity: 'student',
       severity: 'medium',
       title: `${staleNames.length} display name${staleNames.length === 1 ? '' : 's'} with a stale grade`,
-      detail: 'The grade in the name no longer matches the student. Rename them on the Roster.',
+      detail: 'The grade in the name no longer matches the student. Rename them on the Students tab.',
       items: staleNames.map(({ student, was }) => ({
         id: student.id,
         label: student.name,

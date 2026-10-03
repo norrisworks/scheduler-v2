@@ -143,7 +143,7 @@ export default function BinderPrepView() {
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 bg-white px-4 py-2.5">
         <div className="min-w-0">
-          <h1 className="text-base font-semibold text-zinc-900">Binder prep</h1>
+          <h1 className="text-base font-semibold text-zinc-900">Binders</h1>
           <p className="text-xs text-zinc-500">
             {center?.name} · {formatDateLong(date)}
             {date === tomorrow ? ' · tomorrow' : date === todayISO() ? ' · today' : ''}
