@@ -145,7 +145,7 @@ export default function SessionCard({
   const marker = sessionMarker(session)
   const markerEl = (
     <span
-      className="flex h-3 w-3 shrink-0 items-center justify-center rounded-full text-[8px] leading-none font-bold text-white"
+      className="flex h-3 w-3 shrink-0 items-center justify-center rounded-[3px] text-[8px] leading-none font-bold text-white"
       style={{ backgroundColor: marker.color }}
       title={marker.title}
       aria-label={marker.title}
@@ -187,9 +187,8 @@ export default function SessionCard({
               (session.status === 'cancelled' ? 'line-through' : '')
             }
           >
-            {formatTime(session.start_time)} • {session.duration}m
+            {formatTime(session.start_time)}
           </span>
-          {binderTick}
           {warning && (
             <span className="shrink-0 text-[9px] text-amber-600" title={warning} aria-label={warning}>
               ⚠
@@ -207,6 +206,7 @@ export default function SessionCard({
           {/* The marker holds the top-right corner; the hover-only controls
               appear beside it. */}
           <span className="ml-auto flex shrink-0 items-center gap-0.5">
+            {binderTick}
             {unassignButton}
             {menuButton}
             {markerEl}
@@ -262,30 +262,32 @@ export default function SessionCard({
       <div className="absolute top-0.5 right-0.5">{markerEl}</div>
       <div className="absolute top-0.5 right-0.5">{menuButton}</div>
 
-      {/* Row 2: time, duration and grade (session_card spec styling) */}
+      {/* Row 2: the start time alone — duration is evident from the card's
+          height, so printing it was noise. */}
       <div className="mt-0.5 flex items-center gap-1 text-[9px] text-zinc-500">
-        <span>
-          {formatTime(session.start_time)} • {session.duration}m
-        </span>
-        {binderTick}
-        {student?.grade && (
-          <span className="shrink-0 rounded bg-zinc-200 px-1 py-0.5 text-[9px] text-zinc-600">
-            {student.grade}
-          </span>
-        )}
+        <span>{formatTime(session.start_time)}</span>
       </div>
 
-      {/* Row 3: academic status. Session status is deliberately NOT here —
+      {/* Row 3: grade chip, then academic status. The grade's gray is
+          deliberately DARKER than the 'At level' pill's slate so the two
+          don't blend side by side. Session status is deliberately NOT here —
           Radius owns attendance, and cancelled sessions are off the grid, so
           a status chip on a card face could only ever say nothing useful. */}
-      {academic && (
+      {(student?.grade || academic) && (
         <div className="mt-0.5 flex flex-wrap items-center gap-1">
-          <span
-            className="rounded px-1 py-0.5 text-[8px] font-medium"
-            style={{ backgroundColor: academic.bg, color: academic.color }}
-          >
-            {academic.label}
-          </span>
+          {student?.grade && (
+            <span className="shrink-0 rounded bg-zinc-300 px-1 py-0.5 text-[9px] text-zinc-800">
+              {student.grade}
+            </span>
+          )}
+          {academic && (
+            <span
+              className="rounded px-1 py-0.5 text-[8px] font-medium"
+              style={{ backgroundColor: academic.bg, color: academic.color }}
+            >
+              {academic.label}
+            </span>
+          )}
         </div>
       )}
 
@@ -314,6 +316,10 @@ export default function SessionCard({
       ) : (
         <div className="flex-1" />
       )}
+
+      {/* Second-to-last row: the binder tick on the right, directly above
+          the Supp badge's bottom-right corner. */}
+      <div className="flex justify-end">{binderTick}</div>
 
       {/* Bottom: instructor left, Supp badge right */}
       <div className="mt-0.5 flex items-center justify-between gap-1">

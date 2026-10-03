@@ -508,7 +508,9 @@ anchor). **Never call `toISOString()` for dates.**
     to CancelledList, which doesn't take it), so the menu's first-day items
     threw on click; now wired, with a source-scan check.
 43. **One marker says how firm the booking is** (2026-10-02; rendering
-    revised after the owner found the text-stroke letters illegible). The
+    revised after the owner found the text-stroke letters illegible;
+    reshaped 2026-10-03 to a slightly rounded SQUARE — rounded-[3px],
+    same size and colors, white letter centered). The
     card's marker (sessionMarker.js) replaced the certainty dot AND the
     inline Radius R, in both orientations. It holds the TOP-RIGHT corner,
     sharing it with the hover-only ⋯ menu (the menu covers it while
@@ -679,7 +681,15 @@ anchor). **Never call `toISOString()` for dates.**
     (heading too — was 'Binder prep') and Roster is 'Students'; routes,
     file names and code identifiers keep their old names, and every
     user-facing string that pointed at "the Roster" now says the
-    Students tab. Admin-only flags stay per tab (NAV_GROUPS), so an
+    Students tab.
+49. **The session card's rows settled** (2026-10-03). Time row shows the
+    START TIME alone — duration left the card entirely, the height (grid)
+    or width (Rows) already says it, and the ⋯ menu still edits it. Row
+    three is grade chip then academic pill, the grade's gray deliberately
+    DARKER (zinc-300/zinc-800) than the 'At level' slate so they don't
+    blend side by side. The binder ✓/✗ sits right-aligned on its own row
+    directly above the Supp badge's bottom-right corner (vertical card);
+    on the horizontal bar it joined the right-hand control cluster. Admin-only flags stay per tab (NAV_GROUPS), so an
     instructor account sees Day, Binder | Shifts | Roster | Imports,
     Data health in the same grouped order.
 

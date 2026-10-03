@@ -2625,8 +2625,9 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
   // inline R are gone — nothing else on the card keys on either.
   const card = readSrc('src/features/day/SessionCard.jsx')
   eq('the card renders the unified marker', card.includes('sessionMarker(session)'), true)
-  eq('every marker is the filled circle with a white letter inside',
-     card.includes('rounded-full') && card.includes('text-white'), true)
+  eq('every marker is the filled rounded SQUARE with a white letter inside',
+     card.includes('rounded-[3px]') && card.includes('text-white') &&
+       !card.includes('rounded-full'), true)
   eq('and is borderless — the saturated fill separates on its own',
      card.includes('border-black'), false)
   eq('the marker holds the top-right corner, under the hover-only menu',
