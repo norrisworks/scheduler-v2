@@ -67,14 +67,19 @@ export default function WeekPlanView() {
 
   const grids = useMemo(() => {
     if (!sessions) return null
-    return ordered.map((center) => {
+    const perCenter = ordered.map((center) => {
       const grid = planWeekGrid({
         sessions: sessions.filter((s) => s.center_id === center.id),
         weekStart,
         hours: centerOperatingHours(center),
       })
-      return { center, grid, max: centerWeekMax(grid) }
+      return { center, grid }
     })
+    // ONE shared maximum across both centers and both metrics, so the two
+    // tables' shading is directly comparable — the same count is the same
+    // shade whichever center it is in.
+    const sharedMax = Math.max(0, ...perCenter.map(({ grid }) => centerWeekMax(grid)))
+    return perCenter.map((entry) => ({ ...entry, max: sharedMax }))
   }, [sessions, ordered, weekStart])
 
   if (!isAdmin) {

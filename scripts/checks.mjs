@@ -2439,6 +2439,8 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
        .includes('weekday_open, weekday_close, saturday_open, saturday_close'), true)
   eq('the Week tab is admin-only in the nav',
      readSrc('src/components/TopBar.jsx').includes("{ to: '/week', label: 'Week', adminOnly: true }"), true)
+  eq('both tables share ONE maximum, so their shading is comparable',
+     readSrc('src/features/week/WeekPlanView.jsx').includes('sharedMax'), true)
   eq('the week query selects what the grid counts, center_id included',
      readSrc('src/features/week/WeekPlanView.jsx')
        .includes("select('center_id, date, start_time, duration, status, delivery_method')"), true)

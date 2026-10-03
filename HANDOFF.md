@@ -552,10 +552,13 @@ anchor). **Never call `toISOString()` for dates.**
     counts in every half hour it overlaps; occupiesFloor excludes cancelled
     and no-show), but colors are two INDEPENDENT fixed scales so weeks stay
     comparable within a week, and gray means ZERO everywhere. Scales are
-    per CENTER and dynamic: lightest shade at 1, deepest at that center's
-    weekly MAXIMUM (centerWeekMax — the single highest cell across both
-    metrics, Saturday included; heatLevel stretches five shades between 1
-    and the max, clamping above it, mid-scale when max is 1). Hues:
+    dynamic with ONE maximum SHARED across both centers (the single
+    highest cell anywhere that week — both centers, both metrics,
+    Saturday included: max of each grid's centerWeekMax), so the two
+    tables' shading is directly comparable — the same count is the same
+    depth whichever center it is in. Lightest shade at 1, deepest at the
+    shared max (heatLevel stretches five shades between them, clamping
+    above, mid-scale when max is 1). Hues:
     MV in-center RED, Blue Bell in-center BLUE (IN_CENTER_HUE map in the
     view), online GREEN at both. Time labels sit calendar-style ON the
     boundary at the top of the row they begin (both axes). A far-right
