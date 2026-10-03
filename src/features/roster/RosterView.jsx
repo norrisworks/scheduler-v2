@@ -21,12 +21,6 @@ import {
 import { ACADEMIC_STATUS } from '../day/studentOptions'
 import StudentDrawer from './StudentDrawer'
 
-const LEVEL_DOT = {
-  elementary: 'bg-sky-500',
-  middle: 'bg-violet-500',
-  high: 'bg-amber-500',
-}
-
 export default function RosterView() {
   const { centerId } = useCenter()
   const { isAdmin, user } = useAuth()
@@ -261,7 +255,7 @@ export default function RosterView() {
                 <col style={{ width: 256 }} />
                 <col style={{ width: 96 }} />
                 {ROSTER_DAYS.map((d) => (
-                  <col key={d} style={{ width: 68 }} />
+                  <col key={d} style={{ width: 80 }} />
                 ))}
                 <col />
               </colgroup>
@@ -290,6 +284,7 @@ export default function RosterView() {
                     slotHandlers={slotHandlers}
                     onUpdateStudent={updateStudentFields}
                     onSaveNote={savePinnedNote}
+                    showInactive={showInactive}
                   />
                 ))}
               </tbody>
@@ -323,7 +318,7 @@ export default function RosterView() {
 }
 
 
-function StudentRow({ student, selected, onSelect, isAdmin, slotHandlers, onUpdateStudent, onSaveNote }) {
+function StudentRow({ student, selected, onSelect, isAdmin, slotHandlers, onUpdateStudent, onSaveNote, showInactive }) {
   // The slot popover for this row: { day, x, y } while open.
   const [popover, setPopover] = useState(null)
   const today = todayISO()
@@ -347,10 +342,6 @@ function StudentRow({ student, selected, onSelect, isAdmin, slotHandlers, onUpda
       <td className={`${cell} p-0`}>
         <button type="button" onClick={onSelect} aria-pressed={selected} className="w-full px-3 py-2 text-left">
           <span className="flex items-center gap-1.5">
-            <span
-              className={`h-2 w-2 shrink-0 rounded-full ${LEVEL_DOT[student.level] ?? 'bg-slate-300'}`}
-              title={student.level ?? 'level not set'}
-            />
             <span className="truncate text-sm font-medium text-slate-900">{student.name}</span>
             {student.grade && (
               <span className="shrink-0 rounded bg-zinc-200 px-1 text-[10px] text-zinc-600">
@@ -364,7 +355,10 @@ function StudentRow({ student, selected, onSelect, isAdmin, slotHandlers, onUpda
             )}
           </span>
           <span className="mt-0.5 flex items-center gap-1.5">
-            {enrollmentMeta(student.enrollment_status) && (
+            {/* With inactive rows hidden, everyone listed is active, so an
+                'Enrolled' chip on every row says nothing. It returns when
+                Show inactive mixes the statuses. */}
+            {showInactive && enrollmentMeta(student.enrollment_status) && (
               <span
                 className={`shrink-0 rounded px-1 text-[10px] ${enrollmentMeta(student.enrollment_status).chip}`}
               >
@@ -426,7 +420,7 @@ function StudentRow({ student, selected, onSelect, isAdmin, slotHandlers, onUpda
             onClick={(e) => openPopover(1, e)}
             title={isAdmin ? 'Add a standing slot' : undefined}
             className={
-              'w-full rounded bg-slate-100 py-1.5 text-center text-[11px] text-slate-400 ' +
+              'w-full rounded bg-slate-100 py-1.5 text-center text-sm text-slate-400 ' +
               (isAdmin ? 'hover:bg-slate-200 hover:text-slate-600' : 'cursor-default')
             }
           >
@@ -450,10 +444,15 @@ function StudentRow({ student, selected, onSelect, isAdmin, slotHandlers, onUpda
                   (isAdmin ? 'hover:bg-brand-50/70' : 'cursor-default')
                 }
               >
+                {/* Each slot is its own chip, so it reads as a clickable
+                    thing rather than stray text on the row background. */}
                 {mine.map((slot) => (
-                  <p key={slot.id} className="text-[11px] whitespace-nowrap text-slate-700 tabular-nums">
+                  <span
+                    key={slot.id}
+                    className="mb-0.5 block w-fit rounded border border-slate-300 bg-white px-1.5 py-0.5 text-sm leading-tight whitespace-nowrap text-slate-800 shadow-sm tabular-nums"
+                  >
                     {formatTimeMeridiem(slot.start_time)}
-                  </p>
+                  </span>
                 ))}
               </button>
             </td>
@@ -492,7 +491,7 @@ function AcademicPill({ student, isAdmin, onUpdateStudent }) {
       onClick={() => onUpdateStudent(student.id, { academic_status: next })}
       title={isAdmin ? 'Click to change' : undefined}
       className={
-        'rounded px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap ' +
+        'rounded px-2 py-0.5 text-sm font-medium whitespace-nowrap ' +
         (meta ? '' : 'border border-dashed border-slate-300 text-slate-400')
       }
       style={meta ? { backgroundColor: meta.bg, color: meta.color } : undefined}
@@ -540,7 +539,7 @@ function NoteCell({ student, isAdmin, onSave }) {
       placeholder={isAdmin ? 'Add note…' : ''}
       title={draft || undefined}
       aria-label={`Pinned note for ${student.name}`}
-      className="w-full truncate rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-slate-700 placeholder:text-slate-300 hover:border-slate-200 focus:border-brand-400 focus:outline-none"
+      className="w-full truncate rounded border border-transparent bg-transparent px-1 py-0.5 text-sm text-slate-700 placeholder:text-slate-300 hover:border-slate-200 focus:border-brand-400 focus:outline-none"
     />
   )
 }

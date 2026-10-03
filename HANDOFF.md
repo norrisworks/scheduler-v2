@@ -643,7 +643,13 @@ anchor). **Never call `toISOString()` for dates.**
     card shows: debounced autosave, typing into an empty cell creates it
     pinned, clearing the text deletes it (an empty pinned note is noise);
     with several pinned notes it edits the oldest and a badge says so.
-    The times summary line under the name is gone.
+    The times summary line under the name is gone. Refined 2026-10-03:
+    the level dot in front of the name is gone; everything from Academic
+    status rightward reads at text-sm (pills, slot times, notes); each
+    slot time is its own bordered white CHIP (day columns widened to
+    80px for them) so it reads as clickable, not stray text; and the
+    enrollment chip under the name shows only while 'Show inactive' is
+    checked — all-active listings made 'Enrolled' on every row noise.
 47. **Supp is session-specific with a student default** (2026-10-02).
     sessions.needs_schoolwork_override, the first_day_override pattern
     exactly: null follows the student's needs_schoolwork, true forces
