@@ -670,8 +670,12 @@ anchor). **Never call `toISOString()` for dates.**
     four visual groups, left to right: running today (Day, Binder),
     planning the week (Week, Shifts), people (Roster, Instructors,
     Rankings), and maintenance (Imports, Data health) pushed to the far
-    right by the group's ml-auto. Thin white dividers between the left
-    groups, no labels. Admin-only flags stay per tab (NAV_GROUPS), so an
+    right by the group's ml-auto. Dividers between the left groups are
+    deliberately STRONG (h-6, white/60, mx-3) — the first faint cut let
+    adjacent groups read as one run. No labels. The signed-in email and
+    Sign out collapsed into one round account button at the far right
+    (AccountMenu: person glyph, dropdown with the email and Sign out,
+    backdrop and Escape to close). Admin-only flags stay per tab (NAV_GROUPS), so an
     instructor account sees Day, Binder | Shifts | Roster | Imports,
     Data health in the same grouped order.
 
