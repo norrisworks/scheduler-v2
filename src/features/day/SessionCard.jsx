@@ -245,12 +245,14 @@ export default function SessionCard({
           The grade chip used to sit inline here and cost the name most of
           the card's width. */}
       <div className="flex items-center gap-1 pr-3.5">
+        {/* Always bold black: tinting the name with the instructor color
+            made it unreadable on light fills (yellow especially) — the
+            fill and the stripe already say whose student this is. */}
         <div
           className={
-            'min-w-0 flex-1 truncate text-[11px] font-medium ' +
+            'min-w-0 flex-1 truncate text-[11px] font-bold text-black ' +
             (session.status === 'cancelled' ? 'line-through' : '')
           }
-          style={{ color: instructor?.color || '#374151' }}
         >
           {student?.name || 'Unknown'}
         </div>
