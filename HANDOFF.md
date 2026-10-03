@@ -666,11 +666,11 @@ anchor). **Never call `toISOString()` for dates.**
     naming the override state. The roster/drawer Supp checkbox remains
     the student default.
 
-48. **The nav groups by rhythm of use** (2026-10-03). TopBar's tabs sit in
-    four visual groups, left to right: running today (Day, Binder),
-    planning the week (Week, Shifts), people (Roster, Instructors,
-    Rankings), and maintenance (Imports, Data health) pushed to the far
-    right by the group's ml-auto. Dividers between the left groups are
+48. **The nav groups by rhythm of use** (2026-10-03; regrouped same day to
+    the owner's order). TopBar's tabs sit in four visual groups, left to
+    right: the schedule (Day, Week), the floor (Binders, Shifts), people
+    (Students, Instructors, Rankings), and maintenance (Imports, Data
+    health) pushed to the far right by the group's ml-auto. Dividers between the left groups are
     deliberately STRONG (h-6, white/60, mx-3) — the first faint cut let
     adjacent groups read as one run. No labels. The signed-in email and
     Sign out collapsed into one round account button at the far right

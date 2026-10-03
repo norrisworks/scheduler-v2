@@ -11,16 +11,16 @@ import { useAuth } from '../features/auth/AuthProvider'
  */
 const NAV_GROUPS = [
   {
-    key: 'today',
+    key: 'schedule',
     items: [
       { to: '/day', label: 'Day' },
-      { to: '/binder', label: 'Binders' },
+      { to: '/week', label: 'Week', adminOnly: true },
     ],
   },
   {
-    key: 'planning',
+    key: 'floor',
     items: [
-      { to: '/week', label: 'Week', adminOnly: true },
+      { to: '/binder', label: 'Binders' },
       { to: '/shifts', label: 'Shifts' },
     ],
   },
