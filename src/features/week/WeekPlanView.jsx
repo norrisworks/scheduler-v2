@@ -9,7 +9,7 @@ import {
   centerOperatingHours,
   centerWeekMax,
   defaultPlanWeekStart,
-  heatClass,
+  heatStyle,
   monthDay,
   planWeekDates,
   planWeekGrid,
@@ -197,9 +197,12 @@ function WeekTable({ grid, max, inHue }) {
     <td className={`p-px ${tdClass}`}>
       <div
         className={
-          'flex h-8 items-center justify-center rounded-[2px] text-sm font-semibold tabular-nums ' +
-          (n > 0 ? heatClass(n, max, hue) : 'bg-zinc-100')
+          'flex h-8 items-center justify-center rounded-[2px] text-sm font-semibold tabular-nums' +
+          (n > 0 ? '' : ' bg-zinc-100')
         }
+        // Continuous: interpolated from the value against the SHARED max,
+        // so every distinct count is a visibly distinct shade.
+        style={n > 0 ? heatStyle(n, max, hue) : undefined}
       >
         {n > 0 ? n : ''}
       </div>

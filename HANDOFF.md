@@ -556,9 +556,14 @@ anchor). **Never call `toISOString()` for dates.**
     highest cell anywhere that week — both centers, both metrics,
     Saturday included: max of each grid's centerWeekMax), so the two
     tables' shading is directly comparable — the same count is the same
-    depth whichever center it is in. Lightest shade at 1, deepest at the
-    shared max (heatLevel stretches five shades between them, clamping
-    above, mid-scale when max is 1). Hues:
+    depth whichever center it is in. Shading is CONTINUOUS (heatStyle):
+    each cell's color interpolates from its value against the shared max,
+    t = (n−1)/(max−1), so every distinct count is a visibly distinct
+    shade — five fixed buckets made Blue Bell's 1, 3 and 4 identical. The
+    light anchor is a visible floor (a 1 is clearly colored, never
+    near-white), the deep anchor lands on the max (clamping above; a
+    count that IS the max paints deepest however small), ink flips to
+    white past t ≈ 0.6. Hues:
     MV in-center RED, Blue Bell in-center BLUE (IN_CENTER_HUE map in the
     view), online GREEN at both. Time labels sit calendar-style ON the
     boundary at the top of the row they begin (both axes). A far-right

@@ -100,35 +100,34 @@ export function monthDay(iso) {
 }
 
 /**
- * The heat shades, five steps light → deep per hue. Hues are per CENTER
- * and metric: Montgomeryville in-center red, Blue Bell in-center blue,
- * online green at both centers.
+ * The heat anchors per hue: `light` is the visible FLOOR (a 1 is clearly
+ * colored, never near-white), `deep` is the ceiling, `text` the ink used
+ * until the fill gets dark enough to need white. Hues are per CENTER and
+ * metric: Montgomeryville in-center red, Blue Bell in-center blue, online
+ * green at both centers.
  */
-export const HEAT_SHADES = {
-  red: ['bg-red-50 text-red-700', 'bg-red-100 text-red-800', 'bg-red-300 text-red-950',
-    'bg-red-400 text-white', 'bg-red-600 text-white'],
-  blue: ['bg-blue-50 text-blue-700', 'bg-blue-100 text-blue-800', 'bg-blue-300 text-blue-950',
-    'bg-blue-400 text-white', 'bg-blue-600 text-white'],
-  green: ['bg-green-50 text-green-700', 'bg-green-100 text-green-800', 'bg-green-300 text-green-950',
-    'bg-green-400 text-white', 'bg-green-600 text-white'],
+export const HEAT_ANCHORS = {
+  red: { light: [254, 202, 202], deep: [220, 38, 38], text: '#450a0a' },
+  blue: { light: [191, 219, 254], deep: [37, 99, 235], text: '#172554' },
+  green: { light: [187, 247, 208], deep: [22, 163, 74], text: '#052e16' },
 }
 
 /**
- * The scale runs from lightest at 1 to deepest at the CENTER's weekly
- * maximum (the single highest cell of that center's week, both metrics),
- * so each center reads against itself. 0 = no shade (the gray ground);
- * a degenerate max of 1 reads mid-scale.
+ * CONTINUOUS shading: each cell's color is interpolated directly from its
+ * value against the shared maximum — t = (n−1)/(max−1) — so every distinct
+ * count is a visibly distinct shade (the five fixed buckets made Blue
+ * Bell's 1, 3 and 4 identical). Zero has no style (the gray ground); a
+ * count that IS the maximum, however small, paints the deepest shade.
  */
-export function heatLevel(n, max) {
-  if (n <= 0) return 0
-  if (max <= 1) return 3
-  const level = 1 + Math.round(((Math.min(n, max) - 1) / (max - 1)) * 4)
-  return Math.min(5, Math.max(1, level))
-}
-
-export function heatClass(n, max, hue) {
-  const level = heatLevel(n, max)
-  return level === 0 ? '' : HEAT_SHADES[hue][level - 1]
+export function heatStyle(n, max, hue) {
+  if (n <= 0) return null
+  const { light, deep, text } = HEAT_ANCHORS[hue]
+  const t = max <= 1 ? 1 : Math.min(1, (n - 1) / (max - 1))
+  const mix = light.map((c, i) => Math.round(c + (deep[i] - c) * t))
+  return {
+    backgroundColor: `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`,
+    color: t >= 0.6 ? '#ffffff' : text,
+  }
 }
 
 /** The single highest cell of the center's week — in-center AND online. */
