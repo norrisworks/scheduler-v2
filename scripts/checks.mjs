@@ -2512,8 +2512,9 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
   // The roster is a real TABLE: one pinned header row carries the day
   // names (never repeated in cells), and a slotless student keeps column
   // alignment through one colSpan cell instead of squeezed boxes.
-  eq('one header row names every column',
-     rosterView.includes("['Student', 'Academic status', 'Mon', 'Tue', 'Wed', 'Thu', 'Sat', 'Student note']"),
+  eq('one header row names every column, day names centered',
+     ['Student', 'Academic status', 'Student note'].every((l) => rosterView.includes(`{ label: '${l}' }`)) &&
+       ['Mon', 'Tue', 'Wed', 'Thu', 'Sat'].every((l) => rosterView.includes(`{ label: '${l}', center: true }`)),
      true)
   eq('the header pins while the roster scrolls',
      rosterView.includes('sticky top-0 z-10 border-b'), true)

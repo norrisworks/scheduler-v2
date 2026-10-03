@@ -261,16 +261,28 @@ export default function RosterView() {
               </colgroup>
               <thead>
                 <tr>
-                  {['Student', 'Academic status', 'Mon', 'Tue', 'Wed', 'Thu', 'Sat', 'Student note'].map(
-                    (h) => (
-                      <th
-                        key={h}
-                        className="sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-1.5 text-left text-[11px] font-semibold text-slate-500"
-                      >
-                        {h}
-                      </th>
-                    ),
-                  )}
+                  {/* Day headers center over their centered cells, so each
+                      column reads as one unit. */}
+                  {[
+                    { label: 'Student' },
+                    { label: 'Academic status' },
+                    { label: 'Mon', center: true },
+                    { label: 'Tue', center: true },
+                    { label: 'Wed', center: true },
+                    { label: 'Thu', center: true },
+                    { label: 'Sat', center: true },
+                    { label: 'Student note' },
+                  ].map(({ label, center }) => (
+                    <th
+                      key={label}
+                      className={
+                        'sticky top-0 z-10 border-b border-slate-200 bg-white px-2 py-1.5 text-sm font-semibold text-slate-600 ' +
+                        (center ? 'text-center' : 'text-left')
+                      }
+                    >
+                      {label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -433,23 +445,25 @@ function StudentRow({ student, selected, onSelect, isAdmin, slotHandlers, onUpda
             .filter((s) => s.day_of_week === day)
             .sort((a, b) => a.start_time.localeCompare(b.start_time))
           return (
-            <td key={day} className={`${cell} p-0`}>
+            <td key={day} className={`${cell} p-1`}>
+              {/* Filled or empty, every day shows the SAME outlined card,
+                  so the whole grid reads as clickable slots; occupied days
+                  carry a faint tint over the shared outline. */}
               <button
                 type="button"
                 disabled={!isAdmin}
                 onClick={(e) => openPopover(day, e)}
                 title={isAdmin ? 'Edit standing slots' : undefined}
                 className={
-                  'block min-h-8 w-full px-1.5 py-1 text-left ' +
-                  (isAdmin ? 'hover:bg-brand-50/70' : 'cursor-default')
+                  'flex min-h-9 w-full flex-col items-center justify-center rounded border px-1 py-0.5 ' +
+                  (mine.length > 0 ? 'border-slate-300 bg-slate-100' : 'border-slate-200') +
+                  (isAdmin ? ' hover:border-brand-300' : ' cursor-default')
                 }
               >
-                {/* Each slot is its own chip, so it reads as a clickable
-                    thing rather than stray text on the row background. */}
                 {mine.map((slot) => (
                   <span
                     key={slot.id}
-                    className="mb-0.5 block w-fit rounded border border-slate-300 bg-white px-1.5 py-0.5 text-sm leading-tight whitespace-nowrap text-slate-800 shadow-sm tabular-nums"
+                    className="text-sm leading-tight whitespace-nowrap text-slate-800 tabular-nums"
                   >
                     {formatTimeMeridiem(slot.start_time)}
                   </span>

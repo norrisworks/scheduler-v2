@@ -650,6 +650,11 @@ anchor). **Never call `toISOString()` for dates.**
     80px for them) so it reads as clickable, not stray text; and the
     enrollment chip under the name shows only while 'Show inactive' is
     checked — all-active listings made 'Enrolled' on every row noise.
+    Headers are text-sm to match the body, day headers CENTERED over
+    centered cells; every day cell, filled or empty, is the SAME thin
+    outlined card (empty = outline only; filled = faint slate tint with
+    the times centered inside) so the grid reads as clickable slots —
+    the raised white per-time chips were dropped as heavy.
 47. **Supp is session-specific with a student default** (2026-10-02).
     sessions.needs_schoolwork_override, the first_day_override pattern
     exactly: null follows the student's needs_schoolwork, true forces
