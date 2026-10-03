@@ -147,7 +147,7 @@ export function rgbOklabLightness(r, g, b) {
  * shared maximum). Chroma and hue angle vary per hue; lightness never
  * does, so the same count reads equally dark in red, blue and green.
  */
-const HEAT_L = { light: 0.8845, deep: 0.5771 }
+const HEAT_L = { light: 0.93, deep: 0.68 }
 
 /**
  * Deliberately DESATURATED (owner: the table should read calm, not loud):
@@ -156,9 +156,9 @@ const HEAT_L = { light: 0.8845, deep: 0.5771 }
  * cLight makes every hue's 1 equally pale.
  */
 export const HEAT_HUES = {
-  red: { hLight: 18.3, hDeep: 27.3, cLight: 0.055, cDeep: 0.12, ink: '#450a0a' },
-  blue: { hLight: -105.9, hDeep: -97.1, cLight: 0.055, cDeep: 0.12, ink: '#172554' },
-  green: { hLight: 156.0, hDeep: 149.2, cLight: 0.055, cDeep: 0.12, ink: '#052e16' },
+  red: { hLight: 18.3, hDeep: 27.3, cLight: 0.045, cDeep: 0.12, ink: '#450a0a' },
+  blue: { hLight: -105.9, hDeep: -97.1, cLight: 0.045, cDeep: 0.12, ink: '#172554' },
+  green: { hLight: 156.0, hDeep: 149.2, cLight: 0.045, cDeep: 0.12, ink: '#052e16' },
 }
 
 /**
@@ -176,7 +176,9 @@ export function heatStyle(n, max, hue) {
   const [r, g, b] = oklchToRgb(L, C, hLight + (hDeep - hLight) * t)
   return {
     backgroundColor: `rgb(${r}, ${g}, ${b})`,
-    color: t >= 0.6 ? '#ffffff' : ink,
+    // The ceiling is light enough (L 0.68) that the hue's dark ink reads
+    // across the WHOLE ramp — the old white flip belonged to darker deeps.
+    color: ink,
   }
 }
 

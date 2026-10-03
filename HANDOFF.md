@@ -572,11 +572,13 @@ anchor). **Never call `toISOString()` for dates.**
     (HEAT_HUES; oklchToRgb clamps chroma, never lightness, at the gamut
     edge). Checks measure the output's OKLab lightness and hold all
     three hues equal at every count. Clamping above the max and
-    deepest-when-count-IS-the-max behave as before; ink flips to white
-    past t ≈ 0.6. The ramps are DESATURATED by design (chroma 0.055 →
-    0.12 in every hue): the deepest shade is a muted brick/dusty-blue/
-    sage, never a pure bright primary, and the shared cLight makes every
-    hue's 1 equally pale. Hues:
+    deepest-when-count-IS-the-max behave as before. The ramps are
+    DESATURATED and LIGHT by design (two owner rounds: first chroma
+    capped at 0.12, then the whole lightness curve raised to L 0.93 →
+    0.68 with cLight 0.045 — the floors are pale pastels, the ceiling a
+    soft mid-tone, never dark or bright), the shared cLight makes every
+    hue's 1 equally pale, and the hue's dark ink runs the WHOLE ramp —
+    the old white-ink flip belonged to darker ceilings. Hues:
     MV in-center RED, Blue Bell in-center BLUE (IN_CENTER_HUE map in the
     view), online GREEN at both. Time labels sit calendar-style ON the
     boundary at the top of the row they begin (both axes). A far-right

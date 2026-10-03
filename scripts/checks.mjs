@@ -2415,13 +2415,13 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
   const near = (rgb, want, tol = 3) =>
     channels(rgb).every((c, i) => Math.abs(c - want[i]) <= tol)
   eq('zero has no style', heatStyle(0, 10, 'red'), null)
-  eq("red's floor is the pale muted pink, red-200's lightness kept",
-     near(bg(1, 10, 'red'), [251, 203, 203]), true)
-  eq("red's ceiling is a muted brick, never pure bright red, in white ink",
-     [near(bg(10, 10, 'red'), [182, 90, 81]), heatStyle(10, 10, 'red').color],
-     [true, '#ffffff'])
+  eq("red's floor is a pale pastel pink",
+     near(bg(1, 10, 'red'), [253, 224, 223]), true)
+  eq("red's ceiling is a soft muted brick in the hue's dark ink",
+     [near(bg(10, 10, 'red'), [216, 121, 111]), heatStyle(10, 10, 'red').color],
+     [true, '#450a0a'])
   eq("green's 1 is exactly as pale as red's (same L, same chroma)",
-     near(bg(1, 10, 'green'), [189, 228, 202]), true)
+     near(bg(1, 10, 'green'), [209, 241, 220]), true)
 
   // The OKLCH ramp: ONE lightness curve for all three hues, so a given
   // count reads equally dark in red, blue and green — RGB interpolation
@@ -2432,10 +2432,10 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
        const Ls = ['red', 'blue', 'green'].map((hue) => lightnessOf(bg(n, 6, hue)))
        return Math.max(...Ls) - Math.min(...Ls) < 0.012
      }), true)
-  eq('and that shared lightness is red-200 at the floor',
-     Math.abs(lightnessOf(bg(1, 10, 'blue')) - 0.8845) < 0.012, true)
-  eq('and red-600 at the shared maximum',
-     Math.abs(lightnessOf(bg(10, 10, 'green')) - 0.5771) < 0.012, true)
+  eq('and that shared lightness is the pastel floor (L 0.93)',
+     Math.abs(lightnessOf(bg(1, 10, 'blue')) - 0.93) < 0.012, true)
+  eq('and the soft ceiling (L 0.68) at the shared maximum',
+     Math.abs(lightnessOf(bg(10, 10, 'green')) - 0.68) < 0.012, true)
   eq("Blue Bell's 1, 3 and 4 are now three different shades",
      new Set([1, 3, 4].map((n) => bg(n, 6, 'blue'))).size, 3)
   eq('every count up to the max is distinct in every hue',
@@ -2447,9 +2447,9 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
      bg(1, 1, 'green'), bg(5, 5, 'green'))
   eq('counts above the max clamp to the deepest shade',
      bg(9, 4, 'red'), bg(4, 4, 'red'))
-  eq('light fills keep dark ink; deep fills flip to white',
+  eq("the hue's dark ink runs the whole ramp — no white flip on a light ceiling",
      [heatStyle(1, 10, 'blue').color, heatStyle(10, 10, 'blue').color],
-     ['#172554', '#ffffff'])
+     ['#172554', '#172554'])
 
   // The maximum is the single highest CELL of the center's week — both
   // metrics, Saturday included.
