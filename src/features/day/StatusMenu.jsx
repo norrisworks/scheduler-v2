@@ -3,6 +3,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { supabase } from '../../lib/supabase'
 import { BINDER_STATUSES } from '../binder/binderPrep'
 import { firstDayBadge, firstDayLabel } from './firstDay'
+import { effectiveSupp, suppLabel } from './supp'
 
 /**
  * Status changes for one session. Rendered at the top of the day view rather
@@ -12,7 +13,7 @@ import { firstDayBadge, firstDayLabel } from './firstDay'
  * it (cards must not show it), so this fetches the note on open. Binder state
  * belongs to the STUDENT now, so that is what it reads.
  */
-export default function StatusMenu({ menu, onStatusChange, onDeliveryChange, onDurationChange, onUnassign, onReschedule, onDelete, onFirstDayChange, onClose }) {
+export default function StatusMenu({ menu, onStatusChange, onDeliveryChange, onDurationChange, onUnassign, onReschedule, onDelete, onFirstDayChange, onSuppChange, onClose }) {
   const [binder, setBinder] = useState(null)
   // Hard delete arms on first click and fires on the second — a permanent
   // action never rides on one click. Re-arms per menu open.
@@ -69,6 +70,14 @@ export default function StatusMenu({ menu, onStatusChange, onDeliveryChange, onD
     ...(session.first_day_override !== null && session.first_day_override !== undefined
       ? [{ key: 'firstday-clear', label: 'Use derived first-day', run: () => onFirstDayChange(session.id, null) }]
       : []),
+    // Supp override, the first-day pattern: the student's setting is the
+    // default; this session alone can differ, and one click goes back.
+    effectiveSupp(session)
+      ? { key: 'supp', label: 'No Supp this session', run: () => onSuppChange(session.id, false) }
+      : { key: 'supp', label: 'Supp this session', run: () => onSuppChange(session.id, true) },
+    ...(session.needs_schoolwork_override !== null && session.needs_schoolwork_override !== undefined
+      ? [{ key: 'supp-clear', label: "Use student's Supp setting", run: () => onSuppChange(session.id, null) }]
+      : []),
     ...(session.instructor_id
       ? [{ key: 'unassign', label: 'Unassign instructor', run: () => onUnassign(session.id) }]
       : []),
@@ -96,6 +105,9 @@ export default function StatusMenu({ menu, onStatusChange, onDeliveryChange, onD
         </p>
         {firstDayLabel(session) && (
           <p className="px-3 pb-1 text-[10px] text-red-600">{firstDayLabel(session)}</p>
+        )}
+        {suppLabel(session) && (
+          <p className="px-3 pb-1 text-[10px] text-amber-700">{suppLabel(session)}</p>
         )}
         {items.map((item) => (
           <button

@@ -623,6 +623,32 @@ anchor). **Never call `toISOString()` for dates.**
     (effective_until past) stay drawer-only — the roster cells show the
     living schedule.
 
+46. **The roster row tightened into one unit** (2026-10-02). The name block
+    is a FIXED-width button (opens the drawer) with the slot grid right
+    beside it so day columns align down the page; the times summary line
+    is gone (the cells carry it). Slot cells are read-only text now —
+    clicking one opens a Shifts-style popover (SlotPopover: backdrop,
+    Escape, positioned at the cell) where times save on change, every
+    slot carries a VISIBLE red Delete (the dropdown-era ✕ was invisible),
+    deletes keep the cancelled-cleanup confirm, and adds take an
+    Add-slot press like a new shift — all still the shared slotActions
+    paths plus materialize. A student with no slots gets the whole
+    schedule section grayed with 'No standing slots' in it; the cells
+    stay clickable to add a first slot. Academic status edits inline on
+    the row (autosave through useRoster.updateStudentFields, which keeps
+    the drawer's zero-rows RLS guard) — the first drawer field promoted
+    to the row, more to follow.
+47. **Supp is session-specific with a student default** (2026-10-02).
+    sessions.needs_schoolwork_override, the first_day_override pattern
+    exactly: null follows the student's needs_schoolwork, true forces
+    Supp for one session, false suppresses it — the student default and
+    every other session untouched. The card badge shows the EFFECTIVE
+    value (effectiveSupp in day/supp.js); the ⋯ menu offers
+    'Supp this session' / 'No Supp this session' plus
+    "Use student's Supp setting" when overridden, with an amber note
+    naming the override state. The roster/drawer Supp checkbox remains
+    the student default.
+
 ## Importers (all preview-first; never commit on the owner's behalf)
 
 - **Students export** (`studentImport.js`): splits by the file's Center

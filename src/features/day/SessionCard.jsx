@@ -8,6 +8,7 @@ import { coverageWarning } from './shiftCoverage'
 import { INSTRUCTOR_DRAG_TYPE } from './dnd'
 import { isBinderReady } from '../binder/binderPrep'
 import { firstDayBadge } from './firstDay'
+import { effectiveSupp } from './supp'
 
 /**
  * One card component for both orientations. Layout, sizing and row order in
@@ -331,7 +332,9 @@ export default function SessionCard({
         ) : (
           <span />
         )}
-        {student?.needs_schoolwork && (
+        {/* The SESSION's effective Supp: the student default unless this
+            session overrides it (⋯ menu). */}
+        {effectiveSupp(session) && (
           <span className="shrink-0 rounded bg-[#FFEB3B] px-1 py-0.5 text-[8px] font-bold text-black">
             Supp
           </span>

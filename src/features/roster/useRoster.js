@@ -52,6 +52,36 @@ export function useRoster(centerId) {
   const isCurrent = snapshot.centerId === centerId
   const students = isCurrent ? snapshot.students : EMPTY
 
+  /**
+   * Inline row edits (academic status, and whatever joins it later). Same
+   * zero-rows guard as the drawer's updateStudent: an RLS-filtered update
+   * returns no error and no rows, and without the check the edit silently
+   * "reverts" (the vanished-renames bug).
+   */
+  const updateStudentFields = useCallback(
+    async (studentId, patch) => {
+      const { data, error } = await supabase
+        .from('students')
+        .update({ ...patch, updated_at: new Date().toISOString() })
+        .eq('id', studentId)
+        .select('id')
+      if (error) {
+        setError(error.message)
+        return false
+      }
+      if (!data || data.length === 0) {
+        setError(
+          'The save did not apply — the database accepted the request but changed nothing. ' +
+            'Your session may have expired; sign out and back in, then retry.',
+        )
+        return false
+      }
+      await load()
+      return true
+    },
+    [load],
+  )
+
   const createStudent = useCallback(
     async (name) => {
       const { data, error } = await supabase
@@ -75,6 +105,7 @@ export function useRoster(centerId) {
     error,
     refetch: load,
     createStudent,
+    updateStudentFields,
     dismissError: () => setError(null),
   }
 }

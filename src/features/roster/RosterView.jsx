@@ -4,17 +4,19 @@ import { supabase } from '../../lib/supabase'
 import { useCenter } from '../centers/CenterProvider'
 import { useAuth } from '../auth/AuthProvider'
 import CreateStudentDialog from './CreateStudentDialog'
-import { TIME_CHOICES, formatTimeMeridiem, todayISO } from '../../lib/dates'
+import { formatTimeMeridiem, todayISO } from '../../lib/dates'
 import Spinner from '../../components/Spinner'
 import TimeSelect from '../../components/TimeSelect'
 import { materializeSessions } from '../materializer/materialize'
 import { futureCancelledCount, insertSlot, newSlotRow, patchSlot, removeSlot } from './slotActions'
 import { useFilteredRoster, useRoster } from './useRoster'
 import {
+  ACADEMIC_OPTIONS,
   DAYS,
   ENROLLMENT_STATUSES,
   LEVEL_OPTIONS,
   activeFromEnrollment,
+  emptyToNull,
   enrollmentMeta,
   missingAttributes,
 } from './studentFields'
@@ -29,7 +31,8 @@ const LEVEL_DOT = {
 export default function RosterView() {
   const { centerId } = useCenter()
   const { isAdmin } = useAuth()
-  const { students, loading, error, refetch, createStudent, dismissError } = useRoster(centerId)
+  const { students, loading, error, refetch, createStudent, updateStudentFields, dismissError } =
+    useRoster(centerId)
 
   const [query, setQuery] = useState('')
   const [level, setLevel] = useState('')
@@ -229,6 +232,7 @@ export default function RosterView() {
                   onSelect={() => setSelectedId(student.id === selectedId ? null : student.id)}
                   isAdmin={isAdmin}
                   slotHandlers={slotHandlers}
+                  onUpdateStudent={updateStudentFields}
                 />
               ))}
             </ul>
@@ -260,244 +264,308 @@ export default function RosterView() {
   )
 }
 
-function StudentRow({ student, selected, onSelect, isAdmin, slotHandlers }) {
+
+function StudentRow({ student, selected, onSelect, isAdmin, slotHandlers, onUpdateStudent }) {
   const slots = student.recurring_slots ?? []
   const pinned = (student.student_notes ?? []).filter((n) => n.pinned && !n.resolved).length
   const missing = missingAttributes(student)
 
   return (
-    <li className="flex items-center">
+    <li className="flex items-center gap-3 pr-3">
+      {/* A FIXED-width name block, so the slot grid sits right beside the
+          name on every row and the day columns line up down the page. */}
       <button
         type="button"
         onClick={onSelect}
         aria-pressed={selected}
         className={
-          'flex min-w-0 flex-1 items-center gap-3 px-4 py-2.5 text-left transition ' +
+          'w-72 shrink-0 self-stretch px-4 py-2 text-left transition ' +
           (selected ? 'bg-brand-50' : 'hover:bg-slate-50') +
           (student.active === false ? ' opacity-50' : '')
         }
       >
-        <span
-          className={`h-2 w-2 shrink-0 rounded-full ${LEVEL_DOT[student.level] ?? 'bg-slate-300'}`}
-          title={student.level ?? 'level not set'}
-        />
-
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1.5">
-            <span className="truncate text-sm font-medium text-slate-900">{student.name}</span>
-            {student.grade && (
-              <span className="shrink-0 rounded bg-zinc-200 px-1 text-[10px] text-zinc-600">
-                {student.grade}
-              </span>
-            )}
-            {student.needs_schoolwork && (
-              <span className="shrink-0 rounded bg-[#FFEB3B] px-1 text-[10px] font-bold text-black">
-                Supp
-              </span>
-            )}
-            {enrollmentMeta(student.enrollment_status) && (
-              <span
-                className={`shrink-0 rounded px-1 text-[10px] ${enrollmentMeta(student.enrollment_status).chip}`}
-              >
-                {enrollmentMeta(student.enrollment_status).label}
-              </span>
-            )}
-            {/* Radius says schedulable, this roster says off. */}
-            {!student.active && activeFromEnrollment(student.enrollment_status) === true && (
-              <span
-                className="shrink-0 rounded bg-red-100 px-1 text-[10px] font-medium text-red-800"
-                title="Radius has this student as schedulable, but they are switched off here"
-              >
-                should be active
-              </span>
-            )}
-          </span>
-          <span className="mt-0.5 block truncate text-xs text-slate-500">
-            {slots.length === 0
-              ? 'No standing slots'
-              : slots
-                  .slice()
-                  .sort((a, b) => a.day_of_week - b.day_of_week)
-                  .map(
-                    (s) =>
-                      `${DAYS.find((d) => d.value === s.day_of_week)?.short} ${formatTimeMeridiem(s.start_time)}`,
-                  )
-                  .join(' · ')}
-          </span>
+        <span className="flex items-center gap-1.5">
+          <span
+            className={`h-2 w-2 shrink-0 rounded-full ${LEVEL_DOT[student.level] ?? 'bg-slate-300'}`}
+            title={student.level ?? 'level not set'}
+          />
+          <span className="truncate text-sm font-medium text-slate-900">{student.name}</span>
+          {student.grade && (
+            <span className="shrink-0 rounded bg-zinc-200 px-1 text-[10px] text-zinc-600">
+              {student.grade}
+            </span>
+          )}
+          {student.needs_schoolwork && (
+            <span className="shrink-0 rounded bg-[#FFEB3B] px-1 text-[10px] font-bold text-black">
+              Supp
+            </span>
+          )}
         </span>
-
-        {missing.length > 0 && (
-          <span
-            className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] whitespace-nowrap text-amber-800"
-            title={`Missing: ${missing.join(', ')}`}
-          >
-            {/* Naming the field beats a bare count — "1 missing" tells you
-                there is a chore, not which one, and at roster scale the
-                answer is usually the same field for everyone. */}
-            no {missing.join(', no ')}
-          </span>
-        )}
-        {pinned > 0 && (
-          <span
-            className="shrink-0 rounded bg-brand-100 px-1.5 py-0.5 text-[10px] text-brand-700"
-            title={`${pinned} pinned note${pinned === 1 ? '' : 's'}`}
-          >
-            {pinned} pinned
-          </span>
-        )}
+        <span className="mt-0.5 flex items-center gap-1.5">
+          {enrollmentMeta(student.enrollment_status) && (
+            <span
+              className={`shrink-0 rounded px-1 text-[10px] ${enrollmentMeta(student.enrollment_status).chip}`}
+            >
+              {enrollmentMeta(student.enrollment_status).label}
+            </span>
+          )}
+          {!student.active && activeFromEnrollment(student.enrollment_status) === true && (
+            <span
+              className="shrink-0 rounded bg-red-100 px-1 text-[10px] font-medium text-red-800"
+              title="Radius has this student as schedulable, but they are switched off here"
+            >
+              should be active
+            </span>
+          )}
+          {missing.length > 0 && (
+            <span
+              className="truncate rounded bg-amber-100 px-1 text-[10px] text-amber-800"
+              title={`Missing: ${missing.join(', ')}`}
+            >
+              no {missing.join(', no ')}
+            </span>
+          )}
+          {pinned > 0 && (
+            <span
+              className="shrink-0 rounded bg-brand-100 px-1 text-[10px] text-brand-700"
+              title={`${pinned} pinned note${pinned === 1 ? '' : 's'}`}
+            >
+              {pinned} pinned
+            </span>
+          )}
+        </span>
       </button>
 
-      {/* The slot day cells live OUTSIDE the row button: they carry their
-          own controls, and a button cannot nest them. */}
-      <SlotCells
-        student={student}
-        slots={slots}
-        isAdmin={isAdmin}
-        handlers={slotHandlers}
-      />
+      {/* Inline drawer fields, academic status first. Autosaves. */}
+      <select
+        value={student.academic_status ?? ''}
+        disabled={!isAdmin}
+        onChange={(e) => onUpdateStudent(student.id, { academic_status: emptyToNull(e.target.value) })}
+        aria-label={`Academic status for ${student.name}`}
+        className="w-24 shrink-0 rounded border border-slate-200 bg-transparent px-1 py-0.5 text-xs text-slate-700"
+      >
+        {ACADEMIC_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+
+      <SlotCells student={student} slots={slots} isAdmin={isAdmin} handlers={slotHandlers} />
     </li>
   )
 }
 
-/** The five roster day columns: Mon–Thu and Saturday. */
+/** The five roster day columns: Mon-Thu and Saturday. */
 const ROSTER_DAYS = [1, 2, 3, 4, 6]
 
 /**
- * Standing slots, editable straight from the roster — a SECOND location for
- * the drawer's exact write paths (shared slotActions + the same materialize
- * follow-through), never a different behavior. A day holds a LIST: Katie V
- * has two Saturday slots, so each cell renders and edits all of them.
+ * Standing slots as read-only day cells; clicking one opens a Shifts-style
+ * popover (SlotPopover) that edits through the drawer's exact write paths.
+ * A day holds a LIST - Katie V's two Saturday slots both show. A student
+ * with no slots gets the whole section grayed with the label in it.
  */
 function SlotCells({ student, slots, isAdmin, handlers }) {
-  // Two-step delete, exactly like the drawer: count the slot's future
-  // cancelled sessions FIRST (they poison their times if left behind),
-  // then offer delete-with-cleanup / slot-only / keep.
-  const [confirming, setConfirming] = useState(null)
+  const [popover, setPopover] = useState(null) // { day, x, y }
   const today = todayISO()
   const active = slots.filter((s) => !s.effective_until || s.effective_until >= today)
+  const none = active.length === 0
+
+  function open(day, event) {
+    if (!isAdmin) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    setPopover({ day, x: rect.left, y: rect.bottom })
+  }
+
+  return (
+    <div
+      className={
+        'flex min-w-0 flex-1 items-stretch gap-1 rounded py-1.5 ' +
+        (none ? 'bg-slate-50 opacity-70' : '')
+      }
+    >
+      {none && (
+        <span className="self-center px-2 text-[10px] whitespace-nowrap text-slate-400">
+          No standing slots
+        </span>
+      )}
+      {ROSTER_DAYS.map((day) => {
+        const mine = active
+          .filter((s) => s.day_of_week === day)
+          .sort((a, b) => a.start_time.localeCompare(b.start_time))
+        return (
+          <button
+            key={day}
+            type="button"
+            onClick={(e) => open(day, e)}
+            disabled={!isAdmin}
+            title={isAdmin ? 'Edit standing slots' : undefined}
+            className={
+              'min-w-0 flex-1 rounded border px-1.5 py-0.5 text-left ' +
+              (mine.length > 0
+                ? 'border-slate-200 bg-white hover:border-brand-300'
+                : 'border-slate-100 hover:border-slate-300') +
+              (isAdmin ? '' : ' cursor-default')
+            }
+          >
+            <p className="text-[9px] font-semibold tracking-wide text-slate-400 uppercase">
+              {DAYS.find((d) => d.value === day)?.short}
+            </p>
+            {mine.length === 0 ? (
+              <p className="text-[11px] text-slate-300">—</p>
+            ) : (
+              mine.map((slot) => (
+                <p key={slot.id} className="text-[11px] text-slate-700 tabular-nums">
+                  {formatTimeMeridiem(slot.start_time)}
+                </p>
+              ))
+            )}
+          </button>
+        )
+      })}
+      {popover && (
+        <SlotPopover
+          student={student}
+          day={popover.day}
+          slots={active
+            .filter((s) => s.day_of_week === popover.day)
+            .sort((a, b) => a.start_time.localeCompare(b.start_time))}
+          handlers={handlers}
+          x={popover.x}
+          y={popover.y}
+          onClose={() => setPopover(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+/**
+ * One day's slots, edited in a Shifts-style popover: times save on change
+ * (no Save button), every slot carries a VISIBLE Delete, and the add row
+ * takes its press like a new shift. All writes are the drawer's shared
+ * paths; deletes keep the cancelled-session cleanup confirm.
+ */
+function SlotPopover({ student, day, slots, handlers, x, y, onClose }) {
+  const [draft, setDraft] = useState('16:00')
+  const [confirming, setConfirming] = useState(null) // { slotId, cancelled }
+
+  useEffect(() => {
+    const onKey = (e) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
 
   async function askDelete(slotId) {
     const cancelled = (await handlers.countCancelled(slotId)) ?? 0
     setConfirming({ slotId, cancelled })
   }
 
+  const dayMeta = DAYS.find((d) => d.value === day)
+
   return (
-    <div className="flex shrink-0 items-stretch gap-1 py-1.5 pr-3">
-      {ROSTER_DAYS.map((day) => {
-        const mine = active
-          .filter((s) => s.day_of_week === day)
-          .sort((a, b) => a.start_time.localeCompare(b.start_time))
-        return (
-          <div key={day} className="w-24 rounded border border-slate-200 bg-white px-1 py-0.5">
-            <p className="text-[9px] font-semibold tracking-wide text-slate-400 uppercase">
-              {DAYS.find((d) => d.value === day)?.short}
-            </p>
-            <ul className="space-y-0.5">
-              {mine.map((slot) =>
-                confirming?.slotId === slot.id ? (
-                  <li key={slot.id} className="space-y-0.5">
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div
+        role="dialog"
+        aria-label={`Standing slots for ${student.name} on ${dayMeta?.label}`}
+        className="fixed z-50 w-64 rounded-xl border border-zinc-200 bg-white p-3 shadow-xl"
+        style={{
+          left: Math.min(x, window.innerWidth - 272),
+          top: Math.min(y + 6, window.innerHeight - 240),
+        }}
+      >
+        <p className="mb-2 truncate text-xs font-semibold text-zinc-900">
+          {student.name}
+          <span className="ml-1 font-normal text-zinc-500">{dayMeta?.label}</span>
+        </p>
+
+        {slots.length === 0 ? (
+          <p className="mb-2 rounded-lg border border-dashed border-slate-200 px-2 py-2 text-center text-[11px] text-slate-400">
+            No standing slot on {dayMeta?.label} yet.
+          </p>
+        ) : (
+          <ul className="mb-2 space-y-1.5">
+            {slots.map((slot) =>
+              confirming?.slotId === slot.id ? (
+                <li key={slot.id} className="space-y-1 rounded-lg border border-red-200 bg-red-50 p-1.5">
+                  <button
+                    type="button"
+                    disabled={handlers.busy}
+                    onClick={() => {
+                      setConfirming(null)
+                      handlers.remove(slot.id, { alsoCancelled: confirming.cancelled > 0 })
+                    }}
+                    className="w-full rounded bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700"
+                  >
+                    {confirming.cancelled > 0
+                      ? `Delete + ${confirming.cancelled} future cancelled`
+                      : 'Delete slot'}
+                  </button>
+                  {confirming.cancelled > 0 && (
                     <button
                       type="button"
                       disabled={handlers.busy}
                       onClick={() => {
                         setConfirming(null)
-                        handlers.remove(slot.id, { alsoCancelled: confirming.cancelled > 0 })
+                        handlers.remove(slot.id, { alsoCancelled: false })
                       }}
-                      className="w-full rounded bg-red-600 px-1 py-0.5 text-[10px] font-medium text-white hover:bg-red-700"
+                      title="Keep the cancelled sessions as history. Note: they keep blocking these times until a slot reclaims them."
+                      className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
                     >
-                      {confirming.cancelled > 0
-                        ? `Delete + ${confirming.cancelled} cancelled`
-                        : 'Delete slot'}
+                      Delete slot only
                     </button>
-                    {confirming.cancelled > 0 && (
-                      <button
-                        type="button"
-                        disabled={handlers.busy}
-                        onClick={() => {
-                          setConfirming(null)
-                          handlers.remove(slot.id, { alsoCancelled: false })
-                        }}
-                        title="Keep the cancelled sessions as history. Note: they keep blocking these times until a slot reclaims them."
-                        className="w-full rounded border border-slate-300 px-1 py-0.5 text-[10px] text-slate-600 hover:bg-slate-100"
-                      >
-                        Slot only
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setConfirming(null)}
-                      className="w-full rounded px-1 py-0.5 text-[10px] text-slate-400 hover:bg-slate-100"
-                    >
-                      Keep
-                    </button>
-                  </li>
-                ) : (
-                  <li key={slot.id} className="flex items-center gap-0.5">
-                    {isAdmin ? (
-                      <TimeSelect
-                        value={slot.start_time.slice(0, 5)}
-                        disabled={handlers.busy}
-                        onChange={(t) => handlers.update(slot.id, { start_time: `${t}:00` })}
-                        aria-label={`${student.name} ${DAYS.find((d) => d.value === day)?.label} slot time`}
-                        className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-0 py-0 text-[11px] text-slate-700 hover:border-slate-200"
-                      />
-                    ) : (
-                      <span className="flex-1 text-[11px] text-slate-700">
-                        {formatTimeMeridiem(slot.start_time)}
-                      </span>
-                    )}
-                    {isAdmin && (
-                      <button
-                        type="button"
-                        disabled={handlers.busy}
-                        onClick={() => askDelete(slot.id)}
-                        aria-label="Delete this slot"
-                        title="Delete this slot"
-                        className="shrink-0 rounded px-0.5 text-[10px] text-slate-300 hover:bg-red-50 hover:text-red-600"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </li>
-                ),
-              )}
-            </ul>
-            {isAdmin && (
-              <AddSlotSelect
-                disabled={handlers.busy}
-                label={`Add ${DAYS.find((d) => d.value === day)?.label} slot for ${student.name}`}
-                onPick={(time) =>
-                  handlers.add(student.id, day, time, student.default_duration)
-                }
-              />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setConfirming(null)}
+                    className="w-full rounded px-2 py-1 text-xs text-slate-500 hover:bg-white"
+                  >
+                    Keep the slot
+                  </button>
+                </li>
+              ) : (
+                <li key={slot.id} className="flex items-center gap-2">
+                  <TimeSelect
+                    value={slot.start_time.slice(0, 5)}
+                    disabled={handlers.busy}
+                    onChange={(t) => handlers.update(slot.id, { start_time: `${t}:00` })}
+                    aria-label="Slot start time"
+                    className="flex-1 rounded-lg border border-zinc-300 px-2 py-1 text-sm"
+                  />
+                  <span className="shrink-0 text-[10px] text-slate-400">{slot.duration}m</span>
+                  <button
+                    type="button"
+                    disabled={handlers.busy}
+                    onClick={() => askDelete(slot.id)}
+                    className="shrink-0 rounded-lg border border-red-200 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                  >
+                    Delete
+                  </button>
+                </li>
+              ),
             )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
+          </ul>
+        )}
 
-/**
- * The add path, autosaving: the same half-hour choices as every TimeSelect,
- * behind a '+' placeholder so merely opening the cell never writes — a pick
- * does. The select snaps back to '+' afterwards (value stays '').
- */
-function AddSlotSelect({ onPick, disabled, label }) {
-  return (
-    <select
-      value=""
-      disabled={disabled}
-      onChange={(e) => e.target.value && onPick(e.target.value)}
-      aria-label={label}
-      className="mt-0.5 w-full rounded border border-dashed border-slate-200 bg-transparent px-0.5 py-0 text-[10px] text-slate-400 hover:border-slate-300 hover:text-slate-600"
-    >
-      <option value="">+</option>
-      {TIME_CHOICES.map((t) => (
-        <option key={t} value={t}>
-          {formatTimeMeridiem(`${t}:00`)}
-        </option>
-      ))}
-    </select>
+        <div className="flex items-center gap-2 border-t border-zinc-100 pt-2">
+          <TimeSelect
+            value={draft}
+            disabled={handlers.busy}
+            onChange={setDraft}
+            aria-label="New slot start time"
+            className="flex-1 rounded-lg border border-zinc-300 px-2 py-1 text-sm"
+          />
+          <button
+            type="button"
+            disabled={handlers.busy}
+            onClick={() => handlers.add(student.id, day, draft, student.default_duration)}
+            className="shrink-0 rounded-lg bg-brand-500 px-2.5 py-1 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-40"
+          >
+            {slots.length > 0 ? 'Add another' : 'Add slot'}
+          </button>
+        </div>
+      </div>
+    </>
   )
 }

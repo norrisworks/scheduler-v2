@@ -21,6 +21,7 @@ import { cleanPersonName, titleCaseName, generateDisplayName, violatesNamingConv
 import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } from '../src/features/imports/workstreamImport.js'
 import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, mapDelivery, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent, radiusKeyOf, confirmationTargets, planRadiusImport, isVirtualCenter, VIRTUAL_CENTERS, missingRadiusHeaders, readRadiusRow, sessionBooker } from '../src/features/imports/radiusImport.js'
 import { sessionMarker, isStaffBooker, STAFF_BOOKERS } from '../src/features/day/sessionMarker.js'
+import { effectiveSupp, suppLabel } from '../src/features/day/supp.js'
 import { centerOperatingHours, defaultPlanWeekStart, planWeekDates, extendRange, bands, alignRows, planWeekGrid, monthDay, heatStyle, rgbOklabLightness, centerWeekMax, weekdayRowTotals, weekdayGrandTotal, weekGrandTotal } from '../src/features/week/weekPlan.js'
 import { planStudentImport, planStudentImportByCenter, STUDENT_FIELDS, STUDENT_MATCH_COLUMNS } from '../src/features/imports/studentImport.js'
 import { buildChecks } from '../src/features/health/checks.js'
@@ -2308,6 +2309,24 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
      { glyph: null, color: '#22C55E', title: 'Manually scheduled' })
 }
 
+// ---- Supp: session-specific with a student default (first-day pattern)
+// null follows the student's needs_schoolwork; true/false override this
+// ONE session without touching the student or any other session.
+{
+  const sess = (override, studentSupp) => ({
+    needs_schoolwork_override: override,
+    student: { needs_schoolwork: studentSupp },
+  })
+  eq('no override follows the student',
+     [effectiveSupp(sess(null, true)), effectiveSupp(sess(null, false))], [true, false])
+  eq('an override wins in both directions',
+     [effectiveSupp(sess(true, false)), effectiveSupp(sess(false, true))], [true, false])
+  eq('no student embed reads as no Supp', effectiveSupp({ needs_schoolwork_override: null }), false)
+  eq('the menu note names the override state',
+     [suppLabel(sess(true, false)), suppLabel(sess(false, true)), suppLabel(sess(null, true))],
+     ['Supp forced for this session', 'Supp off for this session', null])
+}
+
 // ---- the Week planner: next week's demand on one row scale
 // Admin-only, read-only. Hours are a per-center SETTING (centers columns);
 // Saturday's axis is offset so its FIRST slot sits beside the weekday
@@ -2483,6 +2502,22 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
      rosterView.includes('materializeSessions(centerId)'), true)
   eq('the drawer add form builds the shared row shape',
      readSrc('src/features/roster/RecurringSlots.jsx').includes('newSlotRow('), true)
+  eq('the roster edits slots through a popover, dropdowns are gone',
+     rosterView.includes('SlotPopover') && !rosterView.includes('AddSlotSelect'), true)
+  eq('the times summary under the name is gone — the cells carry it',
+     rosterView.includes("join(' · ')"), false)
+  eq('academic status edits inline from the row',
+     rosterView.includes('academic_status: emptyToNull'), true)
+
+  // Supp is session-specific with a student default (first-day pattern).
+  const daySelect2 = readSrc('src/features/day/useDaySchedule.js')
+  eq('the day select carries the Supp override',
+     daySelect2.includes('needs_schoolwork_override'), true)
+  const card2 = readSrc('src/features/day/SessionCard.jsx')
+  eq('the card badge shows the EFFECTIVE Supp',
+     card2.includes('effectiveSupp(session)') && !card2.includes('student?.needs_schoolwork &&'), true)
+  eq('the card menu gets the Supp handler',
+     readSrc('src/features/day/DayView.jsx').includes('onSuppChange={setSuppOverride}'), true)
 
   eq('both tables share ONE maximum, so their shading is comparable',
      readSrc('src/features/week/WeekPlanView.jsx').includes('sharedMax'), true)

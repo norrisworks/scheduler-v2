@@ -64,6 +64,7 @@ export default function DayView() {
     setDuration,
     deleteSession,
     setFirstDayOverride,
+    setSuppOverride,
     dismissError,
   } = useDaySchedule(centerId, date)
 
@@ -518,6 +519,7 @@ export default function DayView() {
         // Was missing: the menu's first-day items threw on click because the
         // handler only reached CancelledList.
         onFirstDayChange={setFirstDayOverride}
+        onSuppChange={setSuppOverride}
         onClose={() => setStatusMenu(null)}
       />
 
