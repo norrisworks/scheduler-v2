@@ -623,21 +623,27 @@ anchor). **Never call `toISOString()` for dates.**
     (effective_until past) stay drawer-only — the roster cells show the
     living schedule.
 
-46. **The roster row tightened into one unit** (2026-10-02). The name block
-    is a FIXED-width button (opens the drawer) with the slot grid right
-    beside it so day columns align down the page; the times summary line
-    is gone (the cells carry it). Slot cells are read-only text now —
-    clicking one opens a Shifts-style popover (SlotPopover: backdrop,
-    Escape, positioned at the cell) where times save on change, every
-    slot carries a VISIBLE red Delete (the dropdown-era ✕ was invisible),
-    deletes keep the cancelled-cleanup confirm, and adds take an
-    Add-slot press like a new shift — all still the shared slotActions
-    paths plus materialize. A student with no slots gets the whole
-    schedule section grayed with 'No standing slots' in it; the cells
-    stay clickable to add a first slot. Academic status edits inline on
-    the row (autosave through useRoster.updateStudentFields, which keeps
-    the drawer's zero-rows RLS guard) — the first drawer field promoted
-    to the row, more to follow.
+46. **The roster is a real table** (2026-10-02; reworked same day from the
+    first flex-row cut). One pinned header row — Student · Academic
+    status · Mon · Tue · Wed · Thu · Sat · Student note (the owner
+    dropped a planned Gender column mid-build) — with day names ONLY in
+    the header, never inside cells. Day cells are narrow plain-text time
+    lists (a day is a LIST; Katie V's two Saturday slots stack); clicking
+    one opens the Shifts-style SlotPopover where times save on change,
+    every slot carries a VISIBLE red Delete with the cancelled-cleanup
+    confirm, and adds take an Add-slot press — all still the shared
+    slotActions paths plus materialize. A slotless student keeps exact
+    column alignment via ONE colSpan cell across the day columns, grayed,
+    'No standing slots' centered — and clicking it opens the popover
+    with a day picker so the first slot can land anywhere. Academic
+    status is the card-colored pill (ACADEMIC_STATUS), click cycling
+    behind → at_level → ahead → unset, autosaving through
+    useRoster.updateStudentFields (keeps the drawer's zero-rows RLS
+    guard). The Student-note column edits the PINNED note the day-view
+    card shows: debounced autosave, typing into an empty cell creates it
+    pinned, clearing the text deletes it (an empty pinned note is noise);
+    with several pinned notes it edits the oldest and a badge says so.
+    The times summary line under the name is gone.
 47. **Supp is session-specific with a student default** (2026-10-02).
     sessions.needs_schoolwork_override, the first_day_override pattern
     exactly: null follows the student's needs_schoolwork, true forces

@@ -2506,8 +2506,23 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
      rosterView.includes('SlotPopover') && !rosterView.includes('AddSlotSelect'), true)
   eq('the times summary under the name is gone — the cells carry it',
      rosterView.includes("join(' · ')"), false)
-  eq('academic status edits inline from the row',
-     rosterView.includes('academic_status: emptyToNull'), true)
+  eq('academic status edits inline as the card-colored pill, cycling on click',
+     rosterView.includes('AcademicPill') && rosterView.includes('ACADEMIC_CYCLE'), true)
+
+  // The roster is a real TABLE: one pinned header row carries the day
+  // names (never repeated in cells), and a slotless student keeps column
+  // alignment through one colSpan cell instead of squeezed boxes.
+  eq('one header row names every column',
+     rosterView.includes("['Student', 'Academic status', 'Mon', 'Tue', 'Wed', 'Thu', 'Sat', 'Student note']"),
+     true)
+  eq('the header pins while the roster scrolls',
+     rosterView.includes('sticky top-0 z-10 border-b'), true)
+  eq('a slotless row spans the day columns without shifting them',
+     rosterView.includes('colSpan={ROSTER_DAYS.length}'), true)
+  eq('the note column edits the PINNED note the day card shows',
+     rosterView.includes('pinned: true, author_id'), true)
+  eq('and the roster select carries the note body it edits',
+     readSrc('src/features/roster/useRoster.js').includes('body, note_type, created_at'), true)
 
   // Supp is session-specific with a student default (first-day pattern).
   const daySelect2 = readSrc('src/features/day/useDaySchedule.js')

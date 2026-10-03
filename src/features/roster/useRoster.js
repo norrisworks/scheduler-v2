@@ -8,7 +8,7 @@ const ROSTER_SELECT = `
   academic_status, slot_certainty, needs_schoolwork,
   default_duration, active,
   recurring_slots ( id, day_of_week, start_time, duration, effective_until ),
-  student_notes ( id, pinned, resolved )
+  student_notes ( id, pinned, resolved, body, note_type, created_at )
 `
 
 /**
