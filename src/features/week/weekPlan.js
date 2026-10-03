@@ -99,34 +99,78 @@ export function monthDay(iso) {
   return `${Number(m)}/${Number(d)}`
 }
 
+// ---- OKLCH color math, dependency-free. Interpolating in RGB made the
+// same count read darker in one hue than another; OKLab's L is
+// perceptually uniform, so pinning all three ramps to ONE lightness curve
+// makes a given count equally dark in every hue.
+
+const linearToSrgb = (c) =>
+  Math.round(255 * Math.min(1, Math.max(0, c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055)))
+
+function oklabToLinear(L, a, b) {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3
+  return [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ]
+}
+
+/** OKLCH -> sRGB bytes, reducing chroma (never lightness) if out of gamut. */
+export function oklchToRgb(L, C, hDeg) {
+  const h = (hDeg * Math.PI) / 180
+  let c = C
+  for (let i = 0; i < 12; i++) {
+    const rgb = oklabToLinear(L, c * Math.cos(h), c * Math.sin(h))
+    if (rgb.every((v) => v >= -0.0005 && v <= 1.0005)) return rgb.map(linearToSrgb)
+    c *= 0.9
+  }
+  return oklabToLinear(L, 0, 0).map(linearToSrgb)
+}
+
+const srgbToLinear = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
+
+/** Perceptual lightness of an sRGB color — the checks' measuring stick. */
+export function rgbOklabLightness(r, g, b) {
+  const [lr, lg, lb] = [r, g, b].map((v) => srgbToLinear(v / 255))
+  const l = Math.cbrt(0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb)
+  const m = Math.cbrt(0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb)
+  const s = Math.cbrt(0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb)
+  return 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s
+}
+
 /**
- * The heat anchors per hue: `light` is the visible FLOOR (a 1 is clearly
- * colored, never near-white), `deep` is the ceiling, `text` the ink used
- * until the fill gets dark enough to need white. Hues are per CENTER and
- * metric: Montgomeryville in-center red, Blue Bell in-center blue, online
- * green at both centers.
+ * ONE lightness ramp for every hue, anchored to MV red's shades (red-200
+ * at 1 — the floor the owner signed off on — down to red-600 at the
+ * shared maximum). Chroma and hue angle vary per hue; lightness never
+ * does, so the same count reads equally dark in red, blue and green.
  */
-export const HEAT_ANCHORS = {
-  red: { light: [254, 202, 202], deep: [220, 38, 38], text: '#450a0a' },
-  blue: { light: [191, 219, 254], deep: [37, 99, 235], text: '#172554' },
-  green: { light: [187, 247, 208], deep: [22, 163, 74], text: '#052e16' },
+const HEAT_L = { light: 0.8845, deep: 0.5771 }
+
+export const HEAT_HUES = {
+  red: { hLight: 18.3, hDeep: 27.3, cLight: 0.0593, cDeep: 0.2152, ink: '#450a0a' },
+  blue: { hLight: -105.9, hDeep: -97.1, cLight: 0.0571, cDeep: 0.2152, ink: '#172554' },
+  green: { hLight: 156.0, hDeep: 149.2, cLight: 0.0806, cDeep: 0.1699, ink: '#052e16' },
 }
 
 /**
  * CONTINUOUS shading: each cell's color is interpolated directly from its
  * value against the shared maximum — t = (n−1)/(max−1) — so every distinct
- * count is a visibly distinct shade (the five fixed buckets made Blue
- * Bell's 1, 3 and 4 identical). Zero has no style (the gray ground); a
- * count that IS the maximum, however small, paints the deepest shade.
+ * count is a visibly distinct shade. Zero has no style (the gray ground);
+ * a count that IS the maximum, however small, paints the deepest shade.
  */
 export function heatStyle(n, max, hue) {
   if (n <= 0) return null
-  const { light, deep, text } = HEAT_ANCHORS[hue]
+  const { hLight, hDeep, cLight, cDeep, ink } = HEAT_HUES[hue]
   const t = max <= 1 ? 1 : Math.min(1, (n - 1) / (max - 1))
-  const mix = light.map((c, i) => Math.round(c + (deep[i] - c) * t))
+  const L = HEAT_L.light + (HEAT_L.deep - HEAT_L.light) * t
+  const C = cLight + (cDeep - cLight) * t
+  const [r, g, b] = oklchToRgb(L, C, hLight + (hDeep - hLight) * t)
   return {
-    backgroundColor: `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`,
-    color: t >= 0.6 ? '#ffffff' : text,
+    backgroundColor: `rgb(${r}, ${g}, ${b})`,
+    color: t >= 0.6 ? '#ffffff' : ink,
   }
 }
 

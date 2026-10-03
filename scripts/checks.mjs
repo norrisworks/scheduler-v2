@@ -21,7 +21,7 @@ import { cleanPersonName, titleCaseName, generateDisplayName, violatesNamingConv
 import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } from '../src/features/imports/workstreamImport.js'
 import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, mapDelivery, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent, radiusKeyOf, confirmationTargets, planRadiusImport, isVirtualCenter, VIRTUAL_CENTERS, missingRadiusHeaders, readRadiusRow, sessionBooker } from '../src/features/imports/radiusImport.js'
 import { sessionMarker, isStaffBooker, STAFF_BOOKERS } from '../src/features/day/sessionMarker.js'
-import { centerOperatingHours, defaultPlanWeekStart, planWeekDates, extendRange, bands, alignRows, planWeekGrid, monthDay, heatStyle, centerWeekMax, weekdayRowTotals, weekdayGrandTotal, weekGrandTotal } from '../src/features/week/weekPlan.js'
+import { centerOperatingHours, defaultPlanWeekStart, planWeekDates, extendRange, bands, alignRows, planWeekGrid, monthDay, heatStyle, rgbOklabLightness, centerWeekMax, weekdayRowTotals, weekdayGrandTotal, weekGrandTotal } from '../src/features/week/weekPlan.js'
 import { planStudentImport, planStudentImportByCenter, STUDENT_FIELDS, STUDENT_MATCH_COLUMNS } from '../src/features/imports/studentImport.js'
 import { buildChecks } from '../src/features/health/checks.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime , formatStampDate, TIME_CHOICES, centerInstant } from '../src/lib/dates.js'
@@ -2392,11 +2392,29 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
   // is a visibly distinct shade — the five fixed buckets made Blue Bell's
   // 1, 3 and 4 identical. Hues: MV in-center red, BB blue, online green.
   const bg = (n, max, hue) => heatStyle(n, max, hue)?.backgroundColor ?? null
+  const channels = (rgb) => rgb.match(/\d+/g).map(Number)
+  const near = (rgb, want, tol = 3) =>
+    channels(rgb).every((c, i) => Math.abs(c - want[i]) <= tol)
   eq('zero has no style', heatStyle(0, 10, 'red'), null)
-  eq('1 sits on the visible floor, not near-white',
-     bg(1, 10, 'red'), 'rgb(254, 202, 202)')
-  eq('the shared maximum paints the deepest shade in white ink',
-     heatStyle(10, 10, 'red'), { backgroundColor: 'rgb(220, 38, 38)', color: '#ffffff' })
+  eq("red's floor still IS the owner-approved red-200 shade",
+     near(bg(1, 10, 'red'), [254, 202, 202]), true)
+  eq("red's ceiling still lands on red-600, in white ink",
+     [near(bg(10, 10, 'red'), [220, 38, 38]), heatStyle(10, 10, 'red').color],
+     [true, '#ffffff'])
+
+  // The OKLCH ramp: ONE lightness curve for all three hues, so a given
+  // count reads equally dark in red, blue and green — RGB interpolation
+  // left blue and green visibly darker at 1.
+  const lightnessOf = (rgb) => rgbOklabLightness(...channels(rgb))
+  eq('all three hues match in lightness at EVERY count',
+     [1, 2, 3, 4, 5, 6].every((n) => {
+       const Ls = ['red', 'blue', 'green'].map((hue) => lightnessOf(bg(n, 6, hue)))
+       return Math.max(...Ls) - Math.min(...Ls) < 0.012
+     }), true)
+  eq('and that shared lightness is red-200 at the floor',
+     Math.abs(lightnessOf(bg(1, 10, 'blue')) - 0.8845) < 0.012, true)
+  eq('and red-600 at the shared maximum',
+     Math.abs(lightnessOf(bg(10, 10, 'green')) - 0.5771) < 0.012, true)
   eq("Blue Bell's 1, 3 and 4 are now three different shades",
      new Set([1, 3, 4].map((n) => bg(n, 6, 'blue'))).size, 3)
   eq('every count up to the max is distinct in every hue',

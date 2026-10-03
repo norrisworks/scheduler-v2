@@ -559,11 +559,17 @@ anchor). **Never call `toISOString()` for dates.**
     depth whichever center it is in. Shading is CONTINUOUS (heatStyle):
     each cell's color interpolates from its value against the shared max,
     t = (n−1)/(max−1), so every distinct count is a visibly distinct
-    shade — five fixed buckets made Blue Bell's 1, 3 and 4 identical. The
-    light anchor is a visible floor (a 1 is clearly colored, never
-    near-white), the deep anchor lands on the max (clamping above; a
-    count that IS the max paints deepest however small), ink flips to
-    white past t ≈ 0.6. Hues:
+    shade — five fixed buckets made Blue Bell's 1, 3 and 4 identical.
+    Interpolation runs in OKLCH, not RGB (which left blue and green
+    visibly darker than red at the same count): ONE lightness curve for
+    all three hues, anchored to MV red's shades — red-200's L (0.8845)
+    at 1, the owner-approved floor, down to red-600's L (0.5771) at the
+    shared max — with only chroma and hue angle varying per hue
+    (HEAT_HUES; oklchToRgb clamps chroma, never lightness, at the gamut
+    edge). Checks measure the output's OKLab lightness and hold all
+    three hues equal at every count. Clamping above the max and
+    deepest-when-count-IS-the-max behave as before; ink flips to white
+    past t ≈ 0.6. Hues:
     MV in-center RED, Blue Bell in-center BLUE (IN_CENTER_HUE map in the
     view), online GREEN at both. Time labels sit calendar-style ON the
     boundary at the top of the row they begin (both axes). A far-right
