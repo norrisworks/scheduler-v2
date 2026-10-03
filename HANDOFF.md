@@ -549,11 +549,18 @@ anchor). **Never call `toISOString()` for dates.**
     hairline-plus-gap boundary between days. Counting is the day-view axis rule (a session
     counts in every half hour it overlaps; occupiesFloor excludes cancelled
     and no-show), but colors are two INDEPENDENT fixed scales so weeks stay
-    comparable: in-center ramps light gray → red on the old axis
-    breakpoints (≤5 / ≤8 / ≤10 / 11+, zero blank); online ramps gray →
-    amber → orange tuned to its small counts (1 and 2 already register,
-    5+ saturates). The earlier three stacked cards (and their invisible
-    alignment header) are gone.
+    comparable, and gray means ZERO on both — any count from 1 up is
+    colored, 1 the lightest shade: in-center ramps light red → deep red
+    (≤2/≤5/≤8/≤10/11+), online light orange → deep orange (1/2/≤4/5+).
+    Time labels sit calendar-style ON the boundary at the top of the row
+    they begin (both axes). A far-right Total column sums each row across
+    the WEEKDAY columns only (in-center plus online; Saturday rows are
+    other clock times and never join), with the Total row's right-hand
+    cell the weekday grand total — sessions, not cell sums — while
+    Saturday's total stays in its own columns. Headers: date text-base
+    bold over weekday text-sm, subheads spelled 'In-center'/'Online',
+    never abbreviated. The earlier three stacked cards (and their
+    invisible alignment header) are gone.
     Layout is ONE row scale: weekday time axis, a column per weekday with
     ≥1 counting session, then a narrow Saturday axis and column — Saturday's
     FIRST slot sits beside the weekday 4:00pm row (SATURDAY_ANCHOR), so MV's

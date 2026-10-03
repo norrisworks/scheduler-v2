@@ -100,29 +100,45 @@ export function monthDay(iso) {
 }
 
 /**
- * The in-center cell ramp: light gray deepening to red on FIXED thresholds
- * (the day-view axis breakpoints — 5, 8, 10+) so one week reads against
- * another. Zero is blank, not a faint chip.
+ * The in-center ramp: zero is the gray ground ('' — the view paints it),
+ * and ANY count from 1 up is colored — 1 the lightest red, deepening on
+ * FIXED thresholds so one week reads against another.
  */
 export function inCenterCellClass(n) {
   if (n <= 0) return ''
-  if (n <= 5) return 'bg-zinc-100 text-zinc-700'
-  if (n <= 8) return 'bg-red-100 text-red-700'
-  if (n <= 10) return 'bg-red-300 text-red-950'
-  return 'bg-red-500 text-white'
+  if (n <= 2) return 'bg-red-50 text-red-700'
+  if (n <= 5) return 'bg-red-100 text-red-800'
+  if (n <= 8) return 'bg-red-300 text-red-950'
+  if (n <= 10) return 'bg-red-400 text-white'
+  return 'bg-red-600 text-white'
 }
 
 /**
- * The online ramp is its OWN scale, gray to amber/orange, tuned to online's
- * much smaller counts — 1 or 2 must already register where the in-center
- * ramp would still read as nothing.
+ * The online ramp is its OWN scale — light orange to deep orange, tuned to
+ * online's much smaller counts. A 1 is NEVER gray: gray means zero.
  */
 export function onlineCellClass(n) {
   if (n <= 0) return ''
-  if (n === 1) return 'bg-zinc-100 text-zinc-700'
-  if (n === 2) return 'bg-amber-100 text-amber-800'
-  if (n <= 4) return 'bg-amber-300 text-amber-950'
-  return 'bg-orange-500 text-white'
+  if (n === 1) return 'bg-orange-100 text-orange-800'
+  if (n === 2) return 'bg-orange-200 text-orange-900'
+  if (n <= 4) return 'bg-orange-400 text-white'
+  return 'bg-orange-600 text-white'
+}
+
+/**
+ * Per-row totals across the WEEKDAY columns only, in-center plus online.
+ * Saturday rows are different clock times from the weekday rows they sit
+ * beside, so Saturday never joins a row total.
+ */
+export function weekdayRowTotals(grid) {
+  return grid.weekdayBands.map((_, i) =>
+    grid.weekdays.reduce((n, d) => n + (d.inCenter[i] ?? 0) + (d.online[i] ?? 0), 0),
+  )
+}
+
+/** The weekday grand total — SESSIONS, not cell sums; Saturday excluded. */
+export function weekdayGrandTotal(grid) {
+  return grid.weekdays.reduce((n, d) => n + d.totals.inCenter + d.totals.online, 0)
 }
 
 /** Count per band, day-view rule: a session counts in every band it overlaps. */

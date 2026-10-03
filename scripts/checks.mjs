@@ -21,7 +21,7 @@ import { cleanPersonName, titleCaseName, generateDisplayName, violatesNamingConv
 import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } from '../src/features/imports/workstreamImport.js'
 import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, mapDelivery, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent, radiusKeyOf, confirmationTargets, planRadiusImport, isVirtualCenter, VIRTUAL_CENTERS, missingRadiusHeaders, readRadiusRow, sessionBooker } from '../src/features/imports/radiusImport.js'
 import { sessionMarker, isStaffBooker, STAFF_BOOKERS } from '../src/features/day/sessionMarker.js'
-import { centerOperatingHours, defaultPlanWeekStart, planWeekDates, extendRange, bands, alignRows, planWeekGrid, monthDay, inCenterCellClass, onlineCellClass } from '../src/features/week/weekPlan.js'
+import { centerOperatingHours, defaultPlanWeekStart, planWeekDates, extendRange, bands, alignRows, planWeekGrid, monthDay, inCenterCellClass, onlineCellClass, weekdayRowTotals, weekdayGrandTotal } from '../src/features/week/weekPlan.js'
 import { planStudentImport, planStudentImportByCenter, STUDENT_FIELDS, STUDENT_MATCH_COLUMNS } from '../src/features/imports/studentImport.js'
 import { buildChecks } from '../src/features/health/checks.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime , formatStampDate, TIME_CHOICES, centerInstant } from '../src/lib/dates.js'
@@ -2388,23 +2388,32 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
 
   eq('the stacked header date reads month/day', monthDay('2026-09-28'), '9/28')
 
-  // Two INDEPENDENT fixed scales, so weeks stay comparable. In-center keeps
-  // the old axis breakpoints; online is tuned so 1–2 already registers.
-  eq('in-center: zero is blank', inCenterCellClass(0), '')
-  eq('in-center ramps on 5 / 8 / 10+',
-     [1, 5, 6, 8, 9, 10, 11].map(inCenterCellClass),
-     ['bg-zinc-100 text-zinc-700', 'bg-zinc-100 text-zinc-700',
-      'bg-red-100 text-red-700', 'bg-red-100 text-red-700',
-      'bg-red-300 text-red-950', 'bg-red-300 text-red-950',
-      'bg-red-500 text-white'])
-  eq('online: zero is blank', onlineCellClass(0), '')
-  eq('online registers at 1 and 2 and saturates early',
-     [1, 2, 3, 4, 5].map(onlineCellClass),
-     ['bg-zinc-100 text-zinc-700', 'bg-amber-100 text-amber-800',
-      'bg-amber-300 text-amber-950', 'bg-amber-300 text-amber-950',
-      'bg-orange-500 text-white'])
+  // Two INDEPENDENT fixed scales, so weeks stay comparable. Gray means
+  // ZERO on both: any count from 1 up is colored, 1 the lightest shade.
+  eq('in-center: zero is the gray ground', inCenterCellClass(0), '')
+  eq('in-center: 1 is already the lightest RED, never gray',
+     inCenterCellClass(1).includes('red'), true)
+  eq('in-center deepens light red to deep red',
+     [1, 3, 6, 9, 11].map(inCenterCellClass),
+     ['bg-red-50 text-red-700', 'bg-red-100 text-red-800', 'bg-red-300 text-red-950',
+      'bg-red-400 text-white', 'bg-red-600 text-white'])
+  eq('online: zero is the gray ground', onlineCellClass(0), '')
+  eq('online: 1 is already the lightest ORANGE, never gray',
+     onlineCellClass(1).includes('orange'), true)
+  eq('online deepens light orange to deep orange',
+     [1, 2, 3, 5].map(onlineCellClass),
+     ['bg-orange-100 text-orange-800', 'bg-orange-200 text-orange-900',
+      'bg-orange-400 text-white', 'bg-orange-600 text-white'])
   eq('the two scales really are different at the same count',
      inCenterCellClass(2) === onlineCellClass(2), false)
+
+  // The far-right row totals read ACROSS weekdays only: Saturday rows sit
+  // beside other clock times, so Saturday never joins them. Cell sums per
+  // row; the grand total stays a SESSION count.
+  eq('row totals sum weekday cells, in-center plus online',
+     weekdayRowTotals(totals), [0, 0, 2, 2, 1, 0, 0, 0, 0])
+  eq('the weekday grand total counts sessions and excludes Saturday',
+     weekdayGrandTotal(totals), 2)
 
   // Wiring that must not drift.
   const readSrc = (rel) =>
