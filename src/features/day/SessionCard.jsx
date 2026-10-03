@@ -270,7 +270,7 @@ export default function SessionCard({
       {(student?.grade || academic) && (
         <div className="mt-0.5 flex flex-wrap items-center gap-1">
           {student?.grade && (
-            <span className="shrink-0 rounded bg-zinc-300 px-1 py-0.5 text-[9px] text-zinc-800">
+            <span className="shrink-0 rounded bg-slate-200 px-1 py-0.5 text-[9px] text-slate-700">
               {student.grade}
             </span>
           )}

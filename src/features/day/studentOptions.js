@@ -14,8 +14,8 @@ export const SLOT_CERTAINTY = {
 // ones use an underscore, so both spellings resolve.
 export const ACADEMIC_STATUS = {
   behind: { label: 'Behind', bg: '#FEE2E2', color: '#991B1B' },
-  at_level: { label: 'At level', bg: '#E2E8F0', color: '#334155' },
-  'at-level': { label: 'At level', bg: '#E2E8F0', color: '#334155' },
+  at_level: { label: 'At level', bg: '#D4D4D8', color: '#27272A' },
+  'at-level': { label: 'At level', bg: '#D4D4D8', color: '#27272A' },
   ahead: { label: 'Ahead', bg: '#DCFCE7', color: '#166534' },
 }
 

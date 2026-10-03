@@ -674,7 +674,10 @@ anchor). **Never call `toISOString()` for dates.**
     (Students, Instructors, Rankings), and maintenance (Imports, Data
     health) pushed to the far right by the group's ml-auto. Dividers between the left groups are
     deliberately STRONG (h-6, white/60, mx-3) — the first faint cut let
-    adjacent groups read as one run. No labels. The signed-in email and
+    adjacent groups read as one run. No labels. Admin-only flags stay per
+    tab (NAV_GROUPS), so an instructor account sees Day | Binders,
+    Shifts | Students | Imports, Data health in the same grouped order.
+    The signed-in email and
     Sign out collapsed into one round account button at the far right
     (AccountMenu: person glyph, dropdown with the email and Sign out,
     backdrop and Escape to close). Renamed: the Binder tab is 'Binders'
@@ -686,14 +689,14 @@ anchor). **Never call `toISOString()` for dates.**
     grade/academic row FIRST, then the start time (swapped at the owner's
     ask). The time stands alone — duration left the card entirely, the
     height (grid) or width (Rows) already says it, and the ⋯ menu still
-    edits it. The grade chip leads the academic pill, the grade's gray
-    deliberately
-    DARKER (zinc-300/zinc-800) than the 'At level' slate so they don't
-    blend side by side. The binder ✓/✗ sits right-aligned on its own row
-    directly above the Supp badge's bottom-right corner (vertical card);
-    on the horizontal bar it joined the right-hand control cluster. Admin-only flags stay per tab (NAV_GROUPS), so an
-    instructor account sees Day, Binder | Shifts | Roster | Imports,
-    Data health in the same grouped order.
+    edits it. The grade chip leads the academic pill in two DIFFERENT
+    grays so they never blend — swapped at the owner's ask: the grade
+    chip is now the light slate (slate-200/700) and 'At level' the
+    darker zinc (#D4D4D8/#27272A, set in ACADEMIC_STATUS, so the roster
+    pill follows too); the first cut had the grays the other way round.
+    The binder ✓/✗ sits right-aligned on its own row directly above the
+    Supp badge's bottom-right corner (vertical card); on the horizontal
+    bar it joined the right-hand control cluster.
 
 ## Importers (all preview-first; never commit on the owner's behalf)
 
