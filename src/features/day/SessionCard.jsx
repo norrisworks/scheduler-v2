@@ -262,13 +262,7 @@ export default function SessionCard({
       <div className="absolute top-0.5 right-0.5">{markerEl}</div>
       <div className="absolute top-0.5 right-0.5">{menuButton}</div>
 
-      {/* Row 2: the start time alone — duration is evident from the card's
-          height, so printing it was noise. */}
-      <div className="mt-0.5 flex items-center gap-1 text-[9px] text-zinc-500">
-        <span>{formatTime(session.start_time)}</span>
-      </div>
-
-      {/* Row 3: grade chip, then academic status. The grade's gray is
+      {/* Row 2: grade chip, then academic status. The grade's gray is
           deliberately DARKER than the 'At level' pill's slate so the two
           don't blend side by side. Session status is deliberately NOT here —
           Radius owns attendance, and cancelled sessions are off the grid, so
@@ -290,6 +284,12 @@ export default function SessionCard({
           )}
         </div>
       )}
+
+      {/* Row 3: the start time alone — duration is evident from the card's
+          height, so printing it was noise. */}
+      <div className="mt-0.5 flex items-center gap-1 text-[9px] text-zinc-500">
+        <span>{formatTime(session.start_time)}</span>
+      </div>
 
       {/* Middle: pinned notes and the day's one-liner. The note area is the
           card's flex slack: it fills every pixel between the header rows and

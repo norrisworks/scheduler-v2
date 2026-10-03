@@ -682,10 +682,12 @@ anchor). **Never call `toISOString()` for dates.**
     file names and code identifiers keep their old names, and every
     user-facing string that pointed at "the Roster" now says the
     Students tab.
-49. **The session card's rows settled** (2026-10-03). Time row shows the
-    START TIME alone — duration left the card entirely, the height (grid)
-    or width (Rows) already says it, and the ⋯ menu still edits it. Row
-    three is grade chip then academic pill, the grade's gray deliberately
+49. **The session card's rows settled** (2026-10-03). Under the name: the
+    grade/academic row FIRST, then the start time (swapped at the owner's
+    ask). The time stands alone — duration left the card entirely, the
+    height (grid) or width (Rows) already says it, and the ⋯ menu still
+    edits it. The grade chip leads the academic pill, the grade's gray
+    deliberately
     DARKER (zinc-300/zinc-800) than the 'At level' slate so they don't
     blend side by side. The binder ✓/✗ sits right-aligned on its own row
     directly above the Supp badge's bottom-right corner (vertical card);
