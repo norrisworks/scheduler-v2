@@ -2446,6 +2446,26 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
        .includes('weekday_open, weekday_close, saturday_open, saturday_close'), true)
   eq('the Week tab is admin-only in the nav',
      readSrc('src/components/TopBar.jsx').includes("{ to: '/week', label: 'Week', adminOnly: true }"), true)
+  // Roster slot editing is the DRAWER's code path, not a copy: all four
+  // writes live in slotActions.js and both surfaces import them.
+  const slotActions = readSrc('src/features/roster/slotActions.js')
+  eq('slotActions owns all four slot writes',
+     ['newSlotRow', 'insertSlot', 'patchSlot', 'removeSlot', 'futureCancelledCount']
+       .every((f) => slotActions.includes(`function ${f}`)), true)
+  const useStudentSrc2 = readSrc('src/features/roster/useStudent.js')
+  eq('the drawer hook delegates to slotActions',
+     useStudentSrc2.includes("from './slotActions'"), true)
+  eq('and keeps no slot-table WRITES of its own (the load select stays)',
+     /from\('recurring_slots'\)\s*\.(insert|update|delete)/.test(useStudentSrc2), false)
+  const rosterView = readSrc('src/features/roster/RosterView.jsx')
+  eq('the roster cells use the same writes',
+     ['insertSlot', 'newSlotRow', 'patchSlot', 'removeSlot', 'futureCancelledCount']
+       .every((f) => rosterView.includes(f)), true)
+  eq('and the same materialize follow-through as the drawer',
+     rosterView.includes('materializeSessions(centerId)'), true)
+  eq('the drawer add form builds the shared row shape',
+     readSrc('src/features/roster/RecurringSlots.jsx').includes('newSlotRow('), true)
+
   eq('both tables share ONE maximum, so their shading is comparable',
      readSrc('src/features/week/WeekPlanView.jsx').includes('sharedMax'), true)
   eq('the week query selects what the grid counts, center_id included',

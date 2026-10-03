@@ -3,6 +3,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { todayISO } from '../../lib/dates'
 import TimeSelect from '../../components/TimeSelect'
 import { DAYS } from './studentFields'
+import { newSlotRow } from './slotActions'
 
 const inputClass =
   'rounded-lg border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-200'
@@ -28,13 +29,8 @@ export default function RecurringSlots({ slots, saving, defaultDuration, onAdd, 
 
   async function add(e) {
     e.preventDefault()
-    await onAdd({
-      day_of_week: Number(draft.day_of_week),
-      start_time: `${draft.start_time}:00`,
-      // Duration is a student-level property; the slot simply inherits it.
-      duration: defaultDuration || 60,
-      effective_from: todayISO(),
-    })
+    // The same row shape the roster's day cells build (slotActions).
+    await onAdd(newSlotRow(draft.day_of_week, draft.start_time, defaultDuration))
   }
 
   return (

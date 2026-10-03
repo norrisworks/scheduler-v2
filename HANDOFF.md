@@ -598,6 +598,25 @@ anchor). **Never call `toISOString()` for dates.**
     db_schema_facts (it does not inventory the centers table), so db-check
     carries no REQUIRED_COLUMNS row for them.
 
+45. **Standing slots edit from the roster too** (2026-10-02). Each roster
+    row carries five day cells — Mon–Thu and Saturday — listing that
+    student's active slots (a day is a LIST: Katie V has two Saturday
+    slots). Add via a '+' placeholder select of the standard half-hour
+    choices (a pick saves; opening never writes), edit via the shared
+    TimeSelect in place, delete via the drawer's exact two-step confirm
+    (count future cancelled sessions FIRST, then delete-with-cleanup /
+    slot-only / keep). NOT a second implementation: all four slot writes
+    were extracted to slotActions.js (newSlotRow/insertSlot/patchSlot/
+    removeSlot/futureCancelledCount) and BOTH surfaces — useStudent for
+    the drawer, RosterView's cells — import them, each following a write
+    with materializeSessions so future unmodified sessions MOVE with
+    their instructor assignments intact. Source-scan checks pin the
+    delegation (the drawer hook keeps no slot-table writes of its own).
+    The card/drawer are unchanged; rows without slots show empty cells
+    and the existing 'No standing slots' line. Ended slots
+    (effective_until past) stay drawer-only — the roster cells show the
+    living schedule.
+
 ## Importers (all preview-first; never commit on the owner's behalf)
 
 - **Students export** (`studentImport.js`): splits by the file's Center

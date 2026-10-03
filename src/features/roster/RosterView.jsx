@@ -4,8 +4,11 @@ import { supabase } from '../../lib/supabase'
 import { useCenter } from '../centers/CenterProvider'
 import { useAuth } from '../auth/AuthProvider'
 import CreateStudentDialog from './CreateStudentDialog'
-import { formatTimeMeridiem } from '../../lib/dates'
+import { TIME_CHOICES, formatTimeMeridiem, todayISO } from '../../lib/dates'
 import Spinner from '../../components/Spinner'
+import TimeSelect from '../../components/TimeSelect'
+import { materializeSessions } from '../materializer/materialize'
+import { futureCancelledCount, insertSlot, newSlotRow, patchSlot, removeSlot } from './slotActions'
 import { useFilteredRoster, useRoster } from './useRoster'
 import {
   DAYS,
@@ -35,6 +38,39 @@ export default function RosterView() {
   const [selectedId, setSelectedId] = useState(null)
   const [instructors, setInstructors] = useState([])
   const [adding, setAdding] = useState(false)
+  const [slotBusy, setSlotBusy] = useState(false)
+  const [slotError, setSlotError] = useState(null)
+
+  /**
+   * Every roster slot write follows the DRAWER's exact path: the shared
+   * slotActions write, then materializeSessions — future unmodified
+   * sessions MOVE (same rows, instructor assignments intact) — then a
+   * refetch so the cells show the new truth.
+   */
+  async function runSlotWrite(fn) {
+    setSlotBusy(true)
+    setSlotError(null)
+    const { error } = await fn()
+    if (error) {
+      setSlotError(error.message)
+      setSlotBusy(false)
+      return false
+    }
+    const { error: matError } = await materializeSessions(centerId)
+    if (matError) setSlotError(`Slot saved, but updating sessions failed: ${matError}`)
+    await refetch()
+    setSlotBusy(false)
+    return true
+  }
+
+  const slotHandlers = {
+    busy: slotBusy,
+    add: (studentId, day, time, defaultDuration) =>
+      runSlotWrite(() => insertSlot(studentId, newSlotRow(day, time, defaultDuration))),
+    update: (slotId, patch) => runSlotWrite(() => patchSlot(slotId, patch)),
+    remove: (slotId, opts) => runSlotWrite(() => removeSlot(slotId, opts)),
+    countCancelled: futureCancelledCount,
+  }
 
   const filtered = useFilteredRoster(students, { query, level, showInactive, enrollment })
 
@@ -141,6 +177,15 @@ export default function RosterView() {
         </div>
       )}
 
+      {slotError && (
+        <div className="flex items-center gap-3 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+          <span className="flex-1">{slotError}</span>
+          <button type="button" onClick={() => setSlotError(null)} className="font-medium underline">
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {contradictions > 0 && (
         <div className="flex items-center gap-3 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">
           <span className="flex-1">
@@ -182,6 +227,8 @@ export default function RosterView() {
                   student={student}
                   selected={student.id === selectedId}
                   onSelect={() => setSelectedId(student.id === selectedId ? null : student.id)}
+                  isAdmin={isAdmin}
+                  slotHandlers={slotHandlers}
                 />
               ))}
             </ul>
@@ -213,19 +260,19 @@ export default function RosterView() {
   )
 }
 
-function StudentRow({ student, selected, onSelect }) {
+function StudentRow({ student, selected, onSelect, isAdmin, slotHandlers }) {
   const slots = student.recurring_slots ?? []
   const pinned = (student.student_notes ?? []).filter((n) => n.pinned && !n.resolved).length
   const missing = missingAttributes(student)
 
   return (
-    <li>
+    <li className="flex items-center">
       <button
         type="button"
         onClick={onSelect}
         aria-pressed={selected}
         className={
-          'flex w-full items-center gap-3 px-4 py-2.5 text-left transition ' +
+          'flex min-w-0 flex-1 items-center gap-3 px-4 py-2.5 text-left transition ' +
           (selected ? 'bg-brand-50' : 'hover:bg-slate-50') +
           (student.active === false ? ' opacity-50' : '')
         }
@@ -299,6 +346,158 @@ function StudentRow({ student, selected, onSelect }) {
           </span>
         )}
       </button>
+
+      {/* The slot day cells live OUTSIDE the row button: they carry their
+          own controls, and a button cannot nest them. */}
+      <SlotCells
+        student={student}
+        slots={slots}
+        isAdmin={isAdmin}
+        handlers={slotHandlers}
+      />
     </li>
+  )
+}
+
+/** The five roster day columns: Mon–Thu and Saturday. */
+const ROSTER_DAYS = [1, 2, 3, 4, 6]
+
+/**
+ * Standing slots, editable straight from the roster — a SECOND location for
+ * the drawer's exact write paths (shared slotActions + the same materialize
+ * follow-through), never a different behavior. A day holds a LIST: Katie V
+ * has two Saturday slots, so each cell renders and edits all of them.
+ */
+function SlotCells({ student, slots, isAdmin, handlers }) {
+  // Two-step delete, exactly like the drawer: count the slot's future
+  // cancelled sessions FIRST (they poison their times if left behind),
+  // then offer delete-with-cleanup / slot-only / keep.
+  const [confirming, setConfirming] = useState(null)
+  const today = todayISO()
+  const active = slots.filter((s) => !s.effective_until || s.effective_until >= today)
+
+  async function askDelete(slotId) {
+    const cancelled = (await handlers.countCancelled(slotId)) ?? 0
+    setConfirming({ slotId, cancelled })
+  }
+
+  return (
+    <div className="flex shrink-0 items-stretch gap-1 py-1.5 pr-3">
+      {ROSTER_DAYS.map((day) => {
+        const mine = active
+          .filter((s) => s.day_of_week === day)
+          .sort((a, b) => a.start_time.localeCompare(b.start_time))
+        return (
+          <div key={day} className="w-24 rounded border border-slate-200 bg-white px-1 py-0.5">
+            <p className="text-[9px] font-semibold tracking-wide text-slate-400 uppercase">
+              {DAYS.find((d) => d.value === day)?.short}
+            </p>
+            <ul className="space-y-0.5">
+              {mine.map((slot) =>
+                confirming?.slotId === slot.id ? (
+                  <li key={slot.id} className="space-y-0.5">
+                    <button
+                      type="button"
+                      disabled={handlers.busy}
+                      onClick={() => {
+                        setConfirming(null)
+                        handlers.remove(slot.id, { alsoCancelled: confirming.cancelled > 0 })
+                      }}
+                      className="w-full rounded bg-red-600 px-1 py-0.5 text-[10px] font-medium text-white hover:bg-red-700"
+                    >
+                      {confirming.cancelled > 0
+                        ? `Delete + ${confirming.cancelled} cancelled`
+                        : 'Delete slot'}
+                    </button>
+                    {confirming.cancelled > 0 && (
+                      <button
+                        type="button"
+                        disabled={handlers.busy}
+                        onClick={() => {
+                          setConfirming(null)
+                          handlers.remove(slot.id, { alsoCancelled: false })
+                        }}
+                        title="Keep the cancelled sessions as history. Note: they keep blocking these times until a slot reclaims them."
+                        className="w-full rounded border border-slate-300 px-1 py-0.5 text-[10px] text-slate-600 hover:bg-slate-100"
+                      >
+                        Slot only
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setConfirming(null)}
+                      className="w-full rounded px-1 py-0.5 text-[10px] text-slate-400 hover:bg-slate-100"
+                    >
+                      Keep
+                    </button>
+                  </li>
+                ) : (
+                  <li key={slot.id} className="flex items-center gap-0.5">
+                    {isAdmin ? (
+                      <TimeSelect
+                        value={slot.start_time.slice(0, 5)}
+                        disabled={handlers.busy}
+                        onChange={(t) => handlers.update(slot.id, { start_time: `${t}:00` })}
+                        aria-label={`${student.name} ${DAYS.find((d) => d.value === day)?.label} slot time`}
+                        className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-0 py-0 text-[11px] text-slate-700 hover:border-slate-200"
+                      />
+                    ) : (
+                      <span className="flex-1 text-[11px] text-slate-700">
+                        {formatTimeMeridiem(slot.start_time)}
+                      </span>
+                    )}
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        disabled={handlers.busy}
+                        onClick={() => askDelete(slot.id)}
+                        aria-label="Delete this slot"
+                        title="Delete this slot"
+                        className="shrink-0 rounded px-0.5 text-[10px] text-slate-300 hover:bg-red-50 hover:text-red-600"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </li>
+                ),
+              )}
+            </ul>
+            {isAdmin && (
+              <AddSlotSelect
+                disabled={handlers.busy}
+                label={`Add ${DAYS.find((d) => d.value === day)?.label} slot for ${student.name}`}
+                onPick={(time) =>
+                  handlers.add(student.id, day, time, student.default_duration)
+                }
+              />
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * The add path, autosaving: the same half-hour choices as every TimeSelect,
+ * behind a '+' placeholder so merely opening the cell never writes — a pick
+ * does. The select snaps back to '+' afterwards (value stays '').
+ */
+function AddSlotSelect({ onPick, disabled, label }) {
+  return (
+    <select
+      value=""
+      disabled={disabled}
+      onChange={(e) => e.target.value && onPick(e.target.value)}
+      aria-label={label}
+      className="mt-0.5 w-full rounded border border-dashed border-slate-200 bg-transparent px-0.5 py-0 text-[10px] text-slate-400 hover:border-slate-300 hover:text-slate-600"
+    >
+      <option value="">+</option>
+      {TIME_CHOICES.map((t) => (
+        <option key={t} value={t}>
+          {formatTimeMeridiem(`${t}:00`)}
+        </option>
+      ))}
+    </select>
   )
 }

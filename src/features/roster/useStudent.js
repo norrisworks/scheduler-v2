@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../auth/AuthProvider'
-import { todayISO } from '../../lib/dates'
+import {
+  futureCancelledCount as slotFutureCancelledCount,
+  insertSlot,
+  patchSlot,
+  removeSlot,
+} from './slotActions'
 
 const EMPTY = []
 
@@ -117,51 +122,18 @@ export function useStudent(studentId) {
     [run, studentId],
   )
 
+  // Slot writes live in slotActions.js, SHARED with the roster's day cells —
+  // one code path, so both editing locations behave identically.
   const addSlot = useCallback(
-    (slot) => run(() => supabase.from('recurring_slots').insert({ ...slot, student_id: studentId })),
+    (slot) => run(() => insertSlot(studentId, slot)),
     [run, studentId],
   )
 
-  const updateSlot = useCallback(
-    (id, patch) => run(() => supabase.from('recurring_slots').update(patch).eq('id', id)),
-    [run],
-  )
+  const updateSlot = useCallback((id, patch) => run(() => patchSlot(id, patch)), [run])
 
-  /**
-   * Deleting a slot leaves its future CANCELLED sessions behind as orphans
-   * (the FK is ON DELETE SET NULL), and a cancelled row blocks its exact
-   * (date, time) from ever being materialized again — the poisoned-slot bug.
-   * The materializer now reclaims such orphans when a new slot lands on them,
-   * but offering the cleanup at delete time keeps them out of the cancelled
-   * strip entirely. The count query MUST run before the delete: afterwards
-   * the link is already null.
-   */
-  const futureCancelledCount = useCallback(async (id) => {
-    const { count, error } = await supabase
-      .from('sessions')
-      .select('id', { count: 'exact', head: true })
-      .eq('recurring_slot_id', id)
-      .eq('status', 'cancelled')
-      .gte('date', todayISO())
-    return error ? 0 : (count ?? 0)
-  }, [])
+  const futureCancelledCount = useCallback((id) => slotFutureCancelledCount(id), [])
 
-  const deleteSlot = useCallback(
-    (id, { alsoCancelled = false } = {}) =>
-      run(async () => {
-        if (alsoCancelled) {
-          const { error } = await supabase
-            .from('sessions')
-            .delete()
-            .eq('recurring_slot_id', id)
-            .eq('status', 'cancelled')
-            .gte('date', todayISO())
-          if (error) return { error }
-        }
-        return supabase.from('recurring_slots').delete().eq('id', id)
-      }),
-    [run],
-  )
+  const deleteSlot = useCallback((id, opts) => run(() => removeSlot(id, opts)), [run])
 
   const addNote = useCallback(
     (note) =>
