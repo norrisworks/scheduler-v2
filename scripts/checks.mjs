@@ -2415,13 +2415,13 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
   const near = (rgb, want, tol = 3) =>
     channels(rgb).every((c, i) => Math.abs(c - want[i]) <= tol)
   eq('zero has no style', heatStyle(0, 10, 'red'), null)
-  eq("red's floor is a pale pastel pink",
-     near(bg(1, 10, 'red'), [253, 224, 223]), true)
-  eq("red's ceiling is a soft muted brick in the hue's dark ink",
-     [near(bg(10, 10, 'red'), [216, 121, 111]), heatStyle(10, 10, 'red').color],
+  eq("red's floor is barely-there pink",
+     near(bg(1, 10, 'red'), [254, 239, 239]), true)
+  eq("red's ceiling is a light salmon in the hue's dark ink",
+     [near(bg(10, 10, 'red'), [241, 159, 148]), heatStyle(10, 10, 'red').color],
      [true, '#450a0a'])
   eq("green's 1 is exactly as pale as red's (same L, same chroma)",
-     near(bg(1, 10, 'green'), [209, 241, 220]), true)
+     near(bg(1, 10, 'green'), [228, 250, 235]), true)
 
   // The OKLCH ramp: ONE lightness curve for all three hues, so a given
   // count reads equally dark in red, blue and green — RGB interpolation
@@ -2432,10 +2432,10 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
        const Ls = ['red', 'blue', 'green'].map((hue) => lightnessOf(bg(n, 6, hue)))
        return Math.max(...Ls) - Math.min(...Ls) < 0.012
      }), true)
-  eq('and that shared lightness is the pastel floor (L 0.93)',
-     Math.abs(lightnessOf(bg(1, 10, 'blue')) - 0.93) < 0.012, true)
-  eq('and the soft ceiling (L 0.68) at the shared maximum',
-     Math.abs(lightnessOf(bg(10, 10, 'green')) - 0.68) < 0.012, true)
+  eq('and that shared lightness is the whisper floor (L 0.965)',
+     Math.abs(lightnessOf(bg(1, 10, 'blue')) - 0.965) < 0.012, true)
+  eq('and the LIGHT ceiling (L 0.78) at the shared maximum',
+     Math.abs(lightnessOf(bg(10, 10, 'green')) - 0.78) < 0.012, true)
   eq("Blue Bell's 1, 3 and 4 are now three different shades",
      new Set([1, 3, 4].map((n) => bg(n, 6, 'blue'))).size, 3)
   eq('every count up to the max is distinct in every hue',

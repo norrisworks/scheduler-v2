@@ -573,10 +573,11 @@ anchor). **Never call `toISOString()` for dates.**
     edge). Checks measure the output's OKLab lightness and hold all
     three hues equal at every count. Clamping above the max and
     deepest-when-count-IS-the-max behave as before. The ramps are
-    DESATURATED and LIGHT by design (two owner rounds: first chroma
-    capped at 0.12, then the whole lightness curve raised to L 0.93 →
-    0.68 with cLight 0.045 — the floors are pale pastels, the ceiling a
-    soft mid-tone, never dark or bright), the shared cLight makes every
+    DESATURATED and LIGHT by design, and it took THREE owner rounds to
+    get light enough — do not darken these without asking: chroma 0.03 →
+    0.10, lightness L 0.965 → 0.78 (a 1 is a barely-there wash; the
+    shared maximum is a light salmon/periwinkle/sage, never a mid or
+    dark tone), the shared cLight makes every
     hue's 1 equally pale, and the hue's dark ink runs the WHOLE ramp —
     the old white-ink flip belonged to darker ceilings. Hues:
     MV in-center RED, Blue Bell in-center BLUE (IN_CENTER_HUE map in the
