@@ -7,40 +7,49 @@ import QueryError from '../../components/QueryError'
 import { addDays, formatDateShort, formatTime, minutesToTime, todayISO } from '../../lib/dates'
 import {
   centerOperatingHours,
+  centerWeekMax,
   defaultPlanWeekStart,
-  inCenterCellClass,
+  heatClass,
   monthDay,
-  onlineCellClass,
   planWeekDates,
   planWeekGrid,
-  weekdayGrandTotal,
   weekdayRowTotals,
+  weekGrandTotal,
 } from './weekPlan'
 
 const DAY_LABEL = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
+/** In-center hue per center; online is green everywhere. */
+const IN_CENTER_HUE = { 'Blue Bell': 'blue' }
+
 /**
  * The Week tab: next week's demand, half hour by half hour, for planning
- * instructor shifts before they are entered. ONE full-width heatmap — each
- * day a tight pair of columns (in-center, then a narrower online), each
- * metric on its own fixed color scale. Read-only counts.
+ * instructor shifts before they are entered. BOTH centers, Montgomeryville
+ * over Blue Bell, one heatmap table each with the same layout; navigation
+ * moves them together. Read-only counts.
  */
 export default function WeekPlanView() {
   const { isAdmin } = useAuth()
-  const { centerId, center } = useCenter()
+  const { centers } = useCenter()
   const [weekStart, setWeekStart] = useState(() => defaultPlanWeekStart(todayISO()))
   const [sessions, setSessions] = useState(null)
   const [error, setError] = useState(null)
 
+  // Montgomeryville on top, Blue Bell below — the owner's stacking order.
+  const ordered = useMemo(
+    () => [...(centers ?? [])].sort((a, b) => b.name.localeCompare(a.name)),
+    [centers],
+  )
+
   useEffect(() => {
-    if (!centerId || !isAdmin) return
+    if (!isAdmin || ordered.length === 0) return
     let stale = false
     setSessions(null)
     const dates = planWeekDates(weekStart)
     supabase
       .from('sessions')
-      .select('date, start_time, duration, status, delivery_method')
-      .eq('center_id', centerId)
+      .select('center_id, date, start_time, duration, status, delivery_method')
+      .in('center_id', ordered.map((c) => c.id))
       .gte('date', dates[0])
       .lte('date', dates[dates.length - 1])
       .then(({ data, error }) => {
@@ -54,15 +63,19 @@ export default function WeekPlanView() {
     return () => {
       stale = true
     }
-  }, [centerId, weekStart, isAdmin])
+  }, [ordered, weekStart, isAdmin])
 
-  const grid = useMemo(
-    () =>
-      sessions
-        ? planWeekGrid({ sessions, weekStart, hours: centerOperatingHours(center) })
-        : null,
-    [sessions, weekStart, center],
-  )
+  const grids = useMemo(() => {
+    if (!sessions) return null
+    return ordered.map((center) => {
+      const grid = planWeekGrid({
+        sessions: sessions.filter((s) => s.center_id === center.id),
+        weekStart,
+        hours: centerOperatingHours(center),
+      })
+      return { center, grid, max: centerWeekMax(grid) }
+    })
+  }, [sessions, ordered, weekStart])
 
   if (!isAdmin) {
     return (
@@ -90,7 +103,6 @@ export default function WeekPlanView() {
           </button>
           <span className="px-1 text-sm font-medium text-zinc-800 tabular-nums">
             {formatDateShort(dates[0])} – {formatDateShort(dates[dates.length - 1])}
-            {isNextWeek && <span className="ml-1.5 text-xs font-normal text-zinc-400">next week</span>}
           </span>
           <button
             type="button"
@@ -110,50 +122,59 @@ export default function WeekPlanView() {
             </button>
           )}
         </div>
-        <p className="ml-auto text-[11px] text-zinc-400">
-          Scheduled sessions per half hour · counts only, read-only.
-        </p>
       </div>
 
       {error ? (
         <div className="mt-6">
           <QueryError error={error} />
         </div>
-      ) : !grid ? (
+      ) : !grids ? (
         <div className="mt-10">
           <Spinner label="Loading week…" />
         </div>
-      ) : grid.weekdays.length === 0 && !grid.saturday ? (
-        <p className="mt-10 text-center text-sm text-zinc-400">
-          No scheduled sessions that week yet.
-        </p>
       ) : (
-        <WeekTable grid={grid} />
+        <div className="mt-5 space-y-8">
+          {grids.map(({ center, grid, max }) => (
+            <section key={center.id}>
+              <h2 className="mb-2 text-sm font-semibold text-zinc-900">{center.name}</h2>
+              {grid.weekdays.length === 0 && !grid.saturday ? (
+                <p className="rounded-xl border border-zinc-200 bg-white px-4 py-8 text-center text-sm text-zinc-400">
+                  No scheduled sessions that week yet.
+                </p>
+              ) : (
+                <WeekTable
+                  grid={grid}
+                  max={max}
+                  inHue={IN_CENTER_HUE[center.name] ?? 'red'}
+                />
+              )}
+            </section>
+          ))}
+        </div>
       )}
     </div>
   )
 }
 
-/** Day boundary: a touch more air plus a hairline, so pairs read as units. */
-const DAY_EDGE = 'border-l border-zinc-200 pl-1'
+/** Day boundary: a HEAVY divider plus extra air, so pairs read separately. */
+const DAY_EDGE = 'border-l-2 border-zinc-300 pl-2'
+/** Alternating day-pair shading; odd days get the tint. */
+const stripeOf = (i) => (i % 2 === 1 ? 'bg-zinc-50' : '')
 
 /**
- * One full-width heatmap table. Cells are painted edge to edge with a 1px
- * padding gap; zero stays on the uncolored zinc-50 ground. Each day is a
- * TIGHT pair — in-center, then a narrower online column (its counts are
- * small) — under one spanning date header. table-fixed + the colgroup give
- * the axes their px and split the rest In:Online ≈ 1:0.62.
+ * One center's heatmap. Cells paint edge to edge on each center's OWN
+ * scale: lightest shade at 1, deepest at that center's weekly maximum
+ * across both metrics. Zero stays a gray block. The far-right Total
+ * column sums rows across weekdays only (Saturday rows are other clock
+ * times); its bottom cell is the WHOLE week's session count.
  */
-function WeekTable({ grid }) {
+function WeekTable({ grid, max, inHue }) {
   const hasSaturday = Boolean(grid.saturday)
   const pairs = grid.weekdays.length + (hasSaturday ? 1 : 0)
-  // Percent widths for the day columns; the px axis columns come off the top.
   const inPct = 97 / (pairs * 1.62)
   const onPct = inPct * 0.62
-  // Far-right reference column: weekday cells summed per row. Saturday rows
-  // are other clock times, so they never join these.
   const rowTotals = weekdayRowTotals(grid)
-  const grand = weekdayGrandTotal(grid)
+  const satIndex = grid.weekdays.length
 
   // Calendar-style axis: the label sits ON the boundary line at the top of
   // the row it begins, not floating mid-row.
@@ -167,12 +188,12 @@ function WeekTable({ grid }) {
     </td>
   )
 
-  const heatCell = (n, ramp, extra = '') => (
-    <td className={`p-px ${extra}`}>
+  const heatCell = (n, hue, tdClass) => (
+    <td className={`p-px ${tdClass}`}>
       <div
         className={
           'flex h-8 items-center justify-center rounded-[2px] text-sm font-semibold tabular-nums ' +
-          (n > 0 ? ramp(n) : 'bg-zinc-50')
+          (n > 0 ? heatClass(n, max, hue) : 'bg-zinc-100')
         }
       >
         {n > 0 ? n : ''}
@@ -180,26 +201,26 @@ function WeekTable({ grid }) {
     </td>
   )
 
-  const dayPair = (day, bandMinutes, bandList) => {
+  const dayPair = (day, bandMinutes, bandList, stripe) => {
     if (bandMinutes === null) {
       return (
         <>
-          <td className={`p-px ${DAY_EDGE}`} />
-          <td className="p-px" />
+          <td className={`p-px ${DAY_EDGE} ${stripe}`} />
+          <td className={`p-px ${stripe}`} />
         </>
       )
     }
     const i = bandList.indexOf(bandMinutes)
     return (
       <>
-        {heatCell(day.inCenter[i] ?? 0, inCenterCellClass, DAY_EDGE)}
-        {heatCell(day.online[i] ?? 0, onlineCellClass)}
+        {heatCell(day.inCenter[i] ?? 0, inHue, `${DAY_EDGE} ${stripe}`)}
+        {heatCell(day.online[i] ?? 0, 'green', stripe)}
       </>
     )
   }
 
   return (
-    <div className="mt-5 overflow-x-auto rounded-xl border border-zinc-200 bg-white p-3">
+    <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white p-3">
       <table className="w-full table-fixed border-separate border-spacing-0">
         <colgroup>
           <col style={{ width: 52 }} />
@@ -213,11 +234,11 @@ function WeekTable({ grid }) {
         <thead>
           <tr>
             <th />
-            {grid.weekdays.map(({ date }) => (
+            {grid.weekdays.map(({ date }, i) => (
               <th
                 key={date}
                 colSpan={2}
-                className={`px-1 pt-1 text-center ${DAY_EDGE}`}
+                className={`px-1 pt-1 text-center ${DAY_EDGE} ${stripeOf(i)}`}
               >
                 <span className="block text-base leading-tight font-bold text-zinc-900">
                   {monthDay(date)}
@@ -229,25 +250,24 @@ function WeekTable({ grid }) {
             ))}
             {hasSaturday && <th />}
             {hasSaturday && (
-              <th colSpan={2} className={`px-1 pt-1 text-center ${DAY_EDGE}`}>
+              <th colSpan={2} className={`px-1 pt-1 text-center ${DAY_EDGE} ${stripeOf(satIndex)}`}>
                 <span className="block text-base leading-tight font-bold text-zinc-900">
                   {monthDay(grid.saturday.date)}
                 </span>
                 <span className="block text-sm font-normal text-zinc-500">Sat</span>
               </th>
             )}
-            <th className={`px-1 pt-1 text-center ${DAY_EDGE}`}>
+            <th className={`px-1 pt-1 text-center align-top ${DAY_EDGE}`}>
               <span className="block text-base leading-tight font-bold text-zinc-900">Total</span>
-              <span className="block text-sm font-normal text-zinc-500">Mon–Fri</span>
             </th>
           </tr>
           <tr>
             <th />
-            {grid.weekdays.map(({ date }) => (
-              <SubHeads key={date} />
+            {grid.weekdays.map(({ date }, i) => (
+              <SubHeads key={date} stripe={stripeOf(i)} />
             ))}
             {hasSaturday && <th />}
-            {hasSaturday && <SubHeads />}
+            {hasSaturday && <SubHeads stripe={stripeOf(satIndex)} />}
             <th className={DAY_EDGE} />
           </tr>
         </thead>
@@ -255,14 +275,16 @@ function WeekTable({ grid }) {
           {grid.rows.map((row, i) => (
             <tr key={i}>
               {axisLabel(row.w)}
-              {grid.weekdays.map((day) => (
+              {grid.weekdays.map((day, d) => (
                 <DayCells key={day.date}>
-                  {dayPair(day, row.w, grid.weekdayBands)}
+                  {dayPair(day, row.w, grid.weekdayBands, stripeOf(d))}
                 </DayCells>
               ))}
               {hasSaturday && axisLabel(row.s, 'pl-1')}
               {hasSaturday && (
-                <DayCells>{dayPair(grid.saturday, row.s, grid.saturdayBands)}</DayCells>
+                <DayCells>
+                  {dayPair(grid.saturday, row.s, grid.saturdayBands, stripeOf(satIndex))}
+                </DayCells>
               )}
               <td className={`text-center text-sm font-semibold text-zinc-700 tabular-nums ${DAY_EDGE}`}>
                 {row.w !== null && rowTotals[grid.weekdayBands.indexOf(row.w)] > 0
@@ -278,23 +300,23 @@ function WeekTable({ grid }) {
             <td className="border-t border-zinc-200 pt-1.5 pr-1.5 text-right text-xs font-semibold text-zinc-500">
               Total
             </td>
-            {grid.weekdays.map((day) => (
-              <TotalsPair key={day.date} totals={day.totals} />
+            {grid.weekdays.map((day, i) => (
+              <TotalsPair key={day.date} totals={day.totals} stripe={stripeOf(i)} />
             ))}
             {hasSaturday && <td className="border-t border-zinc-200 pt-1.5" />}
-            {hasSaturday && <TotalsPair totals={grid.saturday.totals} />}
-            {/* The weekday grand total — Saturday keeps its own column. */}
+            {hasSaturday && <TotalsPair totals={grid.saturday.totals} stripe={stripeOf(satIndex)} />}
+            {/* The WHOLE week, Saturday included. */}
             <td className={`border-t border-zinc-200 pt-1.5 text-center text-sm font-bold text-zinc-900 tabular-nums ${DAY_EDGE}`}>
-              {grand}
+              {weekGrandTotal(grid)}
             </td>
           </tr>
           <tr>
             <td className="pr-1.5 pb-0.5 text-right text-xs font-semibold text-zinc-500">All</td>
-            {grid.weekdays.map((day) => (
+            {grid.weekdays.map((day, i) => (
               <td
                 key={day.date}
                 colSpan={2}
-                className={`px-1 pb-0.5 text-center text-sm font-bold text-zinc-900 tabular-nums ${DAY_EDGE}`}
+                className={`px-1 pb-0.5 text-center text-sm font-bold text-zinc-900 tabular-nums ${DAY_EDGE} ${stripeOf(i)}`}
               >
                 {day.totals.inCenter + day.totals.online}
               </td>
@@ -303,7 +325,7 @@ function WeekTable({ grid }) {
             {hasSaturday && (
               <td
                 colSpan={2}
-                className={`px-1 pb-0.5 text-center text-sm font-bold text-zinc-900 tabular-nums ${DAY_EDGE}`}
+                className={`px-1 pb-0.5 text-center text-sm font-bold text-zinc-900 tabular-nums ${DAY_EDGE} ${stripeOf(satIndex)}`}
               >
                 {grid.saturday.totals.inCenter + grid.saturday.totals.online}
               </td>
@@ -325,13 +347,13 @@ function WeekCols({ inPct, onPct }) {
   )
 }
 
-function SubHeads() {
+function SubHeads({ stripe = '' }) {
   return (
     <>
-      <th className={`pb-1 text-center text-xs font-semibold text-zinc-500 ${DAY_EDGE}`}>
+      <th className={`pb-1 text-center text-xs font-semibold text-zinc-500 ${DAY_EDGE} ${stripe}`}>
         In-center
       </th>
-      <th className="pb-1 text-center text-xs font-semibold text-zinc-500">Online</th>
+      <th className={`pb-1 text-center text-xs font-semibold text-zinc-500 ${stripe}`}>Online</th>
     </>
   )
 }
@@ -341,13 +363,13 @@ function DayCells({ children }) {
   return children
 }
 
-function TotalsPair({ totals }) {
+function TotalsPair({ totals, stripe = '' }) {
   return (
     <>
-      <td className={`border-t border-zinc-200 pt-1.5 text-center text-sm font-bold text-zinc-800 tabular-nums ${DAY_EDGE}`}>
+      <td className={`border-t border-zinc-200 pt-1.5 text-center text-sm font-bold text-zinc-800 tabular-nums ${DAY_EDGE} ${stripe}`}>
         {totals.inCenter}
       </td>
-      <td className="border-t border-zinc-200 pt-1.5 text-center text-sm font-bold text-zinc-800 tabular-nums">
+      <td className={`border-t border-zinc-200 pt-1.5 text-center text-sm font-bold text-zinc-800 tabular-nums ${stripe}`}>
         {totals.online}
       </td>
     </>

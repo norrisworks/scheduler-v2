@@ -100,29 +100,46 @@ export function monthDay(iso) {
 }
 
 /**
- * The in-center ramp: zero is the gray ground ('' — the view paints it),
- * and ANY count from 1 up is colored — 1 the lightest red, deepening on
- * FIXED thresholds so one week reads against another.
+ * The heat shades, five steps light → deep per hue. Hues are per CENTER
+ * and metric: Montgomeryville in-center red, Blue Bell in-center blue,
+ * online green at both centers.
  */
-export function inCenterCellClass(n) {
-  if (n <= 0) return ''
-  if (n <= 2) return 'bg-red-50 text-red-700'
-  if (n <= 5) return 'bg-red-100 text-red-800'
-  if (n <= 8) return 'bg-red-300 text-red-950'
-  if (n <= 10) return 'bg-red-400 text-white'
-  return 'bg-red-600 text-white'
+export const HEAT_SHADES = {
+  red: ['bg-red-50 text-red-700', 'bg-red-100 text-red-800', 'bg-red-300 text-red-950',
+    'bg-red-400 text-white', 'bg-red-600 text-white'],
+  blue: ['bg-blue-50 text-blue-700', 'bg-blue-100 text-blue-800', 'bg-blue-300 text-blue-950',
+    'bg-blue-400 text-white', 'bg-blue-600 text-white'],
+  green: ['bg-green-50 text-green-700', 'bg-green-100 text-green-800', 'bg-green-300 text-green-950',
+    'bg-green-400 text-white', 'bg-green-600 text-white'],
 }
 
 /**
- * The online ramp is its OWN scale — light orange to deep orange, tuned to
- * online's much smaller counts. A 1 is NEVER gray: gray means zero.
+ * The scale runs from lightest at 1 to deepest at the CENTER's weekly
+ * maximum (the single highest cell of that center's week, both metrics),
+ * so each center reads against itself. 0 = no shade (the gray ground);
+ * a degenerate max of 1 reads mid-scale.
  */
-export function onlineCellClass(n) {
-  if (n <= 0) return ''
-  if (n === 1) return 'bg-orange-100 text-orange-800'
-  if (n === 2) return 'bg-orange-200 text-orange-900'
-  if (n <= 4) return 'bg-orange-400 text-white'
-  return 'bg-orange-600 text-white'
+export function heatLevel(n, max) {
+  if (n <= 0) return 0
+  if (max <= 1) return 3
+  const level = 1 + Math.round(((Math.min(n, max) - 1) / (max - 1)) * 4)
+  return Math.min(5, Math.max(1, level))
+}
+
+export function heatClass(n, max, hue) {
+  const level = heatLevel(n, max)
+  return level === 0 ? '' : HEAT_SHADES[hue][level - 1]
+}
+
+/** The single highest cell of the center's week — in-center AND online. */
+export function centerWeekMax(grid) {
+  let max = 0
+  const days = [...grid.weekdays, ...(grid.saturday ? [grid.saturday] : [])]
+  for (const day of days) {
+    for (const n of day.inCenter) max = Math.max(max, n)
+    for (const n of day.online) max = Math.max(max, n)
+  }
+  return max
 }
 
 /**
@@ -139,6 +156,14 @@ export function weekdayRowTotals(grid) {
 /** The weekday grand total — SESSIONS, not cell sums; Saturday excluded. */
 export function weekdayGrandTotal(grid) {
   return grid.weekdays.reduce((n, d) => n + d.totals.inCenter + d.totals.online, 0)
+}
+
+/** The WHOLE week's sessions, Saturday included — the bottom-right cell. */
+export function weekGrandTotal(grid) {
+  return (
+    weekdayGrandTotal(grid) +
+    (grid.saturday ? grid.saturday.totals.inCenter + grid.saturday.totals.online : 0)
+  )
 }
 
 /** Count per band, day-view rule: a session counts in every band it overlaps. */

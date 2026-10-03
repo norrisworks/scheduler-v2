@@ -21,7 +21,7 @@ import { cleanPersonName, titleCaseName, generateDisplayName, violatesNamingConv
 import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } from '../src/features/imports/workstreamImport.js'
 import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, mapDelivery, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent, radiusKeyOf, confirmationTargets, planRadiusImport, isVirtualCenter, VIRTUAL_CENTERS, missingRadiusHeaders, readRadiusRow, sessionBooker } from '../src/features/imports/radiusImport.js'
 import { sessionMarker, isStaffBooker, STAFF_BOOKERS } from '../src/features/day/sessionMarker.js'
-import { centerOperatingHours, defaultPlanWeekStart, planWeekDates, extendRange, bands, alignRows, planWeekGrid, monthDay, inCenterCellClass, onlineCellClass, weekdayRowTotals, weekdayGrandTotal } from '../src/features/week/weekPlan.js'
+import { centerOperatingHours, defaultPlanWeekStart, planWeekDates, extendRange, bands, alignRows, planWeekGrid, monthDay, heatLevel, heatClass, centerWeekMax, weekdayRowTotals, weekdayGrandTotal, weekGrandTotal } from '../src/features/week/weekPlan.js'
 import { planStudentImport, planStudentImportByCenter, STUDENT_FIELDS, STUDENT_MATCH_COLUMNS } from '../src/features/imports/studentImport.js'
 import { buildChecks } from '../src/features/health/checks.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime , formatStampDate, TIME_CHOICES, centerInstant } from '../src/lib/dates.js'
@@ -2388,24 +2388,36 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
 
   eq('the stacked header date reads month/day', monthDay('2026-09-28'), '9/28')
 
-  // Two INDEPENDENT fixed scales, so weeks stay comparable. Gray means
-  // ZERO on both: any count from 1 up is colored, 1 the lightest shade.
-  eq('in-center: zero is the gray ground', inCenterCellClass(0), '')
-  eq('in-center: 1 is already the lightest RED, never gray',
-     inCenterCellClass(1).includes('red'), true)
-  eq('in-center deepens light red to deep red',
-     [1, 3, 6, 9, 11].map(inCenterCellClass),
-     ['bg-red-50 text-red-700', 'bg-red-100 text-red-800', 'bg-red-300 text-red-950',
-      'bg-red-400 text-white', 'bg-red-600 text-white'])
-  eq('online: zero is the gray ground', onlineCellClass(0), '')
-  eq('online: 1 is already the lightest ORANGE, never gray',
-     onlineCellClass(1).includes('orange'), true)
-  eq('online deepens light orange to deep orange',
-     [1, 2, 3, 5].map(onlineCellClass),
-     ['bg-orange-100 text-orange-800', 'bg-orange-200 text-orange-900',
-      'bg-orange-400 text-white', 'bg-orange-600 text-white'])
-  eq('the two scales really are different at the same count',
-     inCenterCellClass(2) === onlineCellClass(2), false)
+  // Each center scales to its OWN weekly maximum: lightest shade at 1,
+  // deepest at the max, zero stays the gray ground. Hues per center:
+  // MV in-center red, BB in-center blue, online green at both.
+  eq('zero has no shade', heatLevel(0, 10), 0)
+  eq('1 is the lightest shade, the max the deepest',
+     [heatLevel(1, 12), heatLevel(12, 12)], [1, 5])
+  eq('the scale stretches between them',
+     [3, 6, 9].map((n) => heatLevel(n, 12)), [2, 3, 4])
+  eq('a tiny week still reads: max of 2 puts 1 light and 2 deep',
+     [heatLevel(1, 2), heatLevel(2, 2)], [1, 5])
+  eq('a degenerate max of 1 reads mid-scale', heatLevel(1, 1), 3)
+  eq('counts above the max clamp to the deepest shade', heatLevel(9, 4), 5)
+  eq('the hue picks the shade table',
+     [heatClass(1, 5, 'red'), heatClass(5, 5, 'blue'), heatClass(3, 5, 'green')],
+     ['bg-red-50 text-red-700', 'bg-blue-600 text-white', 'bg-green-300 text-green-950'])
+  eq('zero yields no class in any hue', heatClass(0, 5, 'red'), '')
+
+  // The maximum is the single highest CELL of the center's week — both
+  // metrics, Saturday included.
+  eq('a week of non-overlapping sessions peaks at 1', centerWeekMax(totals), 1)
+  eq('overlap raises the max — the single highest cell wins',
+     centerWeekMax(planWeekGrid({
+       weekStart: '2026-10-05',
+       hours,
+       sessions: [
+         mk('2026-10-05', '16:00:00'),
+         mk('2026-10-05', '16:00:00'),
+         mk('2026-10-05', '16:30:00', { delivery_method: 'online' }),
+       ],
+     })), 2)
 
   // The far-right row totals read ACROSS weekdays only: Saturday rows sit
   // beside other clock times, so Saturday never joins them. Cell sums per
@@ -2414,6 +2426,10 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
      weekdayRowTotals(totals), [0, 0, 2, 2, 1, 0, 0, 0, 0])
   eq('the weekday grand total counts sessions and excludes Saturday',
      weekdayGrandTotal(totals), 2)
+  eq('the bottom-right grand total is the WHOLE week, Saturday included',
+     weekGrandTotal(totals), 3)
+  eq('with no Saturday the two agree',
+     weekGrandTotal(noSat) === weekdayGrandTotal(noSat), true)
 
   // Wiring that must not drift.
   const readSrc = (rel) =>
@@ -2423,9 +2439,9 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
        .includes('weekday_open, weekday_close, saturday_open, saturday_close'), true)
   eq('the Week tab is admin-only in the nav',
      readSrc('src/components/TopBar.jsx').includes("{ to: '/week', label: 'Week', adminOnly: true }"), true)
-  eq('the week query selects what the grid counts',
+  eq('the week query selects what the grid counts, center_id included',
      readSrc('src/features/week/WeekPlanView.jsx')
-       .includes("select('date, start_time, duration, status, delivery_method')"), true)
+       .includes("select('center_id, date, start_time, duration, status, delivery_method')"), true)
 }
 
 // ---- Radius-confirmed absences: a skipped confirmed session is a signal

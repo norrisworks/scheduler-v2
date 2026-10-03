@@ -540,26 +540,32 @@ anchor). **Never call `toISOString()` for dates.**
 
 44. **The Week tab plans shifts from demand** (2026-10-02). Admin-only,
     read-only route /week (features/week): next week's scheduled sessions
-    per half hour, as ONE full-width HEATMAP table: cells paint edge to
-    edge (1px padding gap, h-8 rows, text-sm numbers; zero stays on the
-    uncolored zinc-50 ground), each day a TIGHT pair of columns — in-center,
-    then a narrower online (table-fixed + colgroup split the day width
-    ≈ 1 : 0.62; the time axes take fixed px so the Saturday axis hugs its
-    column) — under one spanning date header with In/Online subheads and a
-    hairline-plus-gap boundary between days. Counting is the day-view axis rule (a session
+    per half hour, BOTH centers stacked — Montgomeryville over Blue Bell,
+    one full-width HEATMAP table each under its center-name heading,
+    navigation moving them together. Cells paint edge to edge (1px padding
+    gap, h-8 rows, text-sm numbers; zero is a gray block), each day a
+    TIGHT pair of columns — in-center, then a narrower online (table-fixed
+    + colgroup split the day width ≈ 1 : 0.62; the time axes take fixed px
+    so the Saturday axis hugs its column) — under one spanning date header
+    with In-center/Online subheads, days separated by a HEAVY divider plus
+    air and alternating zinc-50 pair shading. Counting is the day-view axis rule (a session
     counts in every half hour it overlaps; occupiesFloor excludes cancelled
     and no-show), but colors are two INDEPENDENT fixed scales so weeks stay
-    comparable, and gray means ZERO on both — any count from 1 up is
-    colored, 1 the lightest shade: in-center ramps light red → deep red
-    (≤2/≤5/≤8/≤10/11+), online light orange → deep orange (1/2/≤4/5+).
-    Time labels sit calendar-style ON the boundary at the top of the row
-    they begin (both axes). A far-right Total column sums each row across
-    the WEEKDAY columns only (in-center plus online; Saturday rows are
-    other clock times and never join), with the Total row's right-hand
-    cell the weekday grand total — sessions, not cell sums — while
-    Saturday's total stays in its own columns. Headers: date text-base
-    bold over weekday text-sm, subheads spelled 'In-center'/'Online',
-    never abbreviated. The earlier three stacked cards (and their
+    comparable within a week, and gray means ZERO everywhere. Scales are
+    per CENTER and dynamic: lightest shade at 1, deepest at that center's
+    weekly MAXIMUM (centerWeekMax — the single highest cell across both
+    metrics, Saturday included; heatLevel stretches five shades between 1
+    and the max, clamping above it, mid-scale when max is 1). Hues:
+    MV in-center RED, Blue Bell in-center BLUE (IN_CENTER_HUE map in the
+    view), online GREEN at both. Time labels sit calendar-style ON the
+    boundary at the top of the row they begin (both axes). A far-right
+    Total column sums each row across the WEEKDAY columns only (Saturday
+    rows are other clock times and never join), but its bottom cell —
+    under the plain header 'Total' — is weekGrandTotal: the WHOLE week's
+    sessions, Saturday included (the first cut showed weekdays only there,
+    which read as a wrong total). Saturday's own totals stay in its
+    columns. Headers: date text-base bold over weekday text-sm, subheads
+    spelled 'In-center'/'Online', never abbreviated. The earlier three stacked cards (and their
     invisible alignment header) are gone.
     Layout is ONE row scale: weekday time axis, a column per weekday with
     ≥1 counting session, then a narrow Saturday axis and column — Saturday's
