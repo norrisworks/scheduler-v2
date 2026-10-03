@@ -666,6 +666,15 @@ anchor). **Never call `toISOString()` for dates.**
     naming the override state. The roster/drawer Supp checkbox remains
     the student default.
 
+48. **The nav groups by rhythm of use** (2026-10-03). TopBar's tabs sit in
+    four visual groups, left to right: running today (Day, Binder),
+    planning the week (Week, Shifts), people (Roster, Instructors,
+    Rankings), and maintenance (Imports, Data health) pushed to the far
+    right by the group's ml-auto. Thin white dividers between the left
+    groups, no labels. Admin-only flags stay per tab (NAV_GROUPS), so an
+    instructor account sees Day, Binder | Shifts | Roster | Imports,
+    Data health in the same grouped order.
+
 ## Importers (all preview-first; never commit on the owner's behalf)
 
 - **Students export** (`studentImport.js`): splits by the file's Center
