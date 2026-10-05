@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { fetchAll } from '../../lib/fetchAll'
 import { placeAtRank } from '../assign/rankOrder'
 
 const EMPTY = []
@@ -42,7 +43,11 @@ export function useRankingsMatrix(centerId) {
       // Admin-only view: this page is admin-gated, and the seed dialog's
       // rank ordering and reason chips read the merged value.
       supabase.from('instructor_ranks').select('instructor_id, instructor_rank'),
-      supabase.from('instructor_rankings').select('student_id, instructor_id, rank'),
+      // 1,296 rows and growing — PostgREST's silent 1,000-row cap ate 296
+      // of these and students showed as unranked. Always paged, never bare.
+      fetchAll(() =>
+        supabase.from('instructor_rankings').select('student_id, instructor_id, rank').order('id'),
+      ),
       supabase
         .from('assignment_overrides')
         .select('student_id, instructor_id')

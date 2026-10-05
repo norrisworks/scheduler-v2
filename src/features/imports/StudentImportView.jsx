@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { fetchAll } from '../../lib/fetchAll'
 import { useCenter } from '../centers/CenterProvider'
 import { useAuth } from '../auth/AuthProvider'
 import { parseTableFile } from './parseTable'
@@ -35,9 +36,7 @@ export default function StudentImportView() {
       // each row belongs — not whichever center happens to be selected.
       const [centerRes, studentRes] = await Promise.all([
         supabase.from('centers').select('id, name, short_code'),
-        supabase
-          .from('students')
-          .select(STUDENT_MATCH_COLUMNS),
+        fetchAll(() => supabase.from('students').select(STUDENT_MATCH_COLUMNS).order('id')),
       ])
       if (centerRes.error) throw new Error(centerRes.error.message)
       if (studentRes.error) throw new Error(studentRes.error.message)

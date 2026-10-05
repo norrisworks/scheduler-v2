@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { fetchAll } from '../../lib/fetchAll'
 import { useAuth } from '../auth/AuthProvider'
 import { formatDateShort } from '../../lib/dates'
 import { parseTableFile } from './parseTable'
@@ -39,9 +40,12 @@ export default function AttendanceImportView() {
 
       const [centerRes, studentRes] = await Promise.all([
         supabase.from('centers').select('id, name, short_code'),
-        supabase
-          .from('students')
-          .select('id, name, center_id, radius_lead_id, radius_account, binder_status, binder_note, binder_status_set_at'),
+        fetchAll(() =>
+          supabase
+            .from('students')
+            .select('id, name, center_id, radius_lead_id, radius_account, binder_status, binder_note, binder_status_set_at')
+            .order('id'),
+        ),
       ])
       if (centerRes.error) throw centerRes.error
       if (studentRes.error) throw studentRes.error

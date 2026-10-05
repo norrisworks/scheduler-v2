@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { fetchAll } from '../../lib/fetchAll'
 import { useAuth } from '../auth/AuthProvider'
 import { useCenter } from '../centers/CenterProvider'
 import Spinner from '../../components/Spinner'
@@ -46,12 +47,17 @@ export default function WeekPlanView() {
     let stale = false
     setSessions(null)
     const dates = planWeekDates(weekStart)
-    supabase
-      .from('sessions')
-      .select('center_id, date, start_time, duration, status, delivery_method')
-      .in('center_id', ordered.map((c) => c.id))
-      .gte('date', dates[0])
-      .lte('date', dates[dates.length - 1])
+    // Both centers' week together already runs ~600 rows — paged so the
+    // silent 1,000 cap can never quietly empty a day.
+    fetchAll(() =>
+      supabase
+        .from('sessions')
+        .select('center_id, date, start_time, duration, status, delivery_method')
+        .in('center_id', ordered.map((c) => c.id))
+        .gte('date', dates[0])
+        .lte('date', dates[dates.length - 1])
+        .order('id'),
+    )
       .then(({ data, error }) => {
         if (stale) return
         if (error) setError(error.message)

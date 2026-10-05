@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { fetchAll } from '../../lib/fetchAll'
 import { occupiesFloor } from '../day/load'
 import { addDays, todayISO } from '../../lib/dates'
 import { fetchRankSequence } from '../instructors/rankAccess'
@@ -39,10 +40,16 @@ export function useAutoAssign({ sessions, instructors, shiftByInstructor, onDone
   const loadRankings = useCallback(async (dayS) => {
     const studentIds = [...new Set(dayS.map((s) => s.student_id).filter(Boolean))]
     if (studentIds.length === 0) return new Map()
-    const { data, error } = await supabase
-      .from('instructor_rankings')
-      .select('student_id, instructor_id, rank')
-      .in('student_id', studentIds)
+    // Scoped to the day's students, so it sits well under the 1,000-row
+    // cap today — but paged anyway: a silently truncated result here would
+    // mean assigning from incomplete rankings with no error anywhere.
+    const { data, error } = await fetchAll(() =>
+      supabase
+        .from('instructor_rankings')
+        .select('student_id, instructor_id, rank')
+        .in('student_id', studentIds)
+        .order('id'),
+    )
     if (error) throw new Error(error.message)
     const byStudent = new Map()
     for (const row of data ?? []) {

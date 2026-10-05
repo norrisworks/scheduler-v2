@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { fetchAll } from '../../lib/fetchAll'
 import { useAuth } from '../auth/AuthProvider'
 import { formatTimeMeridiem, todayISO } from '../../lib/dates'
 import { parseTableFile } from './parseTable'
@@ -51,7 +52,13 @@ export default function RadiusImportView() {
 
       const [centerRes, studentRes] = await Promise.all([
         supabase.from('centers').select('id, name, short_code'),
-        supabase.from('students').select('id, name, radius_account, radius_first_name, radius_lead_id, center_id').eq('active', true),
+        fetchAll(() =>
+          supabase
+            .from('students')
+            .select('id, name, radius_account, radius_first_name, radius_lead_id, center_id')
+            .eq('active', true)
+            .order('id'),
+        ),
       ])
       if (centerRes.error) throw new Error(centerRes.error.message)
       if (studentRes.error) throw new Error(studentRes.error.message)
@@ -68,18 +75,25 @@ export default function RadiusImportView() {
 
       const [sessionRes, dismissRes, slotDayRes, slotRes] = dates.length
         ? await Promise.all([
-            supabase
-              .from('sessions')
-              .select('id, student_id, center_id, date, start_time, duration, status, source, delivery_method, last_seen_in_radius')
-              .gte('date', dates[0])
-              .lte('date', dates[dates.length - 1]),
+            // Both centers times the file's whole window — a multi-week
+            // export passes the silent 1,000-row cap easily. Paged.
+            fetchAll(() =>
+              supabase
+                .from('sessions')
+                .select('id, student_id, center_id, date, start_time, duration, status, source, delivery_method, last_seen_in_radius')
+                .gte('date', dates[0])
+                .lte('date', dates[dates.length - 1])
+                .order('id'),
+            ),
             supabase
               .from('session_conflict_dismissals')
               .select('student_id, date')
               .gte('date', dates[0])
               .lte('date', dates[dates.length - 1]),
             supabase.from('session_cross_day_dismissals').select('student_id, day_of_week'),
-            supabase.from('recurring_slots').select('student_id, effective_until'),
+            fetchAll(() =>
+              supabase.from('recurring_slots').select('student_id, effective_until').order('id'),
+            ),
           ])
         : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }]
       if (sessionRes.error) throw new Error(sessionRes.error.message)

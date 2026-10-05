@@ -706,6 +706,27 @@ anchor). **Never call `toISOString()` for dates.**
     Supp badge's bottom-right corner (vertical card); on the horizontal
     bar it joined the right-hand control cluster.
 
+50. **The 1,000-row cap can never fail silently again** (2026-10-05).
+    PostgREST caps every select at 1,000 rows with NO error;
+    instructor_rankings hit 1,296 and the Rankings matrix silently
+    dropped 296 (Charlie M showed 1 of 4, Asher K as unranked with 2 —
+    all present in the DB, confirmed). lib/fetchAll.js is the cure:
+    pages with .range() until a page comes back SHORT, so an
+    exactly-full page is never trusted; a runaway past maxPages ERRORS
+    rather than trimming; every call site carries .order('id') (range
+    without a stable order can overlap pages). Routed through it after
+    a full query audit: the rankings matrix and Data health rankings
+    reads (the two truncating TODAY), Data health's upcoming sessions,
+    auto-assign's rankings (scoped to the day's students, ~420 rows —
+    it was NOT truncating, hardened anyway), the Week tab's both-center
+    sessions, and the importers' whole-table loads (Radius sessions
+    window + students + slots, Students and Attendance student lists).
+    Left single-shot deliberately: per-student, per-day, per-center-week
+    and count-only queries, all bounded far below the cap. Checks: pure
+    fetchAll suite including the literal 1,296-row regression and the
+    exactly-1,000-fetches-again rule, plus source scans that every
+    rankings read stays wrapped and every fetchAll carries an order.
+
 ## Importers (all preview-first; never commit on the owner's behalf)
 
 - **Students export** (`studentImport.js`): splits by the file's Center

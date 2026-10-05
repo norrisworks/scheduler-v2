@@ -22,6 +22,7 @@ import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } f
 import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTime, mapStatus, mapDelivery, accountKey, displayKeyFromFullName, isSuspiciousActor, resolveRebookings, matchStudent, radiusKeyOf, confirmationTargets, planRadiusImport, isVirtualCenter, VIRTUAL_CENTERS, missingRadiusHeaders, readRadiusRow, sessionBooker } from '../src/features/imports/radiusImport.js'
 import { sessionMarker, isStaffBooker, STAFF_BOOKERS } from '../src/features/day/sessionMarker.js'
 import { effectiveSupp, suppLabel } from '../src/features/day/supp.js'
+import { fetchAll, PAGE_SIZE } from '../src/lib/fetchAll.js'
 import { centerOperatingHours, defaultPlanWeekStart, planWeekDates, extendRange, bands, alignRows, planWeekGrid, monthDay, heatStyle, rgbOklabLightness, centerWeekMax, weekdayRowTotals, weekdayGrandTotal, weekGrandTotal } from '../src/features/week/weekPlan.js'
 import { planStudentImport, planStudentImportByCenter, STUDENT_FIELDS, STUDENT_MATCH_COLUMNS } from '../src/features/imports/studentImport.js'
 import { buildChecks } from '../src/features/health/checks.js'
@@ -2309,6 +2310,53 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
      { glyph: null, color: '#22C55E', title: 'Manually scheduled' })
 }
 
+// ---- fetchAll: the 1,000-row cap can never fail silently again
+// PostgREST caps every select at 1,000 rows WITHOUT an error. 1,296
+// instructor_rankings came back as 1,000 and the Rankings matrix showed
+// ranked students as unranked. fetchAll pages until a page comes back
+// SHORT — a result that exactly fills a page is never trusted.
+await (async () => {
+  const table = (rows) => {
+    let calls = 0
+    const build = () => ({
+      range: (from, to) => {
+        calls++
+        return Promise.resolve({ data: rows.slice(from, to + 1), error: null })
+      },
+    })
+    return { build, calls: () => calls }
+  }
+
+  const rankings = Array.from({ length: 1296 }, (_, i) => ({ id: i }))
+  const t1 = table(rankings)
+  const r1 = await fetchAll(t1.build)
+  eq('THE regression: 1,296 rows come back as 1,296, not 1,000',
+     r1.data.length, 1296)
+  eq('nothing lost or duplicated across the page seam',
+     new Set(r1.data.map((r) => r.id)).size, 1296)
+
+  const exactly = table(Array.from({ length: PAGE_SIZE }, (_, i) => ({ id: i })))
+  const r2 = await fetchAll(exactly.build)
+  eq('a result at EXACTLY the cap is treated as possibly truncated — a second page is fetched',
+     [r2.data.length, exactly.calls()], [PAGE_SIZE, 2])
+
+  const small = table([{ id: 1 }, { id: 2 }])
+  const r3 = await fetchAll(small.build)
+  eq('a short first page is the whole result in one call',
+     [r3.data.length, small.calls()], [2, 1])
+
+  const failing = () => ({ range: () => Promise.resolve({ data: null, error: { message: 'boom' } }) })
+  eq('errors propagate, never partial data',
+     await fetchAll(failing), { data: null, error: { message: 'boom' } })
+
+  const endless = () => ({
+    range: (from, to) => Promise.resolve({ data: Array(to - from + 1).fill({}), error: null }),
+  })
+  const r5 = await fetchAll(endless, { pageSize: 10, maxPages: 3 })
+  eq('a runaway result ERRORS rather than returning a silent trim',
+     [r5.data, r5.error.message.includes('refusing')], [null, true])
+})()
+
 // ---- Supp: session-specific with a student default (first-day pattern)
 // null follows the student's needs_schoolwork; true/false override this
 // ONE session without touching the student or any other session.
@@ -2536,6 +2584,40 @@ eq('garbage defaults in_center',mapDelivery('Zoom'), 'in_center')
      card2.includes('effectiveSupp(session)') && !card2.includes('student?.needs_schoolwork &&'), true)
   eq('the card menu gets the Supp handler',
      readSrc('src/features/day/DayView.jsx').includes('onSuppChange={setSuppOverride}'), true)
+
+  // Every query that can clear 1,000 rows goes through fetchAll — a bare
+  // select on these surfaces is the silent-truncation bug coming back.
+  const pagedSites = [
+    ['src/features/rankings/useRankingsMatrix.js', "instructor_rankings"],
+    ['src/features/health/useDataHealth.js', "instructor_rankings"],
+    ['src/features/assign/useAutoAssign.js', "instructor_rankings"],
+  ]
+  for (const [rel, tbl] of pagedSites) {
+    const src = readSrc(rel)
+    const reads = [...src.matchAll(new RegExp(String.raw`\.from\('${tbl}'\)[\s\S]{0,140}?\.select\(`, 'g'))].length
+    const wrapped = [...src.matchAll(new RegExp(String.raw`fetchAll\(\(\) =>[\s\S]{0,160}?\.from\('${tbl}'\)`, 'g'))].length
+    eq(`${rel.split('/').pop()} pages its ${tbl} read (every read wrapped)`,
+       reads > 0 && reads === wrapped, true)
+  }
+  eq('the Week query pages its both-center sessions',
+     readSrc('src/features/week/WeekPlanView.jsx').includes("fetchAll(() =>"), true)
+  eq('the Radius import pages its sessions window, students, and slots',
+     (readSrc('src/features/imports/RadiusImportView.jsx').match(/fetchAll\(\(\) =>/g) ?? []).length >= 3,
+     true)
+  eq('both other importers page their all-center student loads',
+     readSrc('src/features/imports/StudentImportView.jsx').includes('fetchAll(') &&
+       readSrc('src/features/imports/AttendanceImportView.jsx').includes('fetchAll('),
+     true)
+  eq('every fetchAll page carries a stable order',
+     ['src/features/rankings/useRankingsMatrix.js', 'src/features/health/useDataHealth.js',
+      'src/features/assign/useAutoAssign.js', 'src/features/week/WeekPlanView.jsx',
+      'src/features/imports/RadiusImportView.jsx', 'src/features/imports/StudentImportView.jsx',
+      'src/features/imports/AttendanceImportView.jsx'].every((rel) => {
+       const src = readSrc(rel)
+       const uses = src.match(/fetchAll\(\(\) =>[\s\S]*?\n\s*\)/g) ?? []
+       return uses.length > 0 && uses.every((u) => u.includes(".order("))
+     }),
+     true)
 
   eq('both tables share ONE maximum, so their shading is comparable',
      readSrc('src/features/week/WeekPlanView.jsx').includes('sharedMax'), true)

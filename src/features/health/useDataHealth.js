@@ -1,5 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { fetchAll } from '../../lib/fetchAll'
 import { conflictKey, findSourceConflicts, findCrossDayConflicts } from '../day/sourceConflicts'
 import { buildChecks } from './checks'
 
@@ -46,16 +47,24 @@ export function useDataHealth(centerId) {
         .eq('center_id', centerId)
         .eq('active', true)
         .order('name'),
-      supabase.from('instructor_rankings').select('student_id, instructor_id'),
+      // Unscoped and over 1,000 rows — the silent cap made ranked students
+      // report as unranked here. Always paged.
+      fetchAll(() =>
+        supabase.from('instructor_rankings').select('student_id, instructor_id').order('id'),
+      ),
       // For the duplicate-session resolver: every upcoming scheduled session
       // that could pair a radius row with a standing-slot row.
-      supabase
-        .from('sessions')
-        .select('id, student_id, center_id, date, start_time, duration, status, source, last_seen_in_radius, student:students(name)')
-        .eq('center_id', centerId)
-        .eq('status', 'scheduled')
-        .gte('date', new Date().toISOString().slice(0, 10))
-        .in('source', ['radius', 'recurring']),
+      // Weeks of materialized sessions push this near the 1,000 cap.
+      fetchAll(() =>
+        supabase
+          .from('sessions')
+          .select('id, student_id, center_id, date, start_time, duration, status, source, last_seen_in_radius, student:students(name)')
+          .eq('center_id', centerId)
+          .eq('status', 'scheduled')
+          .gte('date', new Date().toISOString().slice(0, 10))
+          .in('source', ['radius', 'recurring'])
+          .order('id'),
+      ),
       supabase
         .from('session_conflict_dismissals')
         .select('student_id, date')
