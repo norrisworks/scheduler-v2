@@ -45,8 +45,9 @@ export function useStudent(studentId) {
         .eq('student_id', studentId)
         .order('created_at', { ascending: false }),
       // id -> email for the handful of staff accounts, so a note can say who
-      // wrote it. Non-fatal: a failure just leaves notes authorless.
-      supabase.from('note_authors').select('id, email'),
+      // wrote it. Non-fatal: a failure just leaves notes authorless. An RPC,
+      // not a view: the advisor flagged the old view for exposing auth.users.
+      supabase.rpc('note_authors'),
     ])
 
     if (token !== requestRef.current) return

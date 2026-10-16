@@ -5,9 +5,10 @@ import { supabase } from '../../lib/supabase'
  * unique per center), inheriting tier's confidentiality exactly: the column
  * carries no client grant, so any select naming it fails for every role.
  *
- *   reads    — the instructor_ranks view: full rows for admin JWTs, ZERO
- *              rows for instructor JWTs. Merging an empty map is a no-op,
- *              so one code path serves both roles.
+ *   reads    — the instructor_ranks() RPC (a definer function since the
+ *              advisor flagged definer views): full rows for admin JWTs,
+ *              ZERO rows for instructor JWTs. Merging an empty map is a
+ *              no-op, so one code path serves both roles.
  *   writes   — set_instructor_rank_order, which takes the center's COMPLETE
  *              order and renumbers 1..N; rejected for instructor JWTs.
  *   ordering — proposed_instructor_order (proposals) and
@@ -22,9 +23,7 @@ export const INSTRUCTOR_COLUMNS =
 
 /** instructor_id -> instructor_rank. Empty for instructor-role sessions, by design. */
 export async function loadRanks() {
-  const { data, error } = await supabase
-    .from('instructor_ranks')
-    .select('instructor_id, instructor_rank')
+  const { data, error } = await supabase.rpc('instructor_ranks')
   if (error) throw new Error(error.message)
   return new Map((data ?? []).map((row) => [row.instructor_id, row.instructor_rank]))
 }

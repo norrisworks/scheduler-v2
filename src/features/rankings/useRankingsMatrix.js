@@ -42,7 +42,7 @@ export function useRankingsMatrix(centerId) {
         .order('name'),
       // Admin-only view: this page is admin-gated, and the seed dialog's
       // rank ordering and reason chips read the merged value.
-      supabase.from('instructor_ranks').select('instructor_id, instructor_rank'),
+      supabase.rpc('instructor_ranks'),
       // 1,296 rows and growing — PostgREST's silent 1,000-row cap ate 296
       // of these and students showed as unranked. Always paged, never bare.
       fetchAll(() =>

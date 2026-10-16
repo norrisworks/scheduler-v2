@@ -93,6 +93,10 @@ const FORBIDDEN_TRIGGERS = [
 const MUST_BE_DEFINER = {
   assign_instructor_rank: 'reads max(instructor_rank), revoked from authenticated',
   db_schema_facts: 'reads pg_catalog on behalf of an admin JWT',
+  // Both replaced advisor-flagged SECURITY DEFINER views (2026-10-16):
+  // definer FUNCTIONS with pinned search_path, anon revoked.
+  note_authors: 'reads auth.users emails for note attribution, staff only',
+  instructor_ranks: 'exposes the column-revoked rank to non-instructor JWTs only',
 }
 
 /**

@@ -727,6 +727,31 @@ anchor). **Never call `toISOString()` for dates.**
     exactly-1,000-fetches-again rule, plus source scans that every
     rankings read stays wrapped and every fetchAll carries an order.
 
+51. **The security advisor's ERROR and anon items are cleared**
+    (2026-10-16). Three migrations: (a) the note_authors VIEW (select
+    from auth.users — advisor ERRORs 0002 + 0010) became a SECURITY
+    DEFINER FUNCTION note_authors() with pinned search_path, anon and
+    PUBLIC revoked, authenticated granted — note attribution unchanged;
+    (b) the instructor_ranks definer VIEW became the definer FUNCTION
+    instructor_ranks() with the SAME contract (full rows for admin JWTs,
+    ZERO rows for instructor JWTs — one client code path) and, unlike
+    the view, no anon path at all (an anon request carries no role claim
+    and would have slipped the view's gate); (c) the TRIGGER functions
+    assign_instructor_rank() and propagate_default_duration() lost
+    EXECUTE for public/anon/authenticated — PostgREST had been exposing
+    them as anon-callable RPCs; triggers fire internally regardless, and
+    a rolled-back insert proved max+1 rank assignment still works.
+    Clients switched to supabase.rpc() for both names (useStudent,
+    rankAccess.loadRanks, useRankingsMatrix). Role-simulated at the SQL
+    layer (real logins not possible from this environment): admin sees
+    32 ranks / 5 note authors / rank_sequence works; instructor sees 0
+    ranks and keeps note authors; anon is denied everything. Re-run
+    advisor: both ERROR lints and the anon lint are GONE. Left alone on
+    purpose: backup_ tables (owner's), the authenticated-definer WARNs
+    (intentional, gated), the six function search_path WARNs (pre-date
+    this pass), and the leaked-password-protection WARN — that one is an
+    Auth dashboard toggle only the owner can flip.
+
 ## Importers (all preview-first; never commit on the owner's behalf)
 
 - **Students export** (`studentImport.js`): splits by the file's Center

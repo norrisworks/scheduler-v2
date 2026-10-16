@@ -2619,6 +2619,26 @@ await (async () => {
      }),
      true)
 
+  // Advisor remediation (2026-10-16): the note_authors and instructor_ranks
+  // VIEWS are gone — definer RPCs replaced them. A .from() on either name
+  // is a call against a dropped relation.
+  {
+    const srcFiles2 = readdirSync(joinPath(process.cwd(), 'src'), { recursive: true })
+      .filter((f) => /\.jsx?$/.test(String(f)))
+    const viewReads = []
+    for (const rel of srcFiles2) {
+      const text = readSrc(joinPath('src', String(rel)))
+      if (/\.from\('(note_authors|instructor_ranks)'\)/.test(text)) viewReads.push(String(rel))
+    }
+    eq('nothing selects from the dropped advisor-flagged views', viewReads, [])
+    eq('note attribution reads through the RPC',
+       readSrc('src/features/roster/useStudent.js').includes("rpc('note_authors')"), true)
+    eq('rank reads go through the RPC in both callers',
+       readSrc('src/features/instructors/rankAccess.js').includes("rpc('instructor_ranks')") &&
+         readSrc('src/features/rankings/useRankingsMatrix.js').includes("rpc('instructor_ranks')"),
+       true)
+  }
+
   eq('both tables share ONE maximum, so their shading is comparable',
      readSrc('src/features/week/WeekPlanView.jsx').includes('sharedMax'), true)
   eq('the week query selects what the grid counts, center_id included',
