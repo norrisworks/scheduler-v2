@@ -30,6 +30,7 @@ import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, forma
 import { firstDayBadge, firstDayLabel } from '../src/features/day/firstDay.js'
 import { readAttendanceRow, attendanceRowProblem, matchAttendanceStudent, decideReset, planAttendanceImport, displayCandidates } from '../src/features/imports/attendanceImport.js'
 import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, gaugeHourLabel, instructorNamesBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, gaugeCellClass, slotChipClass } from '../src/features/day/load.js'
+import { hasStarted, isHandLocked, isFrozen, planLockedRun } from '../src/features/assign/locks.js'
 import { genderLabel, normalizeGender as normalizeGenderValue } from '../src/lib/gender.js'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join as joinPath } from 'node:path'
@@ -2981,6 +2982,56 @@ eq('no departure means no decision',
   const bb = plan.centers.find((c) => c.center.id === 'bb')
   eq('an already-clear binder is not rewritten', bb.resets.length, 0)
   eq('but the student is still reported as matched', bb.matched.length, 1)
+}
+
+// ---- auto-assign locks: hand locks + already-started sessions are left alone
+{
+  const T = '2026-10-19'
+  const L = (id, over = {}) => ({ id, date: T, start_time: '16:00:00', duration: 60, instructor_id: null, assignment: null, ...over })
+  eq('earlier date has started',            hasStarted(L('a', { date: '2026-10-18' }), T, '10:00'), true)
+  eq('later date has not started',          hasStarted(L('a', { date: '2026-10-20' }), T, '23:00'), false)
+  eq('today, start before now = started',   hasStarted(L('a', { start_time: '15:30:00' }), T, '16:10'), true)
+  eq('today, start exactly now = started',  hasStarted(L('a', { start_time: '16:00:00' }), T, '16:00'), true)
+  eq('today, start after now = not started',hasStarted(L('a', { start_time: '16:30:00' }), T, '16:10'), false)
+  eq('lock needs an instructor',            isHandLocked(L('a', { assignment: { locked: true } })), false)
+  eq('assigned + locked is hand-locked',    isHandLocked(L('a', { instructor_id: 'i1', assignment: { locked: true } })), true)
+  eq('started counts as frozen',            isFrozen(L('a', { start_time: '15:00:00' }), T, '16:00'), true)
+
+  const day = [
+    L('locked',  { start_time: '17:00:00', instructor_id: 'fa', assignment: { source: 'manual', locked: true } }),
+    L('handFree',{ start_time: '17:00:00', instructor_id: 'fb', assignment: { source: 'manual', locked: false } }),
+    L('autoFree',{ start_time: '17:00:00', instructor_id: 'fc', assignment: { source: 'auto', locked: false } }),
+    L('empty',   { start_time: '17:00:00' }),
+    L('pastAsg', { start_time: '15:00:00', instructor_id: 'fa', assignment: { source: 'auto', locked: false } }),
+    L('pastEmpty',{ start_time: '15:30:00' }),
+  ]
+  const plan = planLockedRun(day, T, '16:00')
+  eq('existing = locked + started-and-assigned', plan.existing.map((s) => s.id).sort(), ['locked', 'pastAsg'])
+  eq('pool = unlocked not started (hand-placed included)', plan.pool.map((s) => s.id).sort(), ['autoFree', 'empty', 'handFree'])
+  eq('reassign clears hand-placed AND auto when unlocked', plan.clear.map((s) => s.id).sort(), ['autoFree', 'handFree'])
+  eq('fill only places empty, not-started sessions', plan.fill.map((s) => s.id), ['empty'])
+  eq('started empty session is never filled', plan.fill.some((s) => s.id === 'pastEmpty'), false)
+  eq('lock counts for the sidebar', [plan.handLocked, plan.started], [1, 2])
+  eq('a hand lock on a started session counts once, as a lock',
+     planLockedRun([L('x', { start_time: '15:00:00', instructor_id: 'fa', assignment: { locked: true } })], T, '16:00').handLocked, 1)
+
+  // End to end through the real algorithm: the locked seat keeps its
+  // instructor and is never re-placed.
+  const lockSessions = ['w', 'x'].map((id) => aSess({ id, student_id: `st-${id}`, start_time: '16:00:00' }))
+  const lockRanks = new Map(lockSessions.map((s) => [s.id, new Map([['fa', 1], ['fb', 2], ['fc', 3]])]))
+  const out = autoAssignBalanced({
+    sessions: lockSessions, unassigned: [lockSessions[1]], instructors: flagInst,
+    rankIndex: lockRanks, existing: new Map([['w', 'fb']]), flags: OFF,
+  })
+  eq('locked session is not re-placed', out.made.some((m) => m.sessionId === 'w'), false)
+  eq('the unlocked one is placed', out.made.map((m) => m.sessionId), ['x'])
+
+  const src = (f) => readFileSync(f, 'utf8')
+  eq('day query loads the lock', /assignments \( id, instructor_id, source, locked \)/.test(src('src/features/day/useDaySchedule.js')), true)
+  eq('reassign no longer keys on source=auto', /source === 'auto'/.test(src('src/features/assign/useAutoAssign.js')), false)
+  eq('reassign runs over the lock plan pool', /unassigned: plan\.pool/.test(src('src/features/assign/useAutoAssign.js')), true)
+  eq('card menu offers lock', /Lock instructor/.test(src('src/features/day/StatusMenu.jsx')), true)
+  eq('sidebar has Unlock all', /Unlock all/.test(src('src/features/day/InstructorSidebar.jsx')), true)
 }
 
 let failed = 0

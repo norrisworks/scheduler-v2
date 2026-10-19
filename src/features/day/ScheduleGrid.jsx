@@ -30,6 +30,7 @@ export default function ScheduleGrid({
   onOpenStudent,
   onAssign,
   onUnassign,
+  onLockChange,
   onStatusMenu,
 }) {
   const columns = useMemo(() => {
@@ -142,6 +143,7 @@ export default function ScheduleGrid({
                   onOpenStudent={onOpenStudent}
                   onAssign={onAssign}
                   onUnassign={onUnassign}
+                  onLockChange={onLockChange}
                   onStatusMenu={onStatusMenu}
                 />
               )

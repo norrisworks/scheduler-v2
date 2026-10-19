@@ -34,6 +34,7 @@ export default function SessionCard({
   onOpenStudent,
   onAssign,
   onUnassign,
+  onLockChange,
   onStatusMenu,
 }) {
   const [dragOver, setDragOver] = useState(false)
@@ -154,6 +155,24 @@ export default function SessionCard({
     </span>
   )
 
+  // Hand lock: Reassign leaves this instructor in place. Shown to everyone
+  // (it explains why a card didn't move); only admins can click it off.
+  const lockMark = instructor && session.assignment?.locked && (
+    <button
+      type="button"
+      disabled={!isAdmin}
+      onClick={(e) => {
+        e.stopPropagation()
+        onLockChange?.(session.id, false)
+      }}
+      title={isAdmin ? 'Locked — Reassign leaves this instructor in place. Click to unlock.' : 'Locked'}
+      aria-label="Locked instructor"
+      className="shrink-0 text-[9px] leading-none disabled:cursor-default"
+    >
+      🔒
+    </button>
+  )
+
   const unassignButton = instructor && isAdmin && (
     <button
       type="button"
@@ -218,10 +237,15 @@ export default function SessionCard({
               a clipped name there costs more than it tells you. */}
           {instructor ? (
             showInstructorName ? (
-              <span className="min-w-0 truncate text-[9px]" style={{ color: instructor.color }}>
-                → {instructor.name}
+              <span className="flex min-w-0 items-center gap-0.5">
+                {lockMark}
+                <span className="min-w-0 truncate text-[9px]" style={{ color: instructor.color }}>
+                  → {instructor.name}
+                </span>
               </span>
-            ) : null
+            ) : (
+              lockMark || null
+            )
           ) : (
             <span className="truncate text-[9px] text-zinc-400">Unassigned</span>
           )}
@@ -327,6 +351,7 @@ export default function SessionCard({
       <div className="mt-0.5 flex items-center justify-between gap-1">
         {instructor ? (
           <span className="flex min-w-0 items-center gap-0.5">
+            {lockMark}
             <span className="truncate text-[9px]" style={{ color: instructor.color }}>
               → {instructor.name}
             </span>

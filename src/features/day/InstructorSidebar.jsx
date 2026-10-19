@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
-import { formatTimeMeridiem } from '../../lib/dates'
+import { centerNowTime, formatTimeMeridiem, todayISO } from '../../lib/dates'
+import { planLockedRun } from '../assign/locks'
 import { readableTextOn } from '../../lib/colors'
 import { peakConcurrent } from './shiftCoverage'
 import {
@@ -32,6 +33,7 @@ export default function InstructorSidebar({
   onAutoAssign,
   onReassign,
   onClearDay,
+  onUnlockAll,
   onUndo,
   canUndo,
   assigning,
@@ -63,9 +65,11 @@ export default function InstructorSidebar({
   const offShift = instructors.filter((i) => !shiftByInstructor.has(i.id))
   const unassigned = sessions.filter((s) => !s.instructor_id && occupiesFloor(s)).length
   const assignedCount = sessions.filter((s) => s.instructor_id && occupiesFloor(s)).length
-  const autoAssigned = sessions.filter(
-    (s) => s.instructor_id && s.assignment?.source === 'auto' && occupiesFloor(s),
-  ).length
+  // Same split the run itself uses. nowMinutes ticks, so this re-reads the
+  // clock as the afternoon moves and started sessions drop out on their own.
+  const lockPlan = planLockedRun(sessions.filter(occupiesFloor), todayISO(), centerNowTime())
+  const fillable = lockPlan.fill.length
+  const reassignable = lockPlan.pool.length
 
   // Collapsed: a thin rail the grid can have the width back from, still
   // showing the numbers worth glancing at.
@@ -133,7 +137,7 @@ export default function InstructorSidebar({
                 key={a.key}
                 type="button"
                 onClick={() => onAutoAssign(a.key)}
-                disabled={assigning || unassigned === 0}
+                disabled={assigning || fillable === 0}
                 title={a.hint}
                 className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-brand-500 px-2 py-2 text-xs font-semibold text-white transition hover:bg-brand-600 disabled:opacity-40"
               >
@@ -143,9 +147,11 @@ export default function InstructorSidebar({
             ))}
           </div>
           <p className="mt-1.5 text-[11px] text-zinc-400">
-            {unassigned === 0
-              ? 'Everyone on the grid is assigned.'
-              : `Assigns the ${unassigned} unassigned session${unassigned === 1 ? '' : 's'}.`}
+            {fillable === 0
+              ? unassigned === 0
+                ? 'Everyone on the grid is assigned.'
+                : 'Nothing left to fill — the unassigned sessions have already started.'
+              : `Assigns the ${fillable} unassigned session${fillable === 1 ? '' : 's'} that haven't started.`}
           </p>
 
           {/* Fill can only top up a day; these are how a day gets un-stuck. */}
@@ -155,14 +161,38 @@ export default function InstructorSidebar({
                 key={a.key}
                 type="button"
                 onClick={() => onReassign(a.key)}
-                disabled={assigning || autoAssigned === 0}
-                title={`Clears the ${autoAssigned} auto-placed session${autoAssigned === 1 ? '' : 's'} and runs ${a.label} fresh over the whole day. Hand-placed sessions stay put.`}
+                disabled={assigning || reassignable === 0}
+                title={`Clears every unlocked session that hasn't started (${reassignable}) and places them fresh with ${a.label}. Locked and started sessions stay put.`}
                 className="flex-1 rounded-lg border border-brand-300 px-2 py-1.5 text-[11px] font-semibold text-brand-700 transition hover:bg-brand-50 disabled:opacity-40"
               >
                 Reassign · {a.label}
               </button>
             ))}
           </div>
+          {(lockPlan.handLocked > 0 || lockPlan.started > 0) && (
+            <div className="mt-1.5 flex items-center justify-between gap-2">
+              <p className="text-[11px] text-zinc-500">
+                {[
+                  lockPlan.handLocked > 0 && `🔒 ${lockPlan.handLocked} locked`,
+                  lockPlan.started > 0 && `${lockPlan.started} already started`,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}{' '}
+                — left alone
+              </p>
+              {lockPlan.handLocked > 0 && (
+                <button
+                  type="button"
+                  onClick={onUnlockAll}
+                  disabled={assigning}
+                  title="Remove every lock on this day"
+                  className="shrink-0 rounded border border-zinc-300 px-1.5 py-0.5 text-[11px] font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-40"
+                >
+                  Unlock all
+                </button>
+              )}
+            </div>
+          )}
           <div className="mt-1.5 flex gap-2">
             <button
               type="button"

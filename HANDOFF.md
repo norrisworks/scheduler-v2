@@ -752,6 +752,22 @@ anchor). **Never call `toISOString()` for dates.**
     this pass), and the leaked-password-protection WARN — that one is an
     Auth dashboard toggle only the owner can flip.
 
+52. **Auto-assign respects locks** (2026-10-19). `assignments.locked`
+    (boolean, default false) is a hand lock set from the card ⋯ menu
+    ("Lock instructor"); a 🔒 shows next to the instructor name and clicking
+    it unlocks. It lives on the assignment row, so it belongs to one session,
+    never carries to another day, and dies with the assignment (unassigning
+    drops it; dragging a new instructor onto a locked card keeps it locked).
+    Sessions that have already started (earlier date, or today with
+    start <= now) are auto-locked — computed in `locks.js`, never stored —
+    whether assigned or not, so a run never moves a seated kid or back-fills
+    the past. **Reassign now clears every unlocked, not-started assignment,
+    hand-placed included** (owner decision: "the lock and non-locks get
+    cleared"); it used to clear only source='auto'. Fill skips started
+    sessions too. Sidebar shows "N locked · M already started — left alone"
+    and an Unlock all button. Writes are admin-only via the existing
+    admin_write policy, proven under both JWTs.
+
 ## Importers (all preview-first; never commit on the owner's behalf)
 
 - **Students export** (`studentImport.js`): splits by the file's Center

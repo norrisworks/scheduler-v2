@@ -10,7 +10,7 @@ const SESSION_SELECT = `
   student:students ( id, name, grade, level, gender,
                      needs_schoolwork, slot_certainty, academic_status,
                      enrollment_start_date, binder_status ),
-  assignments ( id, instructor_id, source )
+  assignments ( id, instructor_id, source, locked )
 `
 
 const EMPTY = []
@@ -247,6 +247,47 @@ export function useDaySchedule(centerId, date) {
   )
 
   /**
+   * Hand lock for auto-assign. Lives on the assignment row, so it only exists
+   * while the session has an instructor, and it dies with the assignment —
+   * unassigning a session drops its lock too.
+   */
+  const setLock = useCallback(
+    async (sessionId, locked) => {
+      const session = sessions.find((s) => s.id === sessionId)
+      if (!session?.instructor_id) return
+      const previous = session.assignment ?? null
+      patchSession(key, sessionId, { assignment: { ...(previous ?? {}), locked } })
+      const { error } = await supabase
+        .from('assignments')
+        .update({ locked })
+        .eq('session_id', sessionId)
+      if (error) {
+        patchSession(key, sessionId, { assignment: previous })
+        setError(error.message)
+      }
+    },
+    [sessions, key, patchSession],
+  )
+
+  /** Clear every hand lock on this day in one write. */
+  const unlockAll = useCallback(async () => {
+    const lockedIds = sessions.filter((s) => s.assignment?.locked).map((s) => s.id)
+    if (lockedIds.length === 0) return
+    for (const id of lockedIds) {
+      const prev = sessions.find((s) => s.id === id)?.assignment
+      patchSession(key, id, { assignment: { ...(prev ?? {}), locked: false } })
+    }
+    const { error } = await supabase
+      .from('assignments')
+      .update({ locked: false })
+      .in('session_id', lockedIds)
+    if (error) {
+      setError(error.message)
+      await load()
+    }
+  }, [sessions, key, patchSession, load])
+
+  /**
    * In-center <-> online, from the card menu. Radius normally owns this via
    * the import; the manual toggle exists for sessions with no Radius row —
    * materialized standing slots default to in_center and someone has to be
@@ -422,6 +463,8 @@ export function useDaySchedule(centerId, date) {
     refetch: load,
     assign,
     unassign,
+    setLock,
+    unlockAll,
     setStatus,
     setDelivery,
     setDuration,

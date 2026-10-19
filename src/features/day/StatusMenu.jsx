@@ -13,7 +13,7 @@ import { effectiveSupp, suppLabel } from './supp'
  * it (cards must not show it), so this fetches the note on open. Binder state
  * belongs to the STUDENT now, so that is what it reads.
  */
-export default function StatusMenu({ menu, onStatusChange, onDeliveryChange, onDurationChange, onUnassign, onReschedule, onDelete, onFirstDayChange, onSuppChange, onClose }) {
+export default function StatusMenu({ menu, onStatusChange, onDeliveryChange, onDurationChange, onUnassign, onLockChange, onReschedule, onDelete, onFirstDayChange, onSuppChange, onClose }) {
   const [binder, setBinder] = useState(null)
   // Hard delete arms on first click and fires on the second — a permanent
   // action never rides on one click. Re-arms per menu open.
@@ -77,6 +77,14 @@ export default function StatusMenu({ menu, onStatusChange, onDeliveryChange, onD
       : { key: 'supp', label: 'Supp this session', run: () => onSuppChange(session.id, true) },
     ...(session.needs_schoolwork_override !== null && session.needs_schoolwork_override !== undefined
       ? [{ key: 'supp-clear', label: "Use student's Supp setting", run: () => onSuppChange(session.id, null) }]
+      : []),
+    // Hand lock: Reassign leaves this session's instructor alone.
+    ...(session.instructor_id
+      ? [
+          session.assignment?.locked
+            ? { key: 'lock', label: 'Unlock instructor', run: () => onLockChange(session.id, false) }
+            : { key: 'lock', label: 'Lock instructor', run: () => onLockChange(session.id, true) },
+        ]
       : []),
     ...(session.instructor_id
       ? [{ key: 'unassign', label: 'Unassign instructor', run: () => onUnassign(session.id) }]

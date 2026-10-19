@@ -45,6 +45,7 @@ export default function TransposedGrid({
   onOpenStudent,
   onAssign,
   onUnassign,
+  onLockChange,
   onStatusMenu,
 }) {
   const [collapsed, setCollapsed] = useState(() => new Set())
@@ -226,6 +227,7 @@ export default function TransposedGrid({
                           onOpenStudent={onOpenStudent}
                           onAssign={onAssign}
                           onUnassign={onUnassign}
+                          onLockChange={onLockChange}
                           onStatusMenu={onStatusMenu}
                         />
                       )

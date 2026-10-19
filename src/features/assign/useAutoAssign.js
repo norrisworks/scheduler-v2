@@ -2,7 +2,8 @@ import { useCallback, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { fetchAll } from '../../lib/fetchAll'
 import { occupiesFloor } from '../day/load'
-import { addDays, todayISO } from '../../lib/dates'
+import { addDays, centerNowTime, todayISO } from '../../lib/dates'
+import { planLockedRun } from './locks'
 import { fetchRankSequence } from '../instructors/rankAccess'
 import { buildRankIndex, explainUnplaced, unrankedStudents } from './rankings'
 import { NEW_STUDENT_WINDOW_DAYS } from './algorithmFlags'
@@ -12,10 +13,12 @@ import { ALGORITHMS } from './algorithms'
  * Runs an auto-assign algorithm over one day. instructor_rankings is the only
  * input: no scoring, no history weighting, no attribute math.
  *
- * Two modes:
- *   run        — fills empty seats only; existing assignments are immovable.
- *   reassign   — clears every AUTO-placed assignment first, then runs fresh.
- *                Manually-placed sessions are preserved and count toward load.
+ * Two modes, both respecting locks (see locks.js):
+ *   run        — fills empty, unlocked seats only; every existing assignment
+ *                is immovable.
+ *   reassign   — clears every UNLOCKED assignment that hasn't started, auto
+ *                or hand-placed, then places all of them fresh. Hand-locked
+ *                and already-started sessions stay put and count toward load.
  *
  * Every mutation records what the day looked like beforehand, so the last run
  * can always be undone — v1 had this and losing it made a day permanent.
@@ -29,11 +32,13 @@ export function useAutoAssign({ sessions, instructors, shiftByInstructor, onDone
 
   const dayState = useCallback(() => {
     const dayS = sessions.filter(occupiesFloor)
+    // Read the clock at call time, not render time, so "started" is current
+    // the moment the button is pressed.
+    const plan = planLockedRun(dayS, todayISO(), centerNowTime())
     return {
       dayS,
       assigned: dayS.filter((s) => s.instructor_id),
-      auto: dayS.filter((s) => s.instructor_id && s.assignment?.source === 'auto'),
-      manual: dayS.filter((s) => s.instructor_id && s.assignment?.source !== 'auto'),
+      plan,
     }
   }, [sessions])
 
@@ -134,17 +139,16 @@ export function useAutoAssign({ sessions, instructors, shiftByInstructor, onDone
     [instructors, shiftByInstructor, loadRankings, onDone],
   )
 
-  /** Fill empty seats. Existing assignments — auto or manual — are immovable. */
+  /** Fill empty seats that aren't locked. Every existing assignment is immovable. */
   const run = useCallback(
     async (algorithmKey) => {
       setRunning(true)
       setError(null)
       try {
-        const { dayS, assigned } = dayState()
-        const unassigned = dayS.filter((s) => !s.instructor_id)
+        const { dayS, assigned, plan } = dayState()
         return await execute(algorithmKey, {
           dayS,
-          unassigned,
+          unassigned: plan.fill,
           existing: new Map(assigned.map((s) => [s.id, s.instructor_id])),
           // Filled seats were empty before, so 'before' is simply nothing.
           before: [],
@@ -161,27 +165,27 @@ export function useAutoAssign({ sessions, instructors, shiftByInstructor, onDone
   )
 
   /**
-   * Clear the auto-placed seats and run fresh over all of them, so the
-   * algorithm can rebalance instead of only topping up. Manual placements are
-   * kept and still count toward capacity.
+   * Clear every unlocked, not-yet-started assignment — auto or hand-placed —
+   * and place the whole unlocked set fresh. Locked and started sessions keep
+   * their instructor and still count toward capacity.
    */
   const reassign = useCallback(
     async (algorithmKey) => {
       setRunning(true)
       setError(null)
       try {
-        const { dayS, auto, manual } = dayState()
-        const unassigned = dayS.filter((s) => !s.instructor_id || s.assignment?.source === 'auto')
+        const { dayS, plan } = dayState()
         return await execute(algorithmKey, {
           dayS,
-          unassigned,
-          existing: new Map(manual.map((s) => [s.id, s.instructor_id])),
-          before: auto.map((s) => ({
+          unassigned: plan.pool,
+          existing: new Map(plan.existing.map((s) => [s.id, s.instructor_id])),
+          before: plan.clear.map((s) => ({
             session_id: s.id,
             instructor_id: s.instructor_id,
-            source: 'auto',
+            source: s.assignment?.source ?? 'manual',
+            locked: false,
           })),
-          cleared: auto.map((s) => s.id),
+          cleared: plan.clear.map((s) => s.id),
         })
       } catch (err) {
         setError(err.message)
@@ -237,6 +241,7 @@ export function useAutoAssign({ sessions, instructors, shiftByInstructor, onDone
           session_id: s.id,
           instructor_id: s.instructor_id,
           source: s.assignment?.source ?? 'manual',
+          locked: Boolean(s.assignment?.locked),
         })),
       })
       setResult(null)

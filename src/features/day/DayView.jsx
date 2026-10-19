@@ -59,6 +59,8 @@ export default function DayView() {
     refetch,
     assign,
     unassign,
+    setLock,
+    unlockAll,
     setStatus,
     setDelivery,
     setDuration,
@@ -249,6 +251,7 @@ export default function DayView() {
     onOpenStudent: handleOpenStudent,
     onAssign: assign,
     onUnassign: unassign,
+    onLockChange: setLock,
     onStatusMenu: setStatusMenu,
   }
 
@@ -414,6 +417,7 @@ export default function DayView() {
           onAutoAssign={runAutoAssign}
           onReassign={runReassign}
           onClearDay={clearAssignments}
+          onUnlockAll={unlockAll}
           onUndo={undoAssignRun}
           canUndo={canUndoAssign}
           assigning={assigning}
@@ -515,6 +519,7 @@ export default function DayView() {
         onDurationChange={setDuration}
         onDelete={deleteSession}
         onUnassign={unassign}
+        onLockChange={setLock}
         onReschedule={(session) => setRescheduling(session)}
         // Was missing: the menu's first-day items threw on click because the
         // handler only reached CancelledList.
