@@ -1,5 +1,7 @@
 import { timeToMinutes } from '../../lib/dates'
 
+const SLOT_MINUTES = 30
+
 /**
  * Locks decide which sessions an auto-assign run may touch.
  *
@@ -7,9 +9,9 @@ import { timeToMinutes } from '../../lib/dates'
  *   hand lock  — assignments.locked, set from the card. Lives on the
  *                assignment row, so it belongs to one session and is gone
  *                with it: nothing carries to the next day.
- *   started    — computed, never stored. A session that has already started
- *                (any earlier date, or today with start time at or before
- *                now) is left exactly as it is, assigned or not, so a run
+ *   started    — computed, never stored. A session in an earlier slot
+ *                (any earlier date, or today starting before the current
+ *                half-hour slot) is left exactly as it is, assigned or not, so a run
  *                never moves a kid who is already sitting down.
  *
  * Everything else is fair game: Reassign clears it, hand-placed or not, and
@@ -21,7 +23,10 @@ export function hasStarted(session, today, nowTime) {
   if (!session?.date || !today) return false
   if (session.date < today) return true
   if (session.date > today) return false
-  return timeToMinutes(session.start_time) <= timeToMinutes(nowTime)
+  // The current half-hour slot is still open: at 4:31 the 4:30 kids are
+  // often still walking in, so only slots before this one count as started.
+  const slotStart = Math.floor(timeToMinutes(nowTime) / SLOT_MINUTES) * SLOT_MINUTES
+  return timeToMinutes(session.start_time) < slotStart
 }
 
 export function isHandLocked(session) {
