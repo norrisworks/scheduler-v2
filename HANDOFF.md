@@ -784,6 +784,10 @@ anchor). **Never call `toISOString()` for dates.**
     the existing start <= band < end counter (`visitAsSpan`). Why: past
     standing-slot sessions stay 'scheduled' forever, so bookings were off
     by up to 8 kids a day against check-ins in both directions.
+    Gotcha found on first use: import_runs.kind's CHECK never allowed
+    'radius_attendance', so every attendance commit reset binders and then
+    threw at the log insert (before visits were saved). Constraint fixed
+    2026-10-23; any new import kind must be added to that CHECK.
 
 ## Importers (all preview-first; never commit on the owner's behalf)
 
