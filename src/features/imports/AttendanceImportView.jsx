@@ -88,6 +88,8 @@ export default function AttendanceImportView() {
     }
   }, [plan])
 
+  const visitCount = plan ? plan.visits.reduce((n, c) => n + c.visits.length, 0) : 0
+
   async function commit() {
     if (!plan) return
     setBusy(true)
@@ -316,15 +318,18 @@ export default function AttendanceImportView() {
 
           <button
             type="button"
-            disabled={busy || totals.resets === 0}
+            disabled={busy || visitCount === 0}
             onClick={commit}
             className="rounded-lg bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-40"
           >
+            {/* Always committable when the file has visits: saving them is
+                the Week view's history, whether or not any binder resets. */}
             {busy
               ? 'Working…'
-              : totals.resets === 0
-                ? 'Nothing to reset'
-                : `Reset ${totals.resets} binder${totals.resets === 1 ? '' : 's'}`}
+              : `Save ${visitCount} visit${visitCount === 1 ? '' : 's'}` +
+                (totals.resets > 0
+                  ? ` · reset ${totals.resets} binder${totals.resets === 1 ? '' : 's'}`
+                  : '')}
           </button>
         </div>
       )}

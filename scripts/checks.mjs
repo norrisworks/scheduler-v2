@@ -3079,6 +3079,9 @@ eq('no departure means no decision',
   eq('missing departure filled from duration', pv[0].visits.find((x) => x.date === '2026-10-21').departure, '16:47:00')
 }
 
+eq('attendance commit is not gated on binder resets',
+   /disabled=\{busy \|\| totals\.resets === 0\}/.test(readFileSync('src/features/imports/AttendanceImportView.jsx', 'utf8')), false)
+
 let failed = 0
 for (const [label, got, want, ok] of checks) {
   if (!ok) { failed++; console.log(`FAIL ${label}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`) }
