@@ -769,6 +769,22 @@ anchor). **Never call `toISOString()` for dates.**
     and an Unlock all button. Writes are admin-only via the existing
     admin_write policy, proven under both JWTs.
 
+53. **The Week view's past days are real attendance** (2026-10-23).
+    New table `attendance_visits` (center, date, arrival, departure,
+    delivery, lead_id, first/last name, student_id), admin-only RLS. The
+    attendance import now saves every row of the Student Attendance Report
+    in addition to the binder resets, REPLACING each center's date window
+    in the file (a re-export corrects, never duplicates). Radius writes
+    '@home' for online. The Week view counts visits for dates before today
+    and bookings for today and later; a past day with no visits imported
+    falls back to bookings and is labelled "Booked · no attendance".
+    Counting uses the MIDPOINT rule (owner: a 5:05–6:05 kid belongs in
+    5:00 and 5:30, not 6:00): a visit counts in a half hour when present
+    at its middle — implemented by shifting the visit 15 min earlier into
+    the existing start <= band < end counter (`visitAsSpan`). Why: past
+    standing-slot sessions stay 'scheduled' forever, so bookings were off
+    by up to 8 kids a day against check-ins in both directions.
+
 ## Importers (all preview-first; never commit on the owner's behalf)
 
 - **Students export** (`studentImport.js`): splits by the file's Center

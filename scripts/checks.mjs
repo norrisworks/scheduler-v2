@@ -23,12 +23,12 @@ import { displayKeyFromGuardian, suggestStudents, parseRadiusDate, parseRadiusTi
 import { sessionMarker, isStaffBooker, STAFF_BOOKERS } from '../src/features/day/sessionMarker.js'
 import { effectiveSupp, suppLabel } from '../src/features/day/supp.js'
 import { fetchAll, PAGE_SIZE } from '../src/lib/fetchAll.js'
-import { centerOperatingHours, defaultPlanWeekStart, planWeekDates, extendRange, bands, alignRows, planWeekGrid, monthDay, heatStyle, rgbOklabLightness, centerWeekMax, weekdayRowTotals, weekdayGrandTotal, weekGrandTotal } from '../src/features/week/weekPlan.js'
+import { centerOperatingHours, defaultPlanWeekStart, planWeekDates, extendRange, bands, alignRows, planWeekGrid, monthDay, heatStyle, rgbOklabLightness, centerWeekMax, weekdayRowTotals, weekdayGrandTotal, weekGrandTotal, visitAsSpan } from '../src/features/week/weekPlan.js'
 import { planStudentImport, planStudentImportByCenter, STUDENT_FIELDS, STUDENT_MATCH_COLUMNS } from '../src/features/imports/studentImport.js'
 import { buildChecks } from '../src/features/health/checks.js'
 import { toCenterISODate, addDays, dayOfWeek, startOfWeek, formatDateLong, formatTime, formatTimeMeridiem, timeToMinutes, minutesToTime , formatStampDate, TIME_CHOICES, centerInstant } from '../src/lib/dates.js'
 import { firstDayBadge, firstDayLabel } from '../src/features/day/firstDay.js'
-import { readAttendanceRow, attendanceRowProblem, matchAttendanceStudent, decideReset, planAttendanceImport, displayCandidates } from '../src/features/imports/attendanceImport.js'
+import { readAttendanceRow, attendanceRowProblem, matchAttendanceStudent, decideReset, planAttendanceImport, displayCandidates, planAttendanceVisits } from '../src/features/imports/attendanceImport.js'
 import { occupiesFloor, studentsAtSlot, instructorsOnShiftAtSlot, instructorLoadBySlot, gaugeHourLabel, instructorNamesBySlot, instructorCurrentCount, instructorTotalCount, slotPressure, buildSlotStats, gaugeCellClass, slotChipClass } from '../src/features/day/load.js'
 import { hasStarted, isHandLocked, isFrozen, planLockedRun } from '../src/features/assign/locks.js'
 import { genderLabel, normalizeGender as normalizeGenderValue } from '../src/lib/gender.js'
@@ -3034,6 +3034,49 @@ eq('no departure means no decision',
   eq('reassign runs over the lock plan pool', /unassigned: plan\.pool/.test(src('src/features/assign/useAutoAssign.js')), true)
   eq('card menu offers lock', /Lock instructor/.test(src('src/features/day/StatusMenu.jsx')), true)
   eq('sidebar has Unlock all', /Unlock all/.test(src('src/features/day/InstructorSidebar.jsx')), true)
+}
+
+// ---- Week view past days: actual check-ins, midpoint rule
+{
+  const H = { weekdayOpen: 15 * 60, weekdayClose: 19 * 60, saturdayOpen: 600, saturdayClose: 780 }
+  const v = (date, arrival, departure, delivery = 'in_center') => ({ date, arrival, departure, delivery })
+  // Mon 10/19 is past, Fri 10/23 is "today".
+  const grid = planWeekGrid({
+    weekStart: '2026-10-19', hours: H, today: '2026-10-23',
+    sessions: [
+      { date: '2026-10-19', start_time: '17:00:00', duration: 60, status: 'scheduled', delivery_method: 'in_center' },
+      { date: '2026-10-20', start_time: '16:00:00', duration: 60, status: 'scheduled', delivery_method: 'in_center' },
+      { date: '2026-10-23', start_time: '16:00:00', duration: 60, status: 'scheduled', delivery_method: 'in_center' },
+    ],
+    visits: [v('2026-10-19', '17:05:00', '18:05:00'), v('2026-10-19', '16:20:00', '17:25:00', 'online')],
+  })
+  const mon = grid.weekdays.find((d) => d.date === '2026-10-19')
+  const band = (m) => grid.weekdayBands.indexOf(m)
+  eq('past day with visits reads actual', mon.source, 'actual')
+  eq('5:05-6:05 counts at 5:00', mon.inCenter[band(17 * 60)], 1)
+  eq('5:05-6:05 counts at 5:30', mon.inCenter[band(17 * 60 + 30)], 1)
+  eq('5:05-6:05 does NOT count at 6:00', mon.inCenter[band(18 * 60)], 0)
+  eq('the booked 5:00 session is ignored on an actual day', mon.totals.inCenter, 1)
+  eq('online visit counts in the online column (4:20-5:25 -> 4:30, 5:00)',
+     [band(16 * 60), band(16 * 60 + 30), band(17 * 60)].map((i) => mon.online[i]), [0, 1, 1])
+  eq('past day without visits falls back and says so', grid.weekdays.find((d) => d.date === '2026-10-20').source, 'booked_no_attendance')
+  eq('today stays booked', grid.weekdays.find((d) => d.date === '2026-10-23').source, 'booked')
+  eq('no today given = everything booked (old behaviour)',
+     planWeekGrid({ weekStart: '2026-10-19', hours: H, sessions: [{ date: '2026-10-19', start_time: '17:00:00', duration: 60, status: 'scheduled' }], visits: [v('2026-10-19', '17:05:00', '18:05:00')] }).weekdays[0].source, 'booked')
+  eq('open visit (no departure) counts an hour', visitAsSpan(v('2026-10-19', '16:00:00', null)).duration, 60)
+
+  const centers = new Map([['montgomeryville', { id: 'mv', name: 'Montgomeryville' }]])
+  const row = (over) => ({ lead_id: '1', first_name: 'Ava', last_name: 'Lee', attendance_date: '10/19/2026', arrival_time: '4:02 PM', departure_time: '5:03 PM', center: 'Montgomeryville', delivery: 'In-Center', ...over })
+  const pv = planAttendanceVisits([
+    row({}), row({ departure_time: '5:10 PM' }),
+    row({ attendance_date: '10/21/2026', delivery: '@home', departure_time: '', duration_minutes: 45 }),
+    row({ center: 'Nowhere' }),
+  ], { centersByName: centers, studentsByCenter: new Map() })
+  eq('visits group per known center only', pv.map((c) => c.center.id), ['mv'])
+  eq('window spans the file dates', [pv[0].dateFrom, pv[0].dateTo], ['2026-10-19', '2026-10-21'])
+  eq('verbatim repeat keeps the longer visit', pv[0].visits.find((x) => x.date === '2026-10-19').departure, '17:10:00')
+  eq('@home is online', pv[0].visits.find((x) => x.date === '2026-10-21').delivery, 'online')
+  eq('missing departure filled from duration', pv[0].visits.find((x) => x.date === '2026-10-21').departure, '16:47:00')
 }
 
 let failed = 0

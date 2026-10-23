@@ -34,6 +34,7 @@ export default function WeekPlanView() {
   const { centers } = useCenter()
   const [weekStart, setWeekStart] = useState(() => defaultPlanWeekStart(todayISO()))
   const [sessions, setSessions] = useState(null)
+  const [visits, setVisits] = useState([])
   const [error, setError] = useState(null)
 
   // Montgomeryville on top, Blue Bell below — the owner's stacking order.
@@ -49,20 +50,39 @@ export default function WeekPlanView() {
     const dates = planWeekDates(weekStart)
     // Both centers' week together already runs ~600 rows — paged so the
     // silent 1,000 cap can never quietly empty a day.
-    fetchAll(() =>
-      supabase
-        .from('sessions')
-        .select('center_id, date, start_time, duration, status, delivery_method')
-        .in('center_id', ordered.map((c) => c.id))
-        .gte('date', dates[0])
-        .lte('date', dates[dates.length - 1])
-        .order('id'),
-    )
-      .then(({ data, error }) => {
+    const today = todayISO()
+    const pastEnd = addDays(today, -1)
+    Promise.all([
+      fetchAll(() =>
+        supabase
+          .from('sessions')
+          .select('center_id, date, start_time, duration, status, delivery_method')
+          .in('center_id', ordered.map((c) => c.id))
+          .gte('date', dates[0])
+          .lte('date', dates[dates.length - 1])
+          .order('id'),
+      ),
+      // Who actually checked in, for the days that are over. Only past
+      // dates are ever read from it; today and later stay bookings.
+      dates[0] <= pastEnd
+        ? fetchAll(() =>
+            supabase
+              .from('attendance_visits')
+              .select('center_id, date, arrival, departure, delivery')
+              .in('center_id', ordered.map((c) => c.id))
+              .gte('date', dates[0])
+              .lte('date', pastEnd < dates[dates.length - 1] ? pastEnd : dates[dates.length - 1])
+              .order('id'),
+          )
+        : Promise.resolve({ data: [], error: null }),
+    ])
+      .then(([sessionRes, visitRes]) => {
         if (stale) return
-        if (error) setError(error.message)
+        const err = sessionRes.error ?? visitRes.error
+        if (err) setError(err.message)
         else {
-          setSessions(data ?? [])
+          setVisits(visitRes.data ?? [])
+          setSessions(sessionRes.data ?? [])
           setError(null)
         }
       })
@@ -76,6 +96,8 @@ export default function WeekPlanView() {
     const perCenter = ordered.map((center) => {
       const grid = planWeekGrid({
         sessions: sessions.filter((s) => s.center_id === center.id),
+        visits: visits.filter((v) => v.center_id === center.id),
+        today: todayISO(),
         weekStart,
         hours: centerOperatingHours(center),
       })
@@ -86,7 +108,7 @@ export default function WeekPlanView() {
     // shade whichever center it is in.
     const sharedMax = Math.max(0, ...perCenter.map(({ grid }) => centerWeekMax(grid)))
     return perCenter.map((entry) => ({ ...entry, max: sharedMax }))
-  }, [sessions, ordered, weekStart])
+  }, [sessions, visits, ordered, weekStart])
 
   if (!isAdmin) {
     return (
@@ -248,12 +270,13 @@ function WeekTable({ grid, max, inHue }) {
         <thead>
           <tr>
             <th />
-            {grid.weekdays.map(({ date }, i) => (
+            {grid.weekdays.map(({ date, source }, i) => (
               <th
                 key={date}
                 colSpan={2}
                 className={`px-1 pt-1 text-center ${DAY_EDGE}`}
               >
+                <SourceTag source={source} />
                 <span className="block text-base leading-tight font-bold text-zinc-900">
                   {monthDay(date)}
                 </span>
@@ -265,6 +288,7 @@ function WeekTable({ grid, max, inHue }) {
             {hasSaturday && <th />}
             {hasSaturday && (
               <th colSpan={2} className={`px-1 pt-1 text-center ${DAY_EDGE}`}>
+                <SourceTag source={grid.saturday.source} />
                 <span className="block text-base leading-tight font-bold text-zinc-900">
                   {monthDay(grid.saturday.date)}
                 </span>
@@ -388,4 +412,26 @@ function TotalsPair({ totals }) {
       </td>
     </>
   )
+}
+
+/**
+ * What a day's numbers are: real check-ins, or bookings. Past days with no
+ * attendance imported yet say so, so a booked guess never passes for history.
+ */
+function SourceTag({ source }) {
+  if (source === 'actual') {
+    return (
+      <span className="mb-0.5 block text-[10px] font-semibold tracking-wide text-emerald-700 uppercase" title="Who actually checked in (attendance import)">
+        Actual
+      </span>
+    )
+  }
+  if (source === 'booked_no_attendance') {
+    return (
+      <span className="mb-0.5 block text-[10px] font-semibold tracking-wide text-amber-700 uppercase" title="No attendance imported for this day yet — showing bookings">
+        Booked · no attendance
+      </span>
+    )
+  }
+  return <span className="mb-0.5 block text-[10px] text-transparent select-none">·</span>
 }

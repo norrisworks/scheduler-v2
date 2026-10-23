@@ -1,4 +1,4 @@
-import { addDays, dayOfWeek, startOfWeek, timeToMinutes } from '../../lib/dates'
+import { addDays, dayOfWeek, minutesToTime, startOfWeek, timeToMinutes } from '../../lib/dates'
 import { occupiesFloor, sessionCoversSlot } from '../day/load'
 import { sessionEndMinutes } from '../day/shiftCoverage'
 
@@ -223,15 +223,51 @@ function countsFor(sessions, bandList) {
 }
 
 /**
+ * One attendance visit as a span the band counter can read, under the
+ * MIDPOINT rule: a kid counts in a half hour when they were there at its
+ * middle. 5:05–6:05 covers 5:15 and 5:45 but not 6:15, so it shows in the
+ * 5:00 and 5:30 rows only — not in 6:00 for five minutes.
+ *
+ * The band counter's rule is start <= band < end, so shifting the visit 15
+ * minutes earlier turns it into exactly arrival <= band+15 < departure.
+ */
+export function visitAsSpan(visit) {
+  const arrive = timeToMinutes(visit.arrival)
+  const leave = visit.departure ? timeToMinutes(visit.departure) : arrive + 60
+  return {
+    date: visit.date,
+    start_time: minutesToTime(arrive - 15),
+    duration: Math.max(0, leave - arrive),
+    delivery_method: visit.delivery === 'online' ? 'online' : 'in_center',
+  }
+}
+
+/**
  * The whole grid, pure. `sessions` is the week's rows (date, start_time,
  * duration, status, delivery_method). Days with no counting session are
  * hidden — Saturday included — and cancelled/no-show rows neither show a
  * day nor count on it (the day view's occupiesFloor rule).
+ *
+ * Past days (before `today`) count `visits` — who actually checked in —
+ * when the attendance import has any for that date; otherwise they fall
+ * back to bookings and say so. Each day carries `source`: 'actual',
+ * 'booked' (today and later) or 'booked_no_attendance' (past, no file yet).
  */
-export function planWeekGrid({ sessions, weekStart, hours }) {
+export function planWeekGrid({ sessions, weekStart, hours, visits = [], today = null }) {
   const dates = planWeekDates(weekStart)
   const counting = (sessions ?? []).filter(occupiesFloor)
-  const byDate = new Map(dates.map((d) => [d, counting.filter((s) => s.date === d)]))
+  const sourceOf = new Map()
+  const byDate = new Map(
+    dates.map((d) => {
+      const actual = today && d < today ? visits.filter((v) => v.date === d) : []
+      if (actual.length > 0) {
+        sourceOf.set(d, 'actual')
+        return [d, actual.map(visitAsSpan)]
+      }
+      sourceOf.set(d, today && d < today ? 'booked_no_attendance' : 'booked')
+      return [d, counting.filter((s) => s.date === d)]
+    }),
+  )
 
   const weekdayDates = dates.filter((d) => dayOfWeek(d) >= 1 && dayOfWeek(d) <= 5)
   const saturdayDate = dates.find((d) => dayOfWeek(d) === 6) ?? null
@@ -257,6 +293,7 @@ export function planWeekGrid({ sessions, weekStart, hours }) {
       const onlineSessions = mine.filter((s) => deliveryOf(s) === 'online')
       return {
         date,
+        source: sourceOf.get(date),
         inCenter: countsFor(inCenterSessions, weekdayBands),
         online: countsFor(onlineSessions, weekdayBands),
         // SESSION counts, not cell sums — a 90-minute session spans three
@@ -267,6 +304,7 @@ export function planWeekGrid({ sessions, weekStart, hours }) {
     saturday: saturdayVisible
       ? {
           date: saturdayDate,
+          source: sourceOf.get(saturdayDate),
           inCenter: countsFor(
             saturdaySessions.filter((s) => deliveryOf(s) === 'in_center'),
             saturdayBands,

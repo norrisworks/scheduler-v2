@@ -1,7 +1,7 @@
 import { pick } from './parseTable'
 import { cleanPersonName, isPlaceholderName, nameKey, splitName } from './namingConvention'
 import { parseRadiusDate, parseRadiusTime } from './radiusImport'
-import { centerInstant } from '../../lib/dates'
+import { centerInstant, minutesToTime, timeToMinutes } from '../../lib/dates'
 
 /**
  * Student Attendance Report (Radius) -> binder resets, and NOTHING else.
@@ -45,6 +45,9 @@ export function readAttendanceRow(row) {
     lastName: last,
     fullName: `${first} ${last}`.trim(),
     centerName: pick(row, 'center'),
+    // Radius writes '@home' for online visits and 'In-Center' otherwise.
+    delivery: /home|online|virtual/i.test(String(pick(row, 'delivery'))) ? 'online' : 'in_center',
+    durationMinutes: Number(pick(row, 'duration_minutes')) || null,
   }
 }
 
@@ -240,3 +243,55 @@ export function planAttendanceImport(rows, { centersByName, studentsByCenter }) 
   }
 }
 
+
+/**
+ * Every row of the file as an attendance_visits record, grouped per center
+ * with the date window each center's rows cover. The commit REPLACES that
+ * window: the file is the full record of who checked in on those days, so a
+ * re-export of the same dates corrects rather than duplicates.
+ *
+ * A visit with no departure gets one from Radius's duration column, else
+ * stays open (null) — the Week view then counts it for an hour.
+ */
+export function planAttendanceVisits(rows, { centersByName, studentsByCenter }) {
+  const perCenter = new Map()
+  for (const row of rows.map(readAttendanceRow)) {
+    if (!row.date || !row.arrival) continue
+    const center = centersByName.get(nameKey(row.centerName))
+    if (!center) continue
+    if (!perCenter.has(center.id)) {
+      perCenter.set(center.id, { center, dateFrom: row.date, dateTo: row.date, byKey: new Map() })
+    }
+    const bucket = perCenter.get(center.id)
+    if (row.date < bucket.dateFrom) bucket.dateFrom = row.date
+    if (row.date > bucket.dateTo) bucket.dateTo = row.date
+
+    let departure = row.departure
+    if (!departure && row.durationMinutes) {
+      departure = minutesToTime(timeToMinutes(row.arrival) + row.durationMinutes)
+    }
+    const { student } = matchAttendanceStudent(row, studentsByCenter.get(center.id) ?? [])
+    const visit = {
+      center_id: center.id,
+      date: row.date,
+      arrival: row.arrival,
+      departure: departure ?? null,
+      delivery: row.delivery,
+      lead_id: row.leadId,
+      first_name: row.firstName ?? '',
+      last_name: row.lastName ?? '',
+      student_id: student?.id ?? null,
+    }
+    // The table's unique key. Radius occasionally repeats a row verbatim;
+    // keep the one that ran longest.
+    const key = [visit.date, visit.lead_id, nameKey(visit.first_name), visit.arrival].join('|')
+    const prev = bucket.byKey.get(key)
+    if (!prev || (visit.departure ?? '') > (prev.departure ?? '')) bucket.byKey.set(key, visit)
+  }
+  return [...perCenter.values()].map((b) => ({
+    center: b.center,
+    dateFrom: b.dateFrom,
+    dateTo: b.dateTo,
+    visits: [...b.byKey.values()],
+  }))
+}

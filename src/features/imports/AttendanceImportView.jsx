@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { formatDateShort } from '../../lib/dates'
 import { parseTableFile } from './parseTable'
 import { nameKey } from './namingConvention'
-import { planAttendanceImport } from './attendanceImport'
+import { planAttendanceImport, planAttendanceVisits } from './attendanceImport'
 import QueryError from '../../components/QueryError'
 
 /**
@@ -70,7 +70,10 @@ export default function AttendanceImportView() {
       list.push(s)
       studentsByCenter.set(s.center_id, list)
     }
-    return planAttendanceImport(rows, { centersByName, studentsByCenter })
+    return {
+      ...planAttendanceImport(rows, { centersByName, studentsByCenter }),
+      visits: planAttendanceVisits(rows, { centersByName, studentsByCenter }),
+    }
   }, [rows, reference])
 
   const totals = useMemo(() => {
@@ -105,6 +108,26 @@ export default function AttendanceImportView() {
         }
       }
 
+      // The visit record behind the Week view's past days. Replace each
+      // center's window, so re-importing the same dates corrects them.
+      let stored = 0
+      for (const c of plan.visits) {
+        const { error: delError } = await supabase
+          .from('attendance_visits')
+          .delete()
+          .eq('center_id', c.center.id)
+          .gte('date', c.dateFrom)
+          .lte('date', c.dateTo)
+        if (delError) throw delError
+        for (let i = 0; i < c.visits.length; i += 500) {
+          const { error: insError } = await supabase
+            .from('attendance_visits')
+            .insert(c.visits.slice(i, i + 500))
+          if (insError) throw insError
+        }
+        stored += c.visits.length
+      }
+
       const { error: logError } = await supabase.from('import_runs').insert({
         center_id: plan.centers.length === 1 ? plan.centers[0].center.id : null,
         kind: 'radius_attendance',
@@ -112,14 +135,14 @@ export default function AttendanceImportView() {
         date_from: plan.dateFrom,
         date_to: plan.dateTo,
         rows_total: plan.totalRows,
-        rows_created: 0,
+        rows_created: stored,
         rows_updated: reset,
         rows_flagged: totals.unmatched + plan.skipped.length,
         ran_by: user?.id ?? null,
       })
       if (logError) throw logError
 
-      setDone({ reset, unmatched: totals.unmatched })
+      setDone({ reset, unmatched: totals.unmatched, stored })
       setRows(null)
       setReference(null)
     } catch (err) {
@@ -145,7 +168,8 @@ export default function AttendanceImportView() {
         Clears the binder for students who actually turned up. Only attendees appear in this file,
         so a no-show keeps their prep. A binder marked complete{' '}
         <span className="font-medium text-zinc-700">after</span> the student left is treated as
-        prep for next time and is left alone. Nothing else is written — no session statuses, no
+        prep for next time and is left alone. Every visit is also saved, which is what the Week view
+        counts for past days; re-importing the same dates replaces them. No session statuses, no
         roster changes.
       </p>
 
@@ -175,7 +199,7 @@ export default function AttendanceImportView() {
 
       {done && (
         <p className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-          {done.reset} binder{done.reset === 1 ? '' : 's'} reset.
+          {done.reset} binder{done.reset === 1 ? '' : 's'} reset · {done.stored} visit{done.stored === 1 ? '' : 's'} saved.
           {done.unmatched > 0 ? ` ${done.unmatched} attendee(s) went unmatched and were skipped.` : ''}
         </p>
       )}
