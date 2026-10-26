@@ -887,6 +887,19 @@ anchor). **Never call `toISOString()` for dates.**
 
 ## Open items
 
+- **Owner's feature queue (2026-10-26), in no fixed order:**
+  1. *Attendance trends on the Week tab.* Agreed content: total weekly
+     attendance over time; attendance by weekday over time; every half-hour
+     slot (day + time, all of them, in order) week by week; each week's
+     busiest slot; how that is changing. Word is "attendance", never
+     "check-ins". Data: `attendance_visits`, midpoint rule. Mockups lived in
+     chat; the last accepted direction was the full day x time slot table.
+  2. *Instructor view* for the per-station tablets — "my students today",
+     mostly per instructor. Seat assignments parked behind it.
+  3. *Per-student forward-looking briefings* for the instructor working with
+     that student that day, sourced from DWP session summary exports plus
+     email and Quo (schoolwork, tests, parent context). Exploration started.
+
 - **Vercel deploy** is the owner's; repo is ready (`vercel.json` SPA rewrite).
 - **`students.first_day` (the column) stays for now, dormant.** The DEPLOYED
   bundle still selects it, so dropping it before the client ships would break
