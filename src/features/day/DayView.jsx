@@ -17,6 +17,8 @@ import InstructorSidebar from './InstructorSidebar'
 import StatusMenu from './StatusMenu'
 import AddSessionDialog from './AddSessionDialog'
 import RescheduleDialog from './RescheduleDialog'
+import { moveSession } from './rescheduleWrite'
+import { isRadiusConfirmed } from './sourceConflicts'
 import StudentDrawer from '../roster/StudentDrawer'
 import { useMaterializer } from '../materializer/useMaterializer'
 import { describeMaterialize, MATERIALIZE_DAYS } from '../materializer/materialize'
@@ -237,6 +239,38 @@ export default function DayView() {
     [date, refetch],
   )
 
+  // Drag-to-reschedule: the same cancel+create as the Reschedule dialog, the
+  // instructor carried along, and a message with Undo. Radius-booked sessions
+  // say so, because Radius still has the old time until someone changes it.
+  const [moved, setMoved] = useState(null) // { text, undo, warn }
+  const handleMoveTime = useCallback(
+    async (session, time) => {
+      const name = session.student?.name ?? 'Session'
+      const result = await moveSession(session, session.date, time, { keepInstructor: true })
+      await refetch()
+      if (result.error) {
+        setMoved({ text: result.error, error: true })
+        return
+      }
+      setMoved({
+        text: `Moved ${name} to ${formatTimeMeridiem(time)}`,
+        warn: isRadiusConfirmed(session) ? 'Booked in Radius — change it there too.' : null,
+        undo: async () => {
+          setMoved(null)
+          const { error: undoError } = await result.undo()
+          await refetch()
+          if (undoError) setMoved({ text: `Undo failed: ${undoError}`, error: true })
+        },
+      })
+    },
+    [refetch],
+  )
+  useEffect(() => {
+    if (!moved) return
+    const t = setTimeout(() => setMoved(null), moved.undo ? 12000 : 8000)
+    return () => clearTimeout(t)
+  }, [moved])
+
   const gridProps = {
     axis,
     slotStats,
@@ -252,6 +286,7 @@ export default function DayView() {
     onAssign: assign,
     onUnassign: unassign,
     onLockChange: setLock,
+    onMoveTime: handleMoveTime,
     onStatusMenu: setStatusMenu,
   }
 
@@ -527,6 +562,36 @@ export default function DayView() {
         onSuppChange={setSuppOverride}
         onClose={() => setStatusMenu(null)}
       />
+
+      {moved && (
+        <div
+          role="status"
+          className={
+            'fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-lg px-4 py-2.5 text-sm shadow-lg ' +
+            (moved.error ? 'bg-red-700 text-white' : 'bg-zinc-900 text-white')
+          }
+        >
+          <span>{moved.text}</span>
+          {moved.warn && <span className="text-amber-300">{moved.warn}</span>}
+          {moved.undo && (
+            <button
+              type="button"
+              onClick={moved.undo}
+              className="rounded px-2 py-0.5 font-semibold text-white underline-offset-2 hover:underline"
+            >
+              Undo
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setMoved(null)}
+            aria-label="Dismiss"
+            className="text-zinc-400 hover:text-white"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {rescheduling && (
         <RescheduleDialog

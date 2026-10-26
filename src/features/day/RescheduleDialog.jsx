@@ -3,7 +3,8 @@ import { supabase } from '../../lib/supabase'
 import Modal from '../../components/Modal'
 import TimeSelect from '../../components/TimeSelect'
 import { addDays, formatDateLong, formatTimeMeridiem, todayISO } from '../../lib/dates'
-import { collisionKind, collisionMessage, rescheduleRows, reusePatch, validateReschedule } from './reschedule'
+import { collisionKind, validateReschedule } from './reschedule'
+import { moveSession } from './rescheduleWrite'
 
 /**
  * Move one session to a future date and time. The original is cancelled and
@@ -52,54 +53,10 @@ export default function RescheduleDialog({ session, onClose, onDone }) {
     setSaving(true)
     setError(null)
 
-    const { cancel, create } = rescheduleRows(session, date, time)
-
-    // The unique index counts cancelled rows, so the insert below would fail
-    // against a corpse — which is what made "move it back where it came from"
-    // impossible and left a trail of cancelled rows on every retry. A
-    // cancelled occupant is REUSED: revived in place as the new session, so
-    // no duplicate ever exists. A live occupant refuses, and says "scheduled".
-    const { data: existing } = await supabase
-      .from('sessions')
-      .select('id, status')
-      .eq('student_id', session.student_id)
-      .eq('date', create.date)
-      .eq('start_time', create.start_time)
-      .neq('id', session.id)
-      .maybeSingle()
-
-    const kind = collisionKind(existing)
-    if (kind === 'live') {
-      setError(collisionMessage('live', session.student?.name))
-      setSaving(false)
-      return
-    }
-
-    // New-session write first, whichever form it takes: if it is rejected,
-    // the original is still on the schedule and nothing was lost.
-    const landed =
-      kind === 'cancelled'
-        ? await supabase
-            .from('sessions')
-            .update({
-              ...reusePatch(create),
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', existing.id)
-        : await supabase.from('sessions').insert(create)
-    if (landed.error) {
-      setError(landed.error.message)
-      setSaving(false)
-      return
-    }
-
-    const cancelled = await supabase
-      .from('sessions')
-      .update({ ...cancel.patch, updated_at: new Date().toISOString() })
-      .eq('id', cancel.id)
+    const result = await moveSession(session, date, time)
     setSaving(false)
-    if (cancelled.error) {
-      setError(`New session created, but the original did not cancel: ${cancelled.error.message}`)
+    if (result.error) {
+      setError(result.error)
       return
     }
     await onDone?.()

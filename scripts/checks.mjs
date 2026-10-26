@@ -11,7 +11,7 @@ import { placeAtRank, visibleRanking } from '../src/features/assign/rankOrder.js
 import { BINDER_RESET, binderCounts, binderRows, binderStatusOf, isBinderReady } from '../src/features/binder/binderPrep.js'
 import { classifyQueryError, describeQueryError, CLOCK_SKEW, SESSION_EXPIRED, OFFLINE, UNKNOWN } from '../src/lib/queryError.js'
 import { RANK_TIEBREAK, RANK_GATED_CAP, NEW_STUDENT_PREFERENCE } from '../src/features/assign/algorithmFlags.js'
-import { rescheduleRows, validateReschedule, collisionKind, collisionMessage, reusePatch } from '../src/features/day/reschedule.js'
+import { rescheduleRows, validateReschedule, collisionKind, collisionMessage, reusePatch, dragTargetMinutes } from '../src/features/day/reschedule.js'
 import { findSourceConflicts, planSourceConflicts, findCrossDayConflicts, planCrossDayConflicts, isRadiusConfirmed } from '../src/features/day/sourceConflicts.js'
 import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessage } from '../src/features/assign/algorithms.js'
 import { buildGroups } from '../src/features/day/rowGrouping.js'
@@ -3081,6 +3081,22 @@ eq('no departure means no decision',
 
 eq('attendance commit is not gated on binder resets',
    /disabled=\{busy \|\| totals\.resets === 0\}/.test(readFileSync('src/features/imports/AttendanceImportView.jsx', 'utf8')), false)
+
+// ---- drag-to-reschedule
+{
+  const ax = { start: 15 * 60, end: 19 * 60 + 30 }
+  eq('drag snaps to the half hour (35px ~ one step down)', dragTargetMinutes(17 * 60, 35, 60, ax), 17 * 60 + 30)
+  eq('a small wobble stays put', dragTargetMinutes(17 * 60, 20, 60, ax), 17 * 60)
+  eq('two steps up', dragTargetMinutes(17 * 60, -120, 60, ax), 16 * 60)
+  eq('cannot go above the day', dragTargetMinutes(15 * 60 + 30, -600, 60, ax), 15 * 60)
+  eq('a 90-min session stops where it still fits', dragTargetMinutes(17 * 60, 900, 90, ax), 18 * 60)
+  const card = readFileSync('src/features/day/SessionCard.jsx', 'utf8')
+  eq('touch never starts a drag (tablets scroll)', /pointerType === 'touch'/.test(card), true)
+  eq('only scheduled, today-or-later sessions move', /session\.status === 'scheduled'[\s\S]{0,40}session\.date >= todayISO\(\)/.test(card), true)
+  eq('the dialog and the drag share one write path',
+     /moveSession/.test(readFileSync('src/features/day/RescheduleDialog.jsx', 'utf8')) &&
+     /moveSession\(session, session\.date, time, \{ keepInstructor: true \}\)/.test(readFileSync('src/features/day/DayView.jsx', 'utf8')), true)
+}
 
 let failed = 0
 for (const [label, got, want, ok] of checks) {

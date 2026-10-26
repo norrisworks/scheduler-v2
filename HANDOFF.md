@@ -789,6 +789,17 @@ anchor). **Never call `toISOString()` for dates.**
     threw at the log insert (before visits were saved). Constraint fixed
     2026-10-23; any new import kind must be added to that CHECK.
 
+54. **Drag a card up or down to reschedule it** (2026-10-26). Vertical grid,
+    admin only, mouse/pen only — touch never starts a drag, so the tablets
+    still scroll. A press becomes a drag after 6px, so a click still opens
+    the student. Snaps to the half hour (`dragTargetMinutes`), clamped to the
+    day's axis; only scheduled sessions dated today or later move. Writes go
+    through `rescheduleWrite.moveSession`, now shared with the Reschedule
+    dialog (cancel + create, cancelled-corpse reuse, live collision refused).
+    A drag keeps the instructor (manual assignment on the new row). The
+    message offers Undo (removes the new row, restores the original's status
+    and is_modified) and warns when the session is Radius-confirmed.
+
 ## Importers (all preview-first; never commit on the owner's behalf)
 
 - **Students export** (`studentImport.js`): splits by the file's Center

@@ -86,3 +86,16 @@ export function rescheduleRows(session, date, time) {
     },
   }
 }
+
+/**
+ * Drag-to-reschedule geometry: where a card dragged `dyPx` lands. Snaps to
+ * the half hour and keeps the whole session on the day's axis. Returns the
+ * new start in minutes (equal to the old one when the drag didn't clear a
+ * full half-hour step).
+ */
+export function dragTargetMinutes(startMin, dyPx, duration, axis, slotHeight = 60, slotMinutes = 30) {
+  const steps = Math.round(dyPx / slotHeight)
+  const raw = startMin + steps * slotMinutes
+  const latest = axis.end - (duration ?? 60)
+  return Math.max(axis.start, Math.min(latest, raw))
+}

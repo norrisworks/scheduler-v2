@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
-import { formatTime } from '../../lib/dates'
+import { formatTime, minutesToTime, timeToMinutes, todayISO } from '../../lib/dates'
+import { dragTargetMinutes } from './reschedule'
+import { SLOT_HEIGHT } from './timeGrid'
 import { STATUSES } from './levels'
 import { ACADEMIC_STATUS, BRAND_RED, ONLINE_GREEN } from './studentOptions'
 import { sessionMarker } from './sessionMarker'
@@ -36,8 +38,16 @@ export default function SessionCard({
   onUnassign,
   onLockChange,
   onStatusMenu,
+  onMoveTime,
+  dragAxis,
 }) {
   const [dragOver, setDragOver] = useState(false)
+  // Drag-to-reschedule (vertical grid, admin, mouse/pen). A press only becomes
+  // a drag after it travels a few pixels, so a plain click still opens the
+  // student. Touch is left alone: on the tablets a vertical swipe scrolls.
+  const press = useRef(null)
+  const suppressClick = useRef(false)
+  const [moveDy, setMoveDy] = useState(null)
   // Instructor-role accounts are read-only on assignments; the card stays
   // clickable to OPEN the student, nothing else.
   const { isAdmin } = useAuth()
@@ -68,6 +78,10 @@ export default function SessionCard({
   // Armed instructor turns clicks into assignments (tablet path, where HTML5
   // drag never fires). Otherwise a click opens the student, as in v1.
   function handleClick() {
+    if (suppressClick.current) {
+      suppressClick.current = false
+      return
+    }
     if (armedInstructor && isAdmin) onAssign(session.id, armedInstructor.id)
     else onOpenStudent(session.student_id, session.id)
   }
@@ -87,11 +101,56 @@ export default function SessionCard({
           ? `2px solid ${BRAND_RED}80`
           : null
 
+  const canMove =
+    isAdmin &&
+    layout === 'vertical' &&
+    onMoveTime &&
+    dragAxis &&
+    session.status === 'scheduled' &&
+    session.date >= todayISO()
+  const startMin = timeToMinutes(session.start_time)
+  const targetMin =
+    moveDy === null ? startMin : dragTargetMinutes(startMin, moveDy, session.duration, dragAxis, SLOT_HEIGHT)
+
+  function handlePointerDown(e) {
+    if (!canMove || e.pointerType === 'touch' || e.button !== 0) return
+    if (e.target.closest('button')) return
+    press.current = { y: e.clientY, id: e.pointerId, dragging: false }
+  }
+  function handlePointerMove(e) {
+    const p = press.current
+    if (!p || p.id !== e.pointerId) return
+    const dy = e.clientY - p.y
+    if (!p.dragging) {
+      if (Math.abs(dy) < 6) return
+      p.dragging = true
+      e.currentTarget.setPointerCapture(e.pointerId)
+    }
+    setMoveDy(dy)
+  }
+  function handlePointerUp(e) {
+    const p = press.current
+    press.current = null
+    if (!p || !p.dragging) return
+    suppressClick.current = true
+    const landed = dragTargetMinutes(startMin, e.clientY - p.y, session.duration, dragAxis, SLOT_HEIGHT)
+    setMoveDy(null)
+    if (landed !== startMin) onMoveTime(session, minutesToTime(landed).slice(0, 5))
+  }
+  function handlePointerCancel() {
+    press.current = null
+    setMoveDy(null)
+  }
+
   const wrapperProps = {
     onDragOver: handleDragOver,
     onDragLeave: () => setDragOver(false),
     onDrop: handleDrop,
     onClick: handleClick,
+    onPointerDown: handlePointerDown,
+    onPointerMove: handlePointerMove,
+    onPointerUp: handlePointerUp,
+    onPointerCancel: handlePointerCancel,
     onContextMenu: (e) => {
       e.preventDefault()
       onStatusMenu({ session, x: e.clientX, y: e.clientY })
@@ -109,6 +168,18 @@ export default function SessionCard({
       ...(session.delivery_method === 'online' ? { border: `3px solid ${ONLINE_GREEN}` } : null),
       ...(firstDayBadge(session).firstDay ? { border: `3px solid ${BRAND_RED}` } : null),
       ...(ring ? { outline: ring, outlineOffset: '-2px' } : null),
+      // While dragging, the card rides along snapped to the half hour, lifted
+      // above its neighbours.
+      ...(moveDy !== null
+        ? {
+            transform: `translateY(${((targetMin - startMin) / 30) * SLOT_HEIGHT}px)`,
+            zIndex: 30,
+            boxShadow: '0 6px 16px rgba(0,0,0,0.18)',
+            cursor: 'grabbing',
+          }
+        : canMove
+          ? { cursor: 'grab' }
+          : null),
     },
   }
 
@@ -287,6 +358,11 @@ export default function SessionCard({
           the marker shows whenever the menu is not being summoned. */}
       <div className="absolute top-0.5 right-0.5">{markerEl}</div>
       <div className="absolute top-0.5 right-0.5">{menuButton}</div>
+      {moveDy !== null && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-zinc-900/85 py-0.5 text-center text-[11px] font-semibold text-white">
+          {targetMin === startMin ? 'Drag to a new time' : `Move to ${formatTime(minutesToTime(targetMin))}`}
+        </div>
+      )}
 
       {/* Row 2: grade chip, then academic status. The grade's gray is
           deliberately DARKER than the 'At level' pill's slate so the two

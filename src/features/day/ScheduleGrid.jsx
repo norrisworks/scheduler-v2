@@ -32,6 +32,7 @@ export default function ScheduleGrid({
   onUnassign,
   onLockChange,
   onStatusMenu,
+  onMoveTime,
 }) {
   const columns = useMemo(() => {
     const hasUnset = sessions.some((s) => levelOf(s) === UNSET_LEVEL.key)
@@ -145,6 +146,8 @@ export default function ScheduleGrid({
                   onUnassign={onUnassign}
                   onLockChange={onLockChange}
                   onStatusMenu={onStatusMenu}
+                  onMoveTime={onMoveTime}
+                  dragAxis={axis}
                 />
               )
             })}
