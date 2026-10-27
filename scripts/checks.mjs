@@ -3141,6 +3141,19 @@ eq('a Radius file of only unchanged rows can still be committed (stamps + log)',
   eq('renames are opt-out checkboxes in the preview', /skipRename\[r\.id\]/.test(view), true)
 }
 
+{
+  const roster = [
+    { id: 'r1', name: 'Royce B', radius_account: 'Barnes, Kim | 9', grade: '5', active: true },
+    { id: 'a1', name: 'Aryan (1st) Patel', radius_account: 'patel, himanshu | 8', grade: '2', active: true },
+  ]
+  const plan = planStudentImport([
+    { __row: 2, first_name: 'Royce (RJ)', last_name: 'Barnes, Jr.', preferred_name: '', account_name: 'Barnes, Kim', enrollment_status: 'Enrolled' },
+    { __row: 3, first_name: 'Aryan (2nd)', last_name: 'Patel', preferred_name: '', account_name: 'Patel, Krupa', enrollment_status: 'Enrolled' },
+  ], roster)
+  eq('a nickname in parentheses in First Name proposes the rename', plan.renames.map((x) => x.to), ['RJ B'])
+  eq('(1st)/(2nd) disambiguators are never read as nicknames', plan.renames.some((x) => /2nd|1st/.test(x.to)), false)
+}
+
 let failed = 0
 for (const [label, got, want, ok] of checks) {
   if (!ok) { failed++; console.log(`FAIL ${label}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`) }

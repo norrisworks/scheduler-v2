@@ -143,8 +143,16 @@ export function readStudentRow(row) {
     // name — ever proposes a rename. A column that just repeats the first
     // name must not 'correct' the owner's own spellings (Hazik, Chariss).
     preferredFirst: (() => {
-      const pref = String(pick(row, 'preferred_name') ?? '').trim()
-      const legal = String(pick(row, 'first_name') ?? '').trim()
+      const legalRaw = String(pick(row, 'first_name') ?? '').trim()
+      const legal = legalRaw.replace(/\s*\(.*?\)\s*/g, ' ').trim()
+      let pref = String(pick(row, 'preferred_name') ?? '').trim()
+      // Radius sometimes carries the nickname in the First Name itself:
+      // 'Royce (RJ)'. A parenthesised WORD is a nickname; '(1st)' / '(2nd)'
+      // are the owner's own disambiguators and never are.
+      if (!pref) {
+        const nick = /\(([A-Za-z][A-Za-z .'-]*)\)/.exec(legalRaw)?.[1]?.trim()
+        if (nick && !/^\d|^(1st|2nd|3rd|\d+th)$/i.test(nick)) pref = nick
+      }
       return pref && nameKey(pref) !== nameKey(legal) ? pref : ''
     })(),
     lastName: String(pick(row, 'last_name') ?? '').trim(),
