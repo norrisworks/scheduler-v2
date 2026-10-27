@@ -135,6 +135,19 @@ export function readStudentRow(row) {
     // every attendance run.
     radiusLeadId: String(pick(row, 'lead_id') ?? '').trim(),
     radiusFirstName: String(pick(row, 'first_name') ?? '').trim(),
+    // The legal name, kept alongside: a student given a Preferred Name in
+    // Radius is still stored here under the legal one until renamed, so
+    // matching must try both.
+    legalFullName: [pick(row, 'first_name'), pick(row, 'last_name')].filter(Boolean).join(' '),
+    // Only a GENUINE preferred name — one that differs from the legal first
+    // name — ever proposes a rename. A column that just repeats the first
+    // name must not 'correct' the owner's own spellings (Hazik, Chariss).
+    preferredFirst: (() => {
+      const pref = String(pick(row, 'preferred_name') ?? '').trim()
+      const legal = String(pick(row, 'first_name') ?? '').trim()
+      return pref && nameKey(pref) !== nameKey(legal) ? pref : ''
+    })(),
+    lastName: String(pick(row, 'last_name') ?? '').trim(),
     values,
   }
 }
@@ -215,8 +228,9 @@ export function planStudentImport(rows, existingStudents) {
       const key = accountKey(row.radiusAccount)
       rowsPerAccount.set(key, (rowsPerAccount.get(key) ?? 0) + 1)
     }
-    const shape = displayNameShape(row.fullName)
-    if (shape) rowsPerShape.set(shape, (rowsPerShape.get(shape) ?? 0) + 1)
+    for (const shape of new Set([displayNameShape(row.fullName), displayNameShape(row.legalFullName)])) {
+      if (shape) rowsPerShape.set(shape, (rowsPerShape.get(shape) ?? 0) + 1)
+    }
   }
 
   // Names already in use, grown as the plan invents new ones, so two new
@@ -238,6 +252,9 @@ export function planStudentImport(rows, existingStudents) {
   // Rows that would have created a long-departed student. Counted rather than
   // dropped silently, so the preview still accounts for every row in the file.
   const skipped = []
+  // Matched students whose Radius Preferred Name differs from the name here.
+  // Proposals only: the preview lists them and the owner ticks which apply.
+  const renames = []
 
   for (const raw of rows) {
     const row = readStudentRow(raw)
@@ -251,8 +268,12 @@ export function planStudentImport(rows, existingStudents) {
     // the last row silently overwrites the others' grade, school and status.
     const key = row.radiusAccount ? accountKey(row.radiusAccount) : null
     const onAccount = key ? (byAccount.get(key) ?? []) : []
-    const rowFirst = nameKey(splitName(row.fullName).first)
-    const byFirstName = onAccount.filter((s) => nameKey(splitName(s.name).first) === rowFirst)
+    // Either the preferred or the legal first name identifies the child: the
+    // stored name may predate the preferred name being added in Radius.
+    const rowFirsts = new Set(
+      [splitName(row.fullName).first, splitName(row.legalFullName).first].filter(Boolean).map(nameKey),
+    )
+    const byFirstName = onAccount.filter((s) => rowFirsts.has(nameKey(splitName(s.name).first)))
 
     // Failing an exact first name, allow a one-letter miss WITHIN the account:
     // 'Hassan, Kanon' holds Hayat and Haziq, and the roster spells the second
@@ -264,7 +285,8 @@ export function planStudentImport(rows, existingStudents) {
       (s) =>
         !matchedIds.has(s.id) &&
         !byFirstName.includes(s) &&
-        nearlySameFirstName(splitName(s.name).first, splitName(row.fullName).first),
+        (nearlySameFirstName(splitName(s.name).first, splitName(row.fullName).first) ||
+          nearlySameFirstName(splitName(s.name).first, splitName(row.legalFullName).first)),
     )
 
     const accountMatch =
@@ -280,12 +302,20 @@ export function planStudentImport(rows, existingStudents) {
     // last name, so 'Danielle Shaw' in the file is 'Danielle S' here and no
     // exact comparison can see it. Accepted only when the shape is unambiguous
     // on both sides — one student, one row — since it is a guess, not an id.
-    const shape = displayNameShape(row.fullName)
-    const sameShape = shape ? (byShape.get(shape) ?? []) : []
-    const shapeMatch =
-      sameShape.length === 1 && rowsPerShape.get(shape) === 1 ? sameShape[0] : undefined
+    let shapeMatch
+    for (const shape of [displayNameShape(row.fullName), displayNameShape(row.legalFullName)]) {
+      const sameShape = shape ? (byShape.get(shape) ?? []) : []
+      if (sameShape.length === 1 && rowsPerShape.get(shape) === 1) {
+        shapeMatch = sameShape[0]
+        break
+      }
+    }
 
-    const match = accountMatch || byName.get(nameKey(row.fullName)) || shapeMatch
+    const match =
+      accountMatch ||
+      byName.get(nameKey(row.fullName)) ||
+      (row.legalFullName ? byName.get(nameKey(row.legalFullName)) : undefined) ||
+      shapeMatch
 
     if (match) {
       // Two rows landing on one student means the export lists them twice or
@@ -316,6 +346,28 @@ export function planStudentImport(rows, existingStudents) {
       if (row.radiusLeadId && !match.radius_lead_id) patch.radius_lead_id = row.radiusLeadId
       if (row.radiusFirstName && !match.radius_first_name) {
         patch.radius_first_name = row.radiusFirstName
+      }
+
+      // A preferred name the stored name doesn't use yet: propose the rename,
+      // built by the same naming convention as a new student, checked
+      // against every OTHER name in the center.
+      if (row.preferredFirst && nameKey(splitName(match.name).first) !== nameKey(row.preferredFirst)) {
+        const others = taken.filter((n) => nameKey(n) !== nameKey(match.name))
+        const proposal = generateDisplayName(
+          [row.preferredFirst, row.lastName].filter(Boolean).join(' '),
+          row.values.grade ?? match.grade,
+          others,
+        )
+        if (proposal.name && nameKey(proposal.name) !== nameKey(match.name)) {
+          renames.push({
+            id: match.id,
+            from: match.name,
+            to: proposal.name,
+            preferred: row.preferredFirst,
+            needsReview: proposal.needsReview,
+            reason: proposal.reason,
+          })
+        }
       }
 
       if (Object.keys(patch).length > 0) {
@@ -407,6 +459,7 @@ export function planStudentImport(rows, existingStudents) {
     unchanged,
     problems,
     skipped,
+    renames,
     absent,
     // Names in the file that break the convention are worth surfacing even
     // when they match an existing student, since the file is the source.

@@ -20,6 +20,9 @@ export default function StudentImportView() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [done, setDone] = useState(null)
+  // student id -> false when the owner UNticks a proposed preferred-name
+  // rename. Ticked by default: the preferred name was added on purpose.
+  const [skipRename, setSkipRename] = useState({})
 
   async function onFile(e) {
     const file = e.target.files?.[0]
@@ -68,10 +71,11 @@ export default function StudentImportView() {
         (acc, { plan: p }) => ({
           created: acc.created + p.created.length,
           updated: acc.updated + p.updated.length,
+          renames: acc.renames + (p.renames ?? []).filter((r) => !skipRename[r.id]).length,
         }),
-        { created: 0, updated: 0 },
+        { created: 0, updated: 0, renames: 0 },
       )
-    : { created: 0, updated: 0 }
+    : { created: 0, updated: 0, renames: 0 }
 
   async function commit() {
     if (!plan) return
@@ -82,6 +86,7 @@ export default function StudentImportView() {
       let created = 0
       let updated = 0
       let flagged = 0
+      let renamed = 0
 
       for (const { center: target, plan: p } of plan.centers) {
         if (p.created.length > 0) {
@@ -98,6 +103,15 @@ export default function StudentImportView() {
             .eq('id', row.id)
           if (error) throw new Error(error.message)
         }
+        // Preferred-name renames the owner left ticked. Name only.
+        for (const r of (p.renames ?? []).filter((x) => !skipRename[x.id])) {
+          const { error } = await supabase
+            .from('students')
+            .update({ name: r.to, updated_at: new Date().toISOString() })
+            .eq('id', r.id)
+          if (error) throw new Error(error.message)
+          renamed += 1
+        }
         created += p.created.length
         updated += p.updated.length
         flagged += p.problems.length + p.created.filter((c) => c.needsReview).length
@@ -109,12 +123,13 @@ export default function StudentImportView() {
         filename: fileName,
         rows_total: plan.totalRows,
         rows_created: created,
-        rows_updated: updated,
+        rows_updated: updated + renamed,
         rows_flagged: flagged,
         ran_by: user?.id ?? null,
       })
 
-      setDone({ created, updated })
+      setDone({ created, updated, renamed })
+      setSkipRename({})
       setPlan(null)
     } catch (err) {
       setError(err.message)
@@ -158,7 +173,7 @@ export default function StudentImportView() {
 
       {done && (
         <p className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-          Imported — {done.created} created, {done.updated} updated.
+          Imported — {done.created} created, {done.updated} updated{done.renamed ? `, ${done.renamed} renamed to their preferred name` : ''}.
         </p>
       )}
 
@@ -225,6 +240,36 @@ export default function StudentImportView() {
                             .map(([k, v]) => `${k.replace(/_/g, ' ')} → ${String(v)}`)
                             .join(' · ')}
                         </span>
+                      </li>
+                    ))}
+                  </ul>
+                </Section>
+              )}
+
+              {(p.renames ?? []).length > 0 && (
+                <Section title={`Preferred names (${p.renames.length})`}>
+                  <p className="px-3 pt-2 text-xs text-zinc-500">
+                    Radius has a preferred name for these students that the name here doesn't use.
+                    Ticked ones are renamed; untick any you want to leave as they are.
+                  </p>
+                  <ul className="divide-y divide-zinc-100">
+                    {p.renames.map((r) => (
+                      <li key={r.id} className="px-3 py-1.5 text-sm">
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={!skipRename[r.id]}
+                            onChange={(e) =>
+                              setSkipRename((prev) => ({ ...prev, [r.id]: !e.target.checked }))
+                            }
+                          />
+                          <span className="text-zinc-500">{r.from}</span>
+                          <span className="text-zinc-400">→</span>
+                          <span className="font-medium text-zinc-900">{r.to}</span>
+                          {r.needsReview && (
+                            <span className="text-xs text-amber-700">check this one: {r.reason}</span>
+                          )}
+                        </label>
                       </li>
                     ))}
                   </ul>
@@ -300,10 +345,10 @@ export default function StudentImportView() {
             <button
               type="button"
               onClick={commit}
-              disabled={busy || (totals.created === 0 && totals.updated === 0)}
+              disabled={busy || (totals.created === 0 && totals.updated === 0 && totals.renames === 0)}
               className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-40"
             >
-              {busy ? 'Importing…' : `Import ${totals.created} new, ${totals.updated} changed`}
+              {busy ? 'Importing…' : `Import ${totals.created} new, ${totals.updated} changed${totals.renames ? `, ${totals.renames} renamed` : ''}`}
             </button>
           </div>
         </div>

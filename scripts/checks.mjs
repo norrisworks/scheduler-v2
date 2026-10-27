@@ -3116,6 +3116,31 @@ eq('other errors get no file message', fileReadMessage({ name: 'SyntaxError' }),
 eq('a Radius file of only unchanged rows can still be committed (stamps + log)',
    /totalWrites === 0 && totalCancels === 0 && totalConfirms === 0/.test(readFileSync('src/features/imports/RadiusImportView.jsx', 'utf8')), true)
 
+// ---- preferred names: match on either name, propose (never force) the rename
+{
+  const roster = [
+    { id: 'k1', name: 'Kalaikkathir K', radius_account: 'Kalaikkovan, Raj | 1', grade: '6', active: true },
+    { id: 's1', name: 'Alexander P', radius_account: 'Patel, Ana | 2', grade: '4', active: true },
+    { id: 's2', name: 'Maya P', radius_account: 'Patel, Ana | 2', grade: '2', active: true },
+    { id: 'h1', name: 'Hazik H', radius_account: 'Hassan, Kanon | 3', grade: 'K', active: true },
+  ]
+  const r = (first, last, pref, acct, extra = {}) => ({ __row: 2, first_name: first, last_name: last, preferred_name: pref, account_name: acct, enrollment_status: 'Enrolled', ...extra })
+  const plan = planStudentImport([
+    r('Kalaikkathir', 'Kalaikkovan', 'Kathir', 'Kalaikkovan, Raj'),
+    r('Alexander', 'Patel', 'Alex', 'Patel, Ana'),
+    r('Maya', 'Patel', '', 'Patel, Ana'),
+    r('Haziq', 'Hassan', 'Haziq', 'Hassan, Kanon'),
+  ], roster)
+  eq('nobody is created when only a preferred name was added', plan.created.length, 0)
+  eq('sibling with a new preferred name still matches (no duplicate)', plan.problems.length, 0)
+  eq('renames proposed for genuine preferred names',
+     plan.renames.map((x) => [x.from, x.to]).sort(), [['Alexander P', 'Alex P'], ['Kalaikkathir K', 'Kathir K']])
+  eq('a preferred name equal to the legal one never renames (owner spelling Hazik kept)',
+     plan.renames.some((x) => x.id === 'h1'), false)
+  const view = readFileSync('src/features/imports/StudentImportView.jsx', 'utf8')
+  eq('renames are opt-out checkboxes in the preview', /skipRename\[r\.id\]/.test(view), true)
+}
+
 let failed = 0
 for (const [label, got, want, ok] of checks) {
   if (!ok) { failed++; console.log(`FAIL ${label}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`) }
