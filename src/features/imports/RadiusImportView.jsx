@@ -382,6 +382,10 @@ export default function RadiusImportView() {
     setBusy(false)
   }
 
+  // Matched rows the file lists with no change: they are still WRITTEN —
+  // stamped as confirmed by this file — so a file of nothing-but-unchanged
+  // rows is still an import worth committing.
+  const totalConfirms = plan ? plan.centers.reduce((n, c) => n + c.unchanged.length, 0) : 0
   const totalWrites = plan
     ? plan.centers.reduce((n, c) => n + c.created.length + c.linked.length + c.updated.length, 0)
     : 0
@@ -779,6 +783,7 @@ export default function RadiusImportView() {
           <div className="flex items-center gap-2">
             <span className="flex-1 text-[11px] text-zinc-500">
               {plan.totalRows} rows in file · {totalWrites} sessions will be written
+              {totalConfirms > 0 && `, ${totalConfirms} confirmed unchanged`}
               {totalCancels > 0 && `, ${totalCancels} cancelled`}.
             </span>
             <button
@@ -794,12 +799,14 @@ export default function RadiusImportView() {
             <button
               type="button"
               onClick={commit}
-              disabled={busy || (totalWrites === 0 && totalCancels === 0)}
+              disabled={busy || (totalWrites === 0 && totalCancels === 0 && totalConfirms === 0)}
               className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-40"
             >
               {busy
                 ? 'Importing…'
-                : `Import ${totalWrites} sessions${totalCancels > 0 ? ` · cancel ${totalCancels}` : ''}`}
+                : totalWrites === 0 && totalCancels === 0
+                  ? `Confirm ${totalConfirms} sessions`
+                  : `Import ${totalWrites} sessions${totalConfirms > 0 ? ` · confirm ${totalConfirms}` : ''}${totalCancels > 0 ? ` · cancel ${totalCancels}` : ''}`}
             </button>
           </div>
         </div>

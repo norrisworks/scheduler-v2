@@ -3113,6 +3113,9 @@ eq('other errors get no file message', fileReadMessage({ name: 'SyntaxError' }),
   eq('a refusal is not retried', refused, 1)
 }
 
+eq('a Radius file of only unchanged rows can still be committed (stamps + log)',
+   /totalWrites === 0 && totalCancels === 0 && totalConfirms === 0/.test(readFileSync('src/features/imports/RadiusImportView.jsx', 'utf8')), true)
+
 let failed = 0
 for (const [label, got, want, ok] of checks) {
   if (!ok) { failed++; console.log(`FAIL ${label}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`) }
