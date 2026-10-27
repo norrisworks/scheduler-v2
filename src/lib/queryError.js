@@ -101,3 +101,42 @@ export function describeQueryError(error) {
 export function isFailure(error) {
   return Boolean(error)
 }
+
+/**
+ * True when a Supabase result failed in transit (the browser's fetch threw:
+ * 'TypeError: Failed to fetch' in Chrome, 'Load failed' in Safari,
+ * 'NetworkError' in Firefox) rather than being refused by the server.
+ */
+export function isNetworkFailure(error) {
+  const msg = String(error?.message ?? error ?? '')
+  return /failed to fetch|load failed|networkerror|network request failed/i.test(msg)
+}
+
+/**
+ * Runs a Supabase call, retrying ONLY transport failures (up to 3 tries,
+ * 0.5s then 1.5s apart). Pass a function so each try builds a fresh query.
+ * Server-side errors are returned on the first try — retrying a refusal
+ * would just repeat it.
+ */
+export async function withRetry(makeQuery, tries = 3) {
+  let last
+  for (let i = 0; i < tries; i++) {
+    try {
+      last = await makeQuery()
+    } catch (err) {
+      last = { data: null, error: err }
+    }
+    if (!last?.error || !isNetworkFailure(last.error)) return last
+    if (i < tries - 1) await new Promise((r) => setTimeout(r, i === 0 ? 500 : 1500))
+  }
+  return last
+}
+
+/** A plain-words message for a file the browser couldn't read. */
+export function fileReadMessage(err) {
+  const name = err?.name ?? ''
+  if (name === 'NotFoundError' || name === 'NotReadableError' || /could not be (found|read)/i.test(String(err?.message))) {
+    return "Couldn't read that file. It may still be downloading, or it was moved or replaced after you picked it. Download the export again, wait for it to finish, and choose it again."
+  }
+  return null
+}

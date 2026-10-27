@@ -9,7 +9,7 @@ import { weekDays, validateShift, shiftHours, totalHours, planCopyWeek, indexShi
 import { ineligibleReason, buildCandidates, isFallbackOnly, unrankedStudents, explainUnplaced } from '../src/features/assign/rankings.js'
 import { placeAtRank, visibleRanking } from '../src/features/assign/rankOrder.js'
 import { BINDER_RESET, binderCounts, binderRows, binderStatusOf, isBinderReady } from '../src/features/binder/binderPrep.js'
-import { classifyQueryError, describeQueryError, CLOCK_SKEW, SESSION_EXPIRED, OFFLINE, UNKNOWN } from '../src/lib/queryError.js'
+import { classifyQueryError, describeQueryError, CLOCK_SKEW, SESSION_EXPIRED, OFFLINE, UNKNOWN, isNetworkFailure, withRetry, fileReadMessage } from '../src/lib/queryError.js'
 import { RANK_TIEBREAK, RANK_GATED_CAP, NEW_STUDENT_PREFERENCE } from '../src/features/assign/algorithmFlags.js'
 import { rescheduleRows, validateReschedule, collisionKind, collisionMessage, reusePatch, dragTargetMinutes } from '../src/features/day/reschedule.js'
 import { findSourceConflicts, planSourceConflicts, findCrossDayConflicts, planCrossDayConflicts, isRadiusConfirmed } from '../src/features/day/sourceConflicts.js'
@@ -3096,6 +3096,21 @@ eq('attendance commit is not gated on binder resets',
   eq('the dialog and the drag share one write path',
      /moveSession/.test(readFileSync('src/features/day/RescheduleDialog.jsx', 'utf8')) &&
      /moveSession\(session, session\.date, time, \{ keepInstructor: true \}\)/.test(readFileSync('src/features/day/DayView.jsx', 'utf8')), true)
+}
+
+// ---- import resilience: retry transport failures only; plain file-read errors
+eq('Chrome fetch failure is a network failure', isNetworkFailure({ message: 'TypeError: Failed to fetch' }), true)
+eq('Safari load failure is a network failure', isNetworkFailure(new TypeError('Load failed')), true)
+eq('a server refusal is not', isNetworkFailure({ message: 'new row violates row-level security policy' }), false)
+eq('NotFoundError gets a plain message', /still be downloading/.test(fileReadMessage({ name: 'NotFoundError' }) ?? ''), true)
+eq('other errors get no file message', fileReadMessage({ name: 'SyntaxError' }), null)
+{
+  let calls = 0
+  const flaky = await withRetry(async () => (++calls < 3 ? { error: { message: 'TypeError: Failed to fetch' } } : { data: 1, error: null }))
+  eq('retries until the transport works', [flaky.data, calls], [1, 3])
+  let refused = 0
+  await withRetry(async () => { refused++; return { error: { message: 'permission denied' } } })
+  eq('a refusal is not retried', refused, 1)
 }
 
 let failed = 0

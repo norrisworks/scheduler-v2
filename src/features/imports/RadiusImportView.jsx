@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { withRetry, isNetworkFailure } from '../../lib/queryError'
 import { fetchAll } from '../../lib/fetchAll'
 import { useAuth } from '../auth/AuthProvider'
 import { formatTimeMeridiem, todayISO } from '../../lib/dates'
@@ -244,7 +245,7 @@ export default function RadiusImportView() {
           ...center.updated.map((c) => ({ ...c, isNew: false })),
         ]
         if (writes.length > 0) {
-          const { error } = await supabase.from('sessions').upsert(
+          const { error } = await withRetry(() => supabase.from('sessions').upsert(
             writes.map(({ row, student }) => ({
               center_id: center.center.id,
               student_id: student.id,
@@ -258,7 +259,7 @@ export default function RadiusImportView() {
               last_seen_in_radius: seenAt,
             })),
             { onConflict: 'student_id,date,start_time' },
-          )
+          ))
           if (error) throw new Error(error.message)
           created += center.created.length + center.linked.length
           updated += center.updated.length
@@ -267,10 +268,10 @@ export default function RadiusImportView() {
         // cancellation in the preview. The rest stay flagged.
         const cancelIds = center.radiusAbsent.filter((s) => absentCancels[s.id]).map((s) => s.id)
         if (cancelIds.length > 0) {
-          const { error } = await supabase
+          const { error } = await withRetry(() => supabase
             .from('sessions')
             .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-            .in('id', cancelIds)
+            .in('id', cancelIds))
           if (error) throw new Error(error.message)
           cancelled += cancelIds.length
         }
@@ -289,12 +290,12 @@ export default function RadiusImportView() {
         ]) {
           const booker = row && student ? sessionBooker(row) : null
           if (!booker) continue
-          const { error } = await supabase
+          const { error } = await withRetry(() => supabase
             .from('sessions')
             .update({ radius_booked_by: booker })
             .eq('student_id', student.id)
             .eq('date', row.date)
-            .eq('start_time', row.startTime)
+            .eq('start_time', row.startTime))
           if (error) throw new Error(error.message)
         }
 
@@ -303,12 +304,12 @@ export default function RadiusImportView() {
         // flip their source. Skipping these is the exact bug that broke the
         // cross-day detector (2026-08-17).
         for (const t of confirmationTargets(center).filter((t) => t.bucket === 'unchanged')) {
-          const { error } = await supabase
+          const { error } = await withRetry(() => supabase
             .from('sessions')
             .update({ radius_key: t.radiusKey, last_seen_in_radius: seenAt })
             .eq('student_id', t.studentId)
             .eq('date', t.date)
-            .eq('start_time', t.startTime)
+            .eq('start_time', t.startTime))
           if (error) throw new Error(error.message)
         }
 
@@ -317,20 +318,20 @@ export default function RadiusImportView() {
         for (const conflict of conflictsByCenter.get(center.center.id) ?? []) {
           const choice = conflictChoices[conflict.key]
           if (choice === 'cancel') {
-            const { error } = await supabase
+            const { error } = await withRetry(() => supabase
               .from('sessions')
               .update({ status: 'cancelled', is_modified: true, updated_at: new Date().toISOString() })
-              .in('id', conflict.recurring.map((s) => s.id))
+              .in('id', conflict.recurring.map((s) => s.id)))
             if (error) throw new Error(error.message)
           } else if (choice === 'both') {
-            const { error } = await supabase.from('session_conflict_dismissals').upsert(
+            const { error } = await withRetry(() => supabase.from('session_conflict_dismissals').upsert(
               {
                 student_id: conflict.studentId,
                 center_id: center.center.id,
                 date: conflict.date,
               },
               { onConflict: 'student_id,date' },
-            )
+            ))
             if (error) throw new Error(error.message)
           }
         }
@@ -338,10 +339,10 @@ export default function RadiusImportView() {
         // Remember manual links so the next import matches on its own.
         for (const { row, student } of center.linked) {
           if (!student.radius_account && row.accountName) {
-            await supabase
+            await withRetry(() => supabase
               .from('students')
               .update({ radius_account: row.accountName })
-              .eq('id', student.id)
+              .eq('id', student.id))
           }
         }
       }
@@ -349,7 +350,7 @@ export default function RadiusImportView() {
       // The file's date range is what makes "not confirmed" meaningful: the
       // detector only mentions dates some committed file actually covered.
       const allDates = plan.centers.flatMap((c) => c.dates)
-      await supabase.from('import_runs').insert({
+      await withRetry(() => supabase.from('import_runs').insert({
         center_id: plan.centers[0]?.center.id ?? null,
         kind: 'radius_sessions',
         filename: fileName,
@@ -363,13 +364,20 @@ export default function RadiusImportView() {
           plan.centers.reduce((n, c) => n + c.unmatched.length, 0) +
           plan.virtualUnmatched.length,
         ran_by: user?.id ?? null,
-      })
+      }))
 
       setDone({ created, updated, flagged, cancelled })
       setRows(null)
       setReference(null)
     } catch (err) {
-      setError(err.message)
+      // Every write here is safe to repeat (upserts keyed on student, date
+      // and time; stamps; idempotent cancels), so a dropped connection is
+      // fixed by running the same file again.
+      setError(
+        isNetworkFailure(err)
+          ? 'Lost the connection partway through the import. Nothing is lost or doubled — run the same file again to finish it.'
+          : err.message,
+      )
     }
     setBusy(false)
   }

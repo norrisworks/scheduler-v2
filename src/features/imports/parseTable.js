@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx'
+import { fileReadMessage } from '../../lib/queryError'
 
 /** Header text -> a stable key, so 'Slot Certainty' and 'slot_certainty' match. */
 export function headerKey(header) {
@@ -14,7 +15,14 @@ export function headerKey(header) {
  * normalised header. Values arrive as trimmed strings; blank cells become ''.
  */
 export async function parseTableFile(file) {
-  const buffer = await file.arrayBuffer()
+  let buffer
+  try {
+    buffer = await file.arrayBuffer()
+  } catch (err) {
+    // The browser lost the file between picking and reading it — still
+    // downloading, replaced, or moved. Say that, not 'NotFoundError'.
+    throw new Error(fileReadMessage(err) ?? `Couldn't read that file (${err?.message ?? err}).`)
+  }
   const book = XLSX.read(buffer, { type: 'array', cellDates: true })
   const sheetName = book.SheetNames[0]
   if (!sheetName) return { headers: [], rows: [] }
