@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useCenter } from '../centers/CenterProvider'
 import Spinner from '../../components/Spinner'
 import QueryError from '../../components/QueryError'
+import TrendsView from './TrendsView'
 import { addDays, formatDateShort, formatTime, minutesToTime, todayISO } from '../../lib/dates'
 import {
   centerOperatingHours,
@@ -36,6 +37,7 @@ export default function WeekPlanView() {
   const [sessions, setSessions] = useState(null)
   const [visits, setVisits] = useState([])
   const [error, setError] = useState(null)
+  const [view, setView] = useState('week') // 'week' | 'trends'
 
   // Montgomeryville on top, Blue Bell below — the owner's stacking order.
   const ordered = useMemo(
@@ -125,6 +127,26 @@ export default function WeekPlanView() {
     <div className="mx-auto max-w-6xl px-6 py-6">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-base font-semibold text-zinc-900">Week planner</h1>
+        <div className="flex rounded-lg border border-zinc-300 p-0.5 text-sm" role="tablist">
+          {[
+            ['week', 'This week'],
+            ['trends', 'Trends'],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={view === key}
+              onClick={() => setView(key)}
+              className={`rounded-md px-3 py-1 font-medium ${
+                view === key ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {view === 'week' && (
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -155,9 +177,12 @@ export default function WeekPlanView() {
             </button>
           )}
         </div>
+        )}
       </div>
 
-      {error ? (
+      {view === 'trends' ? (
+        <TrendsView centers={ordered} />
+      ) : error ? (
         <div className="mt-6">
           <QueryError error={error} />
         </div>

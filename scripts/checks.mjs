@@ -34,6 +34,7 @@ import { hasStarted, isHandLocked, isFrozen, planLockedRun } from '../src/featur
 import { genderLabel, normalizeGender as normalizeGenderValue } from '../src/lib/gender.js'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join as joinPath } from 'node:path'
+import { attendanceByWeekday, inRoomAt, mondayOf, slotTable, trendWeeks, weeklyTotals } from '../src/features/week/trends.js'
 
 const checks = []
 const eq = (label, got, want) => checks.push([label, got, want, JSON.stringify(got) === JSON.stringify(want)])
@@ -3152,6 +3153,35 @@ eq('a Radius file of only unchanged rows can still be committed (stamps + log)',
   ], roster)
   eq('a nickname in parentheses in First Name proposes the rename', plan.renames.map((x) => x.to), ['RJ B'])
   eq('(1st)/(2nd) disambiguators are never read as nicknames', plan.renames.some((x) => /2nd|1st/.test(x.to)), false)
+}
+
+{
+  // Attendance trends (Week tab → Trends). 2026-10-29 is a Thursday.
+  const today = '2026-10-29'
+  eq('mondayOf a Sunday is the Monday before', mondayOf('2026-10-25'), '2026-10-19')
+  eq('mondayOf a Monday is itself', mondayOf('2026-10-26'), '2026-10-26')
+  eq('trend weeks end with this week, oldest first', trendWeeks(today, 3), ['2026-10-12', '2026-10-19', '2026-10-26'])
+  const weeks = trendWeeks(today, 2)
+  const v = (date, arrival, departure) => ({ date, arrival, departure })
+  const visits = [
+    v('2026-10-20', '17:05:00', '18:05:00'), // Tue last week
+    v('2026-10-20', '17:00:00', '18:00:00'),
+    v('2026-10-24', '10:00:00', '11:00:00'), // Sat last week
+    v('2026-10-27', '17:10:00', '18:10:00'), // Tue this week
+  ]
+  eq('weekly totals count every visit; this week is partial', weeklyTotals(visits, weeks, today), [
+    { week: '2026-10-19', total: 3, partial: false },
+    { week: '2026-10-26', total: 1, partial: true },
+  ])
+  const byDay = attendanceByWeekday(visits, weeks, today)
+  eq('by-weekday lists only days seen, Mon→Sun order', byDay.map((d) => d.label), ['Tue', 'Sat'])
+  eq('a Saturday still ahead is null, not 0', byDay[1].values, [1, null])
+  eq('midpoint rule: 5:05–6:05 is in 5:30', inRoomAt([visits[0]], 17 * 60 + 30), 1)
+  eq('midpoint rule: 5:05–6:05 is not in 6:00', inRoomAt([visits[0]], 18 * 60), 0)
+  const t = slotTable(visits, weeks, today)
+  eq('slot rows run in day then time order', t.rows.map((r) => `${r.dayLabel} ${r.minutes}`), ['Tue 1020', 'Tue 1050', 'Sat 600', 'Sat 630'])
+  eq('slot cells are kids in the room each week', t.rows[0].cells, [2, 1])
+  eq('busiest per week', t.busiest, [2, 1])
 }
 
 let failed = 0

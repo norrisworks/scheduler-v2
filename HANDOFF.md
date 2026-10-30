@@ -885,15 +885,24 @@ anchor). **Never call `toISOString()` for dates.**
   — always test importers against the real files, not the spec; nearly every
   importer bug was found that way.
 
+55. **Attendance trends live behind the Week tab's "This week | Trends"
+    switch** (2026-10-30). Montgomeryville on top, Blue Bell below; actual
+    attendance only (`attendance_visits`, in-center + online), no
+    percentages. Three panels: (1) total attendance per week, last 12 weeks,
+    the current week drawn lighter as "so far"; (2) one line per weekday
+    across those weeks, colour + dash pattern per day, gaps where closed or
+    not yet; (3) every half hour that ever had anyone, in day then time
+    order, last 8 weeks as columns, 5-step blue with a legend, each week's
+    busiest cell outlined. Math in `week/trends.js` (pure, in checks), same
+    midpoint rule as decision 53. Chart 4 ("how the busiest slots are
+    changing") is HELD by the owner — do not add it unprompted.
+
 ## Open items
 
 - **Owner's feature queue (2026-10-26), in no fixed order:**
-  1. *Attendance trends on the Week tab.* Agreed content: total weekly
-     attendance over time; attendance by weekday over time; every half-hour
-     slot (day + time, all of them, in order) week by week; each week's
-     busiest slot; how that is changing. Word is "attendance", never
-     "check-ins". Data: `attendance_visits`, midpoint rule. Mockups lived in
-     chat; the last accepted direction was the full day x time slot table.
+  1. *Attendance trends chart 4* — how the busiest slots are changing.
+     Charts 1–3 shipped (decision 55); this one is held until the owner
+     says go.
   2. *Instructor view* for the per-station tablets — "my students today",
      mostly per instructor. Seat assignments parked behind it.
   3. *Per-student forward-looking briefings* for the instructor working with
