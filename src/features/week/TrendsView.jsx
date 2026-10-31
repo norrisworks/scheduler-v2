@@ -32,10 +32,11 @@ const BINS = [
 const binOf = (n) => BINS.find((b) => n <= b.max)
 
 /**
- * Attendance trends, under the Week tab's "Trends" switch. Everything here
+ * Attendance trends, shown beside each center's week table on the Week tab.
+ * Always the last 12 weeks whatever week the planner is on. Everything here
  * is actual attendance (the attendance import), never bookings.
  */
-export default function TrendsView({ centers }) {
+export function useAttendanceTrends(centers) {
   const [visits, setVisits] = useState(null)
   const [error, setError] = useState(null)
   const today = todayISO()
@@ -62,20 +63,18 @@ export default function TrendsView({ centers }) {
     }
   }, [centers, weeks, today])
 
-  if (error) return <div className="mt-6"><QueryError error={error} /></div>
-  if (!visits) return <div className="mt-10"><Spinner label="Loading attendance…" /></div>
-
-  return (
-    <div className="mt-5 space-y-10">
-      {centers.map((center) => {
-        const mine = visits.filter((v) => v.center_id === center.id)
-        return <CenterTrends key={center.id} center={center} visits={mine} weeks={weeks} today={today} />
-      })}
-    </div>
-  )
+  return { visits, error, weeks, today }
 }
 
-function CenterTrends({ center, visits, weeks, today }) {
+/** One center's trends column. `trends` is useAttendanceTrends' result. */
+export function CenterTrends({ center, trends }) {
+  const { visits: all, error, weeks, today } = trends
+  if (error) return <QueryError error={error} compact />
+  if (!all) return <Spinner label="Loading attendance…" />
+  return <CenterTrendsBody visits={all.filter((v) => v.center_id === center.id)} weeks={weeks} today={today} />
+}
+
+function CenterTrendsBody({ visits, weeks, today }) {
   const totals = useMemo(() => weeklyTotals(visits, weeks, today), [visits, weeks, today])
   const byDay = useMemo(() => attendanceByWeekday(visits, weeks, today), [visits, weeks, today])
   const tableWeeks = useMemo(() => weeks.slice(-TABLE_WEEKS), [weeks])
@@ -83,17 +82,15 @@ function CenterTrends({ center, visits, weeks, today }) {
 
   return (
     <section>
-      <h2 className="text-base font-semibold text-zinc-900">{center.name}</h2>
-      <p className="mb-4 text-xs text-zinc-500">
-        Actual attendance from the attendance import, in-center and online together.
+      <p className="mb-2 text-xs text-zinc-500">
+        Attendance trends · actual attendance, in-center and online together
       </p>
-
       {visits.length === 0 ? (
         <p className="rounded-xl border border-zinc-200 bg-white px-4 py-8 text-center text-sm text-zinc-400">
           No attendance imported for these weeks yet.
         </p>
       ) : (
-        <div className="space-y-8">
+        <div className="space-y-3">
           <Panel title="1. Total attendance per week" note="The last bar is this week so far.">
             <WeeklyBars totals={totals} />
           </Panel>
@@ -114,7 +111,7 @@ function CenterTrends({ center, visits, weeks, today }) {
 
 function Panel({ title, note, children }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-4">
+    <div className="rounded-xl border border-zinc-200 bg-white p-3">
       <p className="text-sm font-semibold text-zinc-900">{title}</p>
       <p className="mb-3 text-xs text-zinc-500">{note}</p>
       {children}
@@ -125,14 +122,14 @@ function Panel({ title, note, children }) {
 function WeeklyBars({ totals }) {
   const max = Math.max(1, ...totals.map((t) => t.total))
   return (
-    <div className="flex h-48 items-end gap-2">
+    <div className="flex h-40 items-end gap-1.5">
       {totals.map((t) => (
         <div key={t.week} className="flex min-w-0 flex-1 flex-col items-center justify-end">
           <span className="mb-1 text-xs font-semibold text-zinc-700 tabular-nums">{t.total}</span>
           <div
             className="w-full max-w-8 rounded-t"
             style={{
-              height: `${(t.total / max) * 140}px`,
+              height: `${(t.total / max) * 110}px`,
               background: t.partial ? '#a9c8ee' : '#2a78d6',
             }}
             title={`Week of ${monthDay(t.week)}: ${t.total}${t.partial ? ' so far' : ''}`}
@@ -146,7 +143,7 @@ function WeeklyBars({ totals }) {
 
 function DayLines({ byDay, weeks }) {
   const W = 760
-  const H = 220
+  const H = 200
   const padL = 30
   const padR = 12
   const padT = 12
