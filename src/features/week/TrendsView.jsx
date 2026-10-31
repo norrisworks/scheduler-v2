@@ -212,8 +212,8 @@ function DayRows({ byDay, weeks, pal }) {
   return (
     <div>
       <div className="grid gap-x-3" style={{ gridTemplateColumns: `repeat(${shown.length}, minmax(0, 1fr))` }}>
-        {shown.map((d, k) => (
-          <DaySpark key={d.day} d={d} weeks={weeks} top={top} bottom={bottom} color={pal.line} axis={k === 0} />
+        {shown.map((d) => (
+          <DaySpark key={d.day} d={d} weeks={weeks} top={top} bottom={bottom} color={pal.line} axis />
         ))}
       </div>
       <p className="mt-1 text-[11px] text-zinc-500">

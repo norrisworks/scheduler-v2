@@ -897,7 +897,7 @@ anchor). **Never call `toISOString()` for dates.**
     each count INSIDE its section (no table under the bars), total above,
     current week lighter. (2) One small
     line chart per open weekday in ONE row, shared scale NOT from zero,
-    gridlines every 5 (darker every 10, labelled on the first box),
+    gridlines every 5 (darker every 10, labelled in every box),
     first value left of its dot and latest right of it; a day with no
     attendance in the last 4 weeks (summer Fridays) is left out and named.
     Rejected: six lines on one chart (illegible), bar rows (noise), a bare
