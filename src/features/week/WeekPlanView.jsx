@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useCenter } from '../centers/CenterProvider'
 import Spinner from '../../components/Spinner'
 import QueryError from '../../components/QueryError'
-import { TrendsBelow, TrendsSide, useAttendanceTrends } from './TrendsView'
+import { DEFAULT_PERIOD, PERIOD_CHOICES, TrendsBelow, TrendsSide, useAttendanceTrends } from './TrendsView'
 import { addDays, formatDateShort, formatTime, minutesToTime, todayISO } from '../../lib/dates'
 import {
   centerOperatingHours,
@@ -43,7 +43,24 @@ export default function WeekPlanView() {
     () => [...(centers ?? [])].sort((a, b) => b.name.localeCompare(a.name)),
     [centers],
   )
-  const trends = useAttendanceTrends(isAdmin ? ordered : null)
+  // Trend period in weeks, remembered on this browser.
+  const [period, setPeriod] = useState(() => {
+    try {
+      const n = Number(localStorage.getItem('week.trendWeeks'))
+      return PERIOD_CHOICES.includes(n) ? n : DEFAULT_PERIOD
+    } catch {
+      return DEFAULT_PERIOD
+    }
+  })
+  const choosePeriod = (n) => {
+    setPeriod(n)
+    try {
+      localStorage.setItem('week.trendWeeks', String(n))
+    } catch {
+      /* private window: just not remembered */
+    }
+  }
+  const trends = useAttendanceTrends(isAdmin ? ordered : null, period)
   // One center at a time; Montgomeryville first.
   const [centerId, setCenterId] = useState(null)
   const shownId = centerId ?? ordered[0]?.id
@@ -176,6 +193,26 @@ export default function WeekPlanView() {
             </button>
           )}
         </div>
+        <div className="ml-auto flex items-center gap-2 text-sm">
+          <span className="text-zinc-500">Trends over</span>
+          <div className="flex rounded-lg border border-zinc-300 p-0.5" role="tablist" aria-label="Trend period">
+            {PERIOD_CHOICES.map((n) => (
+              <button
+                key={n}
+                type="button"
+                role="tab"
+                aria-selected={n === period}
+                onClick={() => choosePeriod(n)}
+                className={`rounded-md px-2.5 py-0.5 font-medium tabular-nums ${
+                  n === period ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'
+                }`}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+          <span className="text-zinc-500">weeks</span>
+        </div>
       </div>
 
       {error ? (
@@ -194,7 +231,7 @@ export default function WeekPlanView() {
               <section key={center.id} className="space-y-4">
                 {/* Week grid with charts 1–2 beside it on a wide screen;
                     chart 3 full width underneath. */}
-                <div className="grid gap-5 xl:grid-cols-[minmax(0,11fr)_minmax(0,9fr)]">
+                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                   <div className="min-w-0">
                     {grid.weekdays.length === 0 && !grid.saturday ? (
                       <p className="rounded-xl border border-zinc-200 bg-white px-4 py-8 text-center text-sm text-zinc-400">
@@ -284,7 +321,7 @@ function WeekTable({ grid, max, inHue }) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white p-3">
+    <div className="h-full overflow-x-auto rounded-xl border border-zinc-200 bg-white p-3">
       <table className="w-full table-fixed border-separate border-spacing-0">
         <colgroup>
           <col style={{ width: 52 }} />
