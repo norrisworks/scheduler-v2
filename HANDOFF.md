@@ -893,9 +893,9 @@ anchor). **Never call `toISOString()` for dates.**
     and a page of empty side margins. Actual attendance only
     (`attendance_visits`), no percentages. (1) Attendance per week, last 12
     weeks, stacked in-center + online with the numbers for each written
-    under the bars; current week lighter. (2) Attendance by day: one row of
-    bars per weekday, same scale, number on every bar. The multi-line chart
-    was unreadable; do not bring lines back. (3) Every slot: times down the
+    under the bars; current week lighter. (2) Attendance by day: a plain number table, weekdays down,
+    weeks across. NO bars and NO lines; the owner rejected both as noise,
+    and anything taller pushes chart 3 down. (3) Every slot: times down the
     side, days across, the last 8 weeks side by side under each day,
     Saturday its own block; owner's scale 0-9 / 10-14 / 15-19 / 20-24 / 25+,
     each week's busiest half hour outlined. A long one-row-per-slot list

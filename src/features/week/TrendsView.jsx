@@ -83,7 +83,7 @@ export function TrendsSide({ center, trends }) {
       <Panel title="Attendance per week" note="Last 12 weeks. The last bar is this week so far.">
         <WeeklyBars totals={weeklyTotals(visits, weeks, today)} />
       </Panel>
-      <Panel title="Attendance by day, each week" note="Same 12 weeks, one row per day. In-center and online together.">
+      <Panel title="Attendance by day, each week" note="Kids per day, same 12 weeks. In-center and online together.">
         <DayRows byDay={attendanceByWeekday(visits, weeks, today)} weeks={weeks} />
       </Panel>
     </div>
@@ -168,42 +168,33 @@ function WeeklyBars({ totals }) {
 }
 
 /**
- * Chart 2: one row of bars per weekday, every row on the same scale, with
- * the number on each bar — no overlapping lines.
+ * Chart 2: a plain number table, one row per weekday, one column per week.
+ * No bars (the owner found them noise) and short, so chart 3 stays close.
  */
 function DayRows({ byDay, weeks }) {
-  const max = Math.max(1, ...byDay.flatMap((d) => d.values.filter((v) => v !== null)))
-  const H = 34
   return (
-    <div className="grid gap-x-1 gap-y-1.5" style={{ gridTemplateColumns: `3.5rem repeat(${weeks.length}, minmax(0, 1fr))` }}>
-      {byDay.map((d) => (
-        <DayRow key={d.day} d={d} max={max} H={H} />
-      ))}
-      <div className="text-[11px] text-zinc-500">Week of</div>
-      {weeks.map((w) => (
-        <div key={w} className="text-center text-[11px] text-zinc-500 tabular-nums">{monthDay(w)}</div>
-      ))}
-    </div>
-  )
-}
-
-function DayRow({ d, max, H }) {
-  return (
-    <>
-      <div className="self-end pb-0.5 text-xs font-semibold text-zinc-800">{d.label}</div>
-      {d.values.map((v, i) => (
-        <div key={i} className="flex flex-col items-center justify-end border-b border-zinc-200" style={{ height: H + 16 }}>
-          {v === null ? (
-            <span className="text-[11px] text-zinc-300">–</span>
-          ) : (
-            <>
-              <span className="text-[11px] font-medium text-zinc-800 tabular-nums">{v}</span>
-              <div className="w-full max-w-7 rounded-t" style={{ height: Math.max(2, (v / max) * H), background: IN_COLOR }} />
-            </>
-          )}
-        </div>
-      ))}
-    </>
+    <table className="w-full text-xs tabular-nums">
+      <thead>
+        <tr className="text-zinc-500">
+          <th className="pb-1 text-left font-normal">Week of</th>
+          {weeks.map((w) => (
+            <th key={w} className="pb-1 text-center font-normal">{monthDay(w)}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {byDay.map((d) => (
+          <tr key={d.day} className="border-t border-zinc-100">
+            <td className="py-1 pr-2 font-semibold text-zinc-800">{d.label}</td>
+            {d.values.map((v, i) => (
+              <td key={i} className={`py-1 text-center ${v === null ? 'text-zinc-300' : 'text-zinc-800'}`}>
+                {v ?? '–'}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 
