@@ -5,7 +5,7 @@ import { formatTime, minutesToTime, todayISO } from '../../lib/dates'
 import Spinner from '../../components/Spinner'
 import QueryError from '../../components/QueryError'
 import { attendanceByWeekday, slotTable, trendWeeks, weeklyTotals } from './trends'
-import { monthDay } from './weekPlan'
+import { HEAT_HUES, monthDay, oklchToRgb } from './weekPlan'
 
 // All three charts always cover the same stretch, chosen by the owner from
 // these lengths. Capped at 12: past that chart 3 gets too wide to read.
@@ -13,30 +13,34 @@ export const PERIOD_CHOICES = [4, 6, 8, 10, 12]
 export const DEFAULT_PERIOD = 8
 const MAX_WEEKS = Math.max(...PERIOD_CHOICES)
 
-// Shade steps per center. Montgomeryville: the owner's agreed 0–9, 10–14,
-// 15–19, 20–24, 25+. Blue Bell never passes ~14 in a half hour, so on those
-// steps every cell was the same pale shade; its steps are scaled down.
-const STEPS = {
-  red: { max: [9, 14, 19, 24, Infinity], label: ['0–9', '10–14', '15–19', '20–24', '25+'] },
-  blue: { max: [4, 7, 10, 13, Infinity], label: ['0–4', '5–7', '8–10', '11–13', '14+'] },
+/**
+ * Chart 3 shading: a CONTINUOUS ramp in the center's hue (same hue family
+ * as the week grid), from very light at 1 to deep at the period's busiest
+ * cell, so every count is its own shade. Zero is a plain gray block, not a
+ * colour. Darker than the grid's calm ramp so the 8-to-12 week spread reads.
+ */
+function slotShade(n, max, hue) {
+  const { hLight, hDeep } = HEAT_HUES[hue] ?? HEAT_HUES.red
+  const t = max <= 1 ? 1 : Math.min(1, (n - 1) / (max - 1))
+  const L = 0.97 - 0.42 * t
+  const C = 0.025 + 0.15 * t
+  const [r, g, b] = oklchToRgb(L, C, hLight + (hDeep - hLight) * t)
+  return { background: `rgb(${r}, ${g}, ${b})`, color: L < 0.7 ? '#ffffff' : '#27272a' }
 }
+const ZERO_FILL = '#e4e4e7'
 
 // Same hues as the week grid beside them: in-center red at Montgomeryville,
 // blue at Blue Bell; online green everywhere.
 const PALETTE = {
   red: {
-    steps: STEPS.red,
+    hue: 'red',
     line: '#d9473f',
     partial: '#f0b3ae',
-    bins: ['#FCEBEB', '#F7C1C1', '#F09595', '#E24B4A', '#A32D2D'],
-    ink: ['#501313', '#501313', '#501313', '#ffffff', '#ffffff'],
   },
   blue: {
-    steps: STEPS.blue,
+    hue: 'blue',
     line: '#2a78d6',
     partial: '#a9c8ee',
-    bins: ['#E6F1FB', '#B5D4F4', '#85B7EB', '#378ADD', '#185FA5'],
-    ink: ['#0C447C', '#0C447C', '#042C53', '#ffffff', '#ffffff'],
   },
 }
 const ONLINE_COLOR = '#1baf7a'
@@ -314,15 +318,26 @@ function SlotGrid({ table, weeks, pal }) {
   const hidden = [...new Set(allRows.filter((r) => !open(r.day)).map((r) => r.dayLabel))]
   const weekdayRows = rows.filter((r) => r.day >= 1 && r.day <= 5)
   const saturdayRows = rows.filter((r) => r.day === 6)
+  const max = Math.max(1, ...rows.flatMap((r) => r.cells.filter((c) => c !== null)))
   return (
     <div>
       <div className="mb-2 flex flex-wrap gap-3">
-        {pal.steps.label.map((label, k) => (
-          <span key={label} className="flex items-center gap-1 text-xs text-zinc-600">
-            <span className="inline-block h-3 w-3.5 rounded-sm border border-zinc-200" style={{ background: pal.bins[k] }} />
-            {label}
-          </span>
-        ))}
+        <span className="flex items-center gap-1 text-xs text-zinc-600">
+          <span className="inline-block h-3 w-3.5 rounded-sm" style={{ background: ZERO_FILL }} />
+          0
+        </span>
+        <span className="flex items-center gap-1.5 text-xs text-zinc-600 tabular-nums">
+          1
+          <span
+            className="inline-block h-3 w-28 rounded-sm"
+            style={{
+              background: `linear-gradient(to right, ${[0, 0.25, 0.5, 0.75, 1]
+                .map((t) => slotShade(1 + t * (max - 1), max, pal.hue).background)
+                .join(', ')})`,
+            }}
+          />
+          {max}
+        </span>
         <span className="flex items-center gap-1 text-xs text-zinc-600">
           <span className="inline-block h-3 w-3.5 rounded-sm border-2 border-zinc-900" />
           Busiest half hour that week
@@ -340,12 +355,12 @@ function SlotGrid({ table, weeks, pal }) {
             className="min-w-0 flex-1"
             style={{ maxWidth: 70 + new Set(weekdayRows.map((r) => r.day)).size * weeks.length * 44 }}
           >
-            <SlotBlock rows={weekdayRows} weeks={weeks} busiest={busiest} pal={pal} />
+            <SlotBlock rows={weekdayRows} weeks={weeks} busiest={busiest} pal={pal} max={max} />
           </div>
         )}
         {saturdayRows.length > 0 && (
           <div className="flex-none">
-            <SlotBlock rows={saturdayRows} weeks={weeks} busiest={busiest} pal={pal} />
+            <SlotBlock rows={saturdayRows} weeks={weeks} busiest={busiest} pal={pal} max={max} />
           </div>
         )}
       </div>
@@ -353,7 +368,7 @@ function SlotGrid({ table, weeks, pal }) {
   )
 }
 
-function SlotBlock({ rows, weeks, busiest, pal }) {
+function SlotBlock({ rows, weeks, busiest, pal, max }) {
   const days = [...new Set(rows.map((r) => r.day))].sort((a, b) => a - b)
   const times = [...new Set(rows.map((r) => r.minutes))].sort((a, b) => a - b)
   const byKey = new Map(rows.map((r) => [`${r.day}|${r.minutes}`, r]))
@@ -397,15 +412,15 @@ function SlotBlock({ rows, weeks, busiest, pal }) {
                 const n = row ? row.cells[i] : rows.find((r) => r.day === d).cells[i] === null ? null : 0
                 const cls = `h-6 ${weeks.length > 8 ? 'min-w-6 text-[11px]' : 'min-w-8'} p-px text-center tabular-nums ${i === 0 ? edge : ''}`
                 if (n === null) return <td key={`${d}-${w}`} className={`${cls} text-zinc-300`}>–</td>
-                const k = pal.steps.max.findIndex((m) => n <= m)
+                const shade = n > 0 ? slotShade(n, max, pal.hue) : { background: ZERO_FILL, color: '#71717a' }
                 const peak = n > 0 && n === busiest[i]
                 return (
                   <td key={`${d}-${w}`} className={cls}>
                     <div
                       className="flex h-full items-center justify-center rounded-sm"
                       style={{
-                        background: pal.bins[k],
-                        color: pal.ink[k],
+                        background: shade.background,
+                        color: shade.color,
                         boxShadow: peak ? 'inset 0 0 0 2px #18181b' : undefined,
                         fontWeight: peak ? 700 : 400,
                       }}

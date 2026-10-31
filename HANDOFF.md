@@ -903,9 +903,10 @@ anchor). **Never call `toISOString()` for dates.**
     Rejected: six lines on one chart (illegible), bar rows (noise), a bare
     number table (he wants a visual). (3) Every slot: times down, days
     across, the 8 weeks side by side under each day, Saturday its own block,
-    stretched to the card width; shade steps MV 0-9/10-14/15-19/20-24/25+
-    (owner's), BB 0-4/5-7/8-10/11-13/14+ (BB never passes ~14); each week's
-    busiest half hour outlined. A one-row-per-slot list made him scroll
+    stretched to the card width; CONTINUOUS shading in the center's hue
+    from 1 up to the period's busiest cell (legend is a gradient), ZERO is
+    a plain gray block; the owner rejected bucketed shade steps and a
+    coloured zero. Each week's busiest half hour outlined. A one-row-per-slot list made him scroll
     forever. Math in `week/trends.js`, midpoint rule as in 53. Chart 4
     ("how the busiest slots are changing") is HELD.
 
