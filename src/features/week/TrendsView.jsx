@@ -83,7 +83,7 @@ export function TrendsSide({ center, trends }) {
       <Panel title="Attendance per week" note="Last 12 weeks. The last bar is this week so far.">
         <WeeklyBars totals={weeklyTotals(visits, weeks, today)} />
       </Panel>
-      <Panel title="Attendance by day, each week" note="Kids per day, same 12 weeks. In-center and online together.">
+      <Panel title="Attendance by day, each week" note="Kids per day, week by week, last 12 weeks. In-center and online together.">
         <DayRows byDay={attendanceByWeekday(visits, weeks, today)} weeks={weeks} />
       </Panel>
     </div>
@@ -168,33 +168,89 @@ function WeeklyBars({ totals }) {
 }
 
 /**
- * Chart 2: a plain number table, one row per weekday, one column per week.
- * No bars (the owner found them noise) and short, so chart 3 stays close.
+ * Chart 2: one small line chart per weekday (Mon Tue Wed / Thu Fri Sat),
+ * all on the same scale so they compare, none overlapping. One line in
+ * one box is legible where six lines on one chart were not.
  */
 function DayRows({ byDay, weeks }) {
+  const all = byDay.flatMap((d) => d.values.filter((v) => v !== null))
+  // Shared scale across the boxes, NOT from zero: the days sit at 20–55,
+  // and a zero baseline flattened every line.
+  const top = Math.ceil(Math.max(1, ...all) / 10) * 10
+  const bottom = Math.max(0, Math.floor(Math.min(top, ...all) / 10) * 10)
   return (
-    <table className="w-full text-xs tabular-nums">
-      <thead>
-        <tr className="text-zinc-500">
-          <th className="pb-1 text-left font-normal">Week of</th>
-          {weeks.map((w) => (
-            <th key={w} className="pb-1 text-center font-normal">{monthDay(w)}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
+    <div>
+      <div className="grid grid-cols-3 gap-x-4 gap-y-3">
         {byDay.map((d) => (
-          <tr key={d.day} className="border-t border-zinc-100">
-            <td className="py-1 pr-2 font-semibold text-zinc-800">{d.label}</td>
-            {d.values.map((v, i) => (
-              <td key={i} className={`py-1 text-center ${v === null ? 'text-zinc-300' : 'text-zinc-800'}`}>
-                {v ?? '–'}
-              </td>
-            ))}
-          </tr>
+          <DaySpark key={d.day} d={d} weeks={weeks} top={top} bottom={bottom} />
         ))}
-      </tbody>
-    </table>
+      </div>
+      <p className="mt-2 text-[11px] text-zinc-500">
+        Each box runs {monthDay(weeks[0])} → {monthDay(weeks[weeks.length - 1])}, all on the same {bottom}–{top} scale. Hover a dot for the week.
+      </p>
+    </div>
+  )
+}
+
+function DaySpark({ d, weeks, top, bottom }) {
+  const W = 200
+  const H = 96
+  const padX = 20
+  const padT = 16
+  const padB = 6
+  const x = (i) => padX + (i * (W - 2 * padX)) / Math.max(1, weeks.length - 1)
+  const y = (v) => padT + (1 - (v - bottom) / (top - bottom || 1)) * (H - padT - padB)
+  const pts = d.values.map((v, i) => (v === null ? null : { i, v }))
+  const segs = []
+  let cur = []
+  for (const p of pts) {
+    if (p) cur.push(p)
+    else if (cur.length) {
+      segs.push(cur)
+      cur = []
+    }
+  }
+  if (cur.length) segs.push(cur)
+  const real = pts.filter(Boolean)
+  const first = real[0]
+  const last = real[real.length - 1]
+
+  return (
+    <div>
+      <div className="flex items-baseline justify-between">
+        <span className="text-xs font-semibold text-zinc-800">{d.label}</span>
+        {last && <span className="text-xs text-zinc-500 tabular-nums">latest {last.v}</span>}
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`${d.label} attendance by week`}>
+        {[bottom, top].map((t) => (
+          <g key={t}>
+            <line x1={padX} x2={W - 6} y1={y(t)} y2={y(t)} stroke="#e4e4e7" />
+            <text x={padX - 4} y={y(t) + 3} textAnchor="end" fontSize="9" fill="#a1a1aa">{t}</text>
+          </g>
+        ))}
+        {segs.map((seg, k) => (
+          <polyline
+            key={k}
+            fill="none"
+            stroke={IN_COLOR}
+            strokeWidth="2"
+            strokeLinejoin="round"
+            points={seg.map((p) => `${x(p.i)},${y(p.v)}`).join(' ')}
+          />
+        ))}
+        {real.map((p) => (
+          <circle key={p.i} cx={x(p.i)} cy={y(p.v)} r={p === last ? 3.5 : 2.5} fill={IN_COLOR}>
+            <title>{`${d.label}, week of ${monthDay(weeks[p.i])}: ${p.v}`}</title>
+          </circle>
+        ))}
+        {first && first !== last && (
+          <text x={x(first.i)} y={y(first.v) - 6} textAnchor="middle" fontSize="11" fill="#52525b">{first.v}</text>
+        )}
+        {last && (
+          <text x={x(last.i)} y={y(last.v) - 6} textAnchor="middle" fontSize="11" fontWeight="600" fill="#18181b">{last.v}</text>
+        )}
+      </svg>
+    </div>
   )
 }
 
