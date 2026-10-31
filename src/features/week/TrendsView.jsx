@@ -195,31 +195,34 @@ function DayRows({ byDay, weeks, pal }) {
   const hidden = byDay.filter((d) => !recent(d))
   const all = shown.flatMap((d) => d.values.filter((v) => v !== null))
   const top = Math.ceil(Math.max(1, ...all) / 10) * 10
-  const bottom = Math.max(0, Math.floor(Math.min(top, ...all) / 10) * 10)
+  // Half a step of air under the lowest value, so its label fits below it.
+  const bottom = Math.max(0, Math.floor(Math.min(top, ...all) / 10) * 10 - 5)
   return (
     <div>
       <div className="grid gap-x-3" style={{ gridTemplateColumns: `repeat(${shown.length}, minmax(0, 1fr))` }}>
-        {shown.map((d) => (
-          <DaySpark key={d.day} d={d} weeks={weeks} top={top} bottom={bottom} color={pal.line} />
+        {shown.map((d, k) => (
+          <DaySpark key={d.day} d={d} weeks={weeks} top={top} bottom={bottom} color={pal.line} axis={k === 0} />
         ))}
       </div>
       <p className="mt-1 text-[11px] text-zinc-500">
-        {monthDay(weeks[0])} → {monthDay(weeks[weeks.length - 1])}, same {bottom}–{top} scale in every box. Hover a dot for that week.
+        {monthDay(weeks[0])} → {monthDay(weeks[weeks.length - 1])}, same {bottom}–{top} scale in every box, so the gridlines line up across the row. Hover a dot for that week.
         {hidden.length > 0 && ` ${hidden.map((d) => d.label).join(', ')}: no attendance in the last 4 weeks.`}
       </p>
     </div>
   )
 }
 
-function DaySpark({ d, weeks, top, bottom, color }) {
-  const W = 130
-  const H = 72
-  const padL = 18
+function DaySpark({ d, weeks, top, bottom, color, axis }) {
+  const W = 150
+  const H = 100
+  const padL = 22
   const padR = 22
-  const padT = 6
-  const padB = 6
+  const padT = 12
+  const padB = 12
   const x = (i) => padL + (i * (W - padL - padR)) / Math.max(1, weeks.length - 1)
   const y = (v) => padT + (1 - (v - bottom) / (top - bottom || 1)) * (H - padT - padB)
+  const ticks = []
+  for (let t = bottom; t <= top; t += 5) ticks.push(t)
   const pts = d.values.map((v, i) => (v === null ? null : { i, v }))
   const segs = []
   let cur = []
@@ -234,12 +237,29 @@ function DaySpark({ d, weeks, top, bottom, color }) {
   const real = pts.filter(Boolean)
   const first = real[0]
   const last = real[real.length - 1]
+  // First value goes on the side of its dot away from where the line heads.
+  const next = real[1]
+  const firstAbove = !next || next.v <= first?.v
 
   return (
     <div className="min-w-0">
-      <p className="text-xs font-semibold text-zinc-800">{d.label}</p>
+      <p className="text-xs font-semibold text-zinc-800" style={{ paddingLeft: `${(padL / W) * 100}%` }}>{d.label}</p>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`${d.label} attendance by week`}>
-        <rect x={padL} y={padT} width={W - padL - padR} height={H - padT - padB} fill="#fafafa" />
+        {ticks.map((t) => (
+          <g key={t}>
+            <line
+              x1={padL}
+              x2={W - padR}
+              y1={y(t)}
+              y2={y(t)}
+              stroke={t % 10 === 0 ? '#d4d4d8' : '#ececee'}
+              strokeWidth="0.75"
+            />
+            {axis && t % 10 === 0 && (
+              <text x={padL - 4} y={y(t) + 3} textAnchor="end" fontSize="8.5" fill="#a1a1aa">{t}</text>
+            )}
+          </g>
+        ))}
         {segs.map((seg, k) => (
           <polyline
             key={k}
@@ -255,9 +275,10 @@ function DaySpark({ d, weeks, top, bottom, color }) {
             <title>{`${d.label}, week of ${monthDay(weeks[p.i])}: ${p.v}`}</title>
           </circle>
         ))}
-        {/* first value left of its dot, latest right of its dot: never on the line */}
         {first && first !== last && (
-          <text x={x(first.i) - 4} y={y(first.v) + 3.5} textAnchor="end" fontSize="10" fill="#71717a">{first.v}</text>
+          <text x={x(first.i) + 3} y={firstAbove ? y(first.v) - 5 : y(first.v) + 11} textAnchor="start" fontSize="10" fill="#71717a">
+            {first.v}
+          </text>
         )}
         {last && (
           <text x={x(last.i) + 5} y={y(last.v) + 3.5} textAnchor="start" fontSize="10" fontWeight="700" fill="#18181b">{last.v}</text>

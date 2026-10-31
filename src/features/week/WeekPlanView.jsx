@@ -194,7 +194,7 @@ export default function WeekPlanView() {
               <section key={center.id} className="space-y-4">
                 {/* Week grid with charts 1–2 beside it on a wide screen;
                     chart 3 full width underneath. */}
-                <div className="grid gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+                <div className="grid gap-5 xl:grid-cols-[minmax(0,11fr)_minmax(0,9fr)]">
                   <div className="min-w-0">
                     {grid.weekdays.length === 0 && !grid.saturday ? (
                       <p className="rounded-xl border border-zinc-200 bg-white px-4 py-8 text-center text-sm text-zinc-400">

@@ -888,13 +888,14 @@ anchor). **Never call `toISOString()` for dates.**
 55. **Week tab: one center at a time, attendance trends on the same page**
     (2026-10-30). Montgomeryville | Blue Bell toggle at the top (MV
     default). For the shown center: week grid left, charts 1-2 beside it
-    (xl+), chart 3 full width under the grid. The side column must not run
+    (xl+, columns 11fr:9fr), chart 3 full width under the grid. The side column must not run
     much taller than the grid, or chart 3 is shoved down. Actual attendance
     only (`attendance_visits`), no percentages. ALL charts cover the same
     last 8 weeks. Colours match the grid: in-center red at MV, blue at BB,
     online green. (1) Attendance per week, stacked in-center + online,
     counts written under the bars, current week lighter. (2) One small
     line chart per open weekday in ONE row, shared scale NOT from zero,
+    gridlines every 5 (darker every 10, labelled on the first box),
     first value left of its dot and latest right of it; a day with no
     attendance in the last 4 weeks (summer Fridays) is left out and named.
     Rejected: six lines on one chart (illegible), bar rows (noise), a bare
