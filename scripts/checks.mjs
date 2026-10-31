@@ -3167,11 +3167,11 @@ eq('a Radius file of only unchanged rows can still be committed (stamps + log)',
     v('2026-10-20', '17:05:00', '18:05:00'), // Tue last week
     v('2026-10-20', '17:00:00', '18:00:00'),
     v('2026-10-24', '10:00:00', '11:00:00'), // Sat last week
-    v('2026-10-27', '17:10:00', '18:10:00'), // Tue this week
+    { ...v('2026-10-27', '17:10:00', '18:10:00'), delivery: 'online' }, // Tue this week
   ]
   eq('weekly totals count every visit; this week is partial', weeklyTotals(visits, weeks, today), [
-    { week: '2026-10-19', total: 3, partial: false },
-    { week: '2026-10-26', total: 1, partial: true },
+    { week: '2026-10-19', total: 3, inCenter: 3, online: 0, partial: false },
+    { week: '2026-10-26', total: 1, inCenter: 0, online: 1, partial: true },
   ])
   const byDay = attendanceByWeekday(visits, weeks, today)
   eq('by-weekday lists only days seen, Mon→Sun order', byDay.map((d) => d.label), ['Tue', 'Sat'])

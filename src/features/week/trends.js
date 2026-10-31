@@ -25,15 +25,23 @@ export function trendWeeks(todayIso, count) {
   return Array.from({ length: count }, (_, i) => addDays(current, (i - count + 1) * 7))
 }
 
-/** Total attendance per week. `partial` marks the week still in progress. */
+/**
+ * Attendance per week, split in-center / online. `total` is both together;
+ * `partial` marks the week still in progress.
+ */
 export function weeklyTotals(visits, weeks, todayIso) {
   const current = mondayOf(todayIso)
-  const counts = new Map(weeks.map((w) => [w, 0]))
+  const counts = new Map(weeks.map((w) => [w, { inCenter: 0, online: 0 }]))
   for (const v of visits) {
-    const w = mondayOf(v.date)
-    if (counts.has(w)) counts.set(w, counts.get(w) + 1)
+    const c = counts.get(mondayOf(v.date))
+    if (!c) continue
+    if (v.delivery === 'online') c.online++
+    else c.inCenter++
   }
-  return weeks.map((w) => ({ week: w, total: counts.get(w), partial: w === current }))
+  return weeks.map((w) => {
+    const c = counts.get(w)
+    return { week: w, total: c.inCenter + c.online, inCenter: c.inCenter, online: c.online, partial: w === current }
+  })
 }
 
 /**

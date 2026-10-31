@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { useCenter } from '../centers/CenterProvider'
 import Spinner from '../../components/Spinner'
 import QueryError from '../../components/QueryError'
-import { CenterTrends, useAttendanceTrends } from './TrendsView'
+import { TrendsBelow, TrendsSide, useAttendanceTrends } from './TrendsView'
 import { addDays, formatDateShort, formatTime, minutesToTime, todayISO } from '../../lib/dates'
 import {
   centerOperatingHours,
@@ -44,6 +44,9 @@ export default function WeekPlanView() {
     [centers],
   )
   const trends = useAttendanceTrends(isAdmin ? ordered : null)
+  // One center at a time; Montgomeryville first.
+  const [centerId, setCenterId] = useState(null)
+  const shownId = centerId ?? ordered[0]?.id
 
   useEffect(() => {
     if (!isAdmin || ordered.length === 0) return
@@ -127,6 +130,22 @@ export default function WeekPlanView() {
     <div className="mx-auto max-w-[1900px] px-6 py-6">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-base font-semibold text-zinc-900">Week planner</h1>
+        <div className="flex rounded-lg border border-zinc-300 p-0.5 text-sm" role="tablist">
+          {ordered.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              role="tab"
+              aria-selected={c.id === shownId}
+              onClick={() => setCenterId(c.id)}
+              className={`rounded-md px-3 py-1 font-medium ${
+                c.id === shownId ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100'
+              }`}
+            >
+              {c.name}
+            </button>
+          ))}
+        </div>
         <div className="flex items-center gap-1">
           <button
             type="button"
@@ -169,31 +188,29 @@ export default function WeekPlanView() {
         </div>
       ) : (
         <div className="mt-5 space-y-8">
-          {grids.map(({ center, grid, max }) => (
-            <section key={center.id}>
-              <h2 className="mb-2 text-sm font-semibold text-zinc-900">{center.name}</h2>
-              {/* Week table and that center's attendance trends side by side
-                  on a wide screen; trends drop below on a narrow one. */}
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-                <div className="min-w-0">
-                  {grid.weekdays.length === 0 && !grid.saturday ? (
-                    <p className="rounded-xl border border-zinc-200 bg-white px-4 py-8 text-center text-sm text-zinc-400">
-                      No scheduled sessions that week yet.
-                    </p>
-                  ) : (
-                    <WeekTable
-                      grid={grid}
-                      max={max}
-                      inHue={IN_CENTER_HUE[center.name] ?? 'red'}
-                    />
-                  )}
+          {grids
+            .filter(({ center }) => center.id === shownId)
+            .map(({ center, grid, max }) => (
+              <section key={center.id} className="space-y-4">
+                {/* Week grid with charts 1–2 beside it on a wide screen;
+                    chart 3 full width underneath. */}
+                <div className="grid gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+                  <div className="min-w-0">
+                    {grid.weekdays.length === 0 && !grid.saturday ? (
+                      <p className="rounded-xl border border-zinc-200 bg-white px-4 py-8 text-center text-sm text-zinc-400">
+                        No scheduled sessions that week yet.
+                      </p>
+                    ) : (
+                      <WeekTable grid={grid} max={max} inHue={IN_CENTER_HUE[center.name] ?? 'red'} />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <TrendsSide center={center} trends={trends} />
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <CenterTrends center={center} trends={trends} />
-                </div>
-              </div>
-            </section>
-          ))}
+                <TrendsBelow center={center} trends={trends} />
+              </section>
+            ))}
         </div>
       )}
     </div>

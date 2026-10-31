@@ -885,17 +885,22 @@ anchor). **Never call `toISOString()` for dates.**
   — always test importers against the real files, not the spec; nearly every
   importer bug was found that way.
 
-55. **Attendance trends live behind the Week tab's "This week | Trends"
-    switch** (2026-10-30). Montgomeryville on top, Blue Bell below; actual
-    attendance only (`attendance_visits`, in-center + online), no
-    percentages. Three panels: (1) total attendance per week, last 12 weeks,
-    the current week drawn lighter as "so far"; (2) one line per weekday
-    across those weeks, colour + dash pattern per day, gaps where closed or
-    not yet; (3) every half hour that ever had anyone, in day then time
-    order, last 8 weeks as columns, 5-step blue with a legend, each week's
-    busiest cell outlined. Math in `week/trends.js` (pure, in checks), same
-    midpoint rule as decision 53. Chart 4 ("how the busiest slots are
-    changing") is HELD by the owner — do not add it unprompted.
+55. **Week tab: one center at a time, attendance trends on the same page**
+    (2026-10-30). A Montgomeryville | Blue Bell toggle at the top (MV
+    default). For the shown center: the week grid on the left with two
+    trend charts beside it (xl+; below it on narrower screens), and the slot
+    chart full width under the grid. Owner rejected a separate Trends page
+    and a page of empty side margins. Actual attendance only
+    (`attendance_visits`), no percentages. (1) Attendance per week, last 12
+    weeks, stacked in-center + online with the numbers for each written
+    under the bars; current week lighter. (2) Attendance by day: one row of
+    bars per weekday, same scale, number on every bar. The multi-line chart
+    was unreadable; do not bring lines back. (3) Every slot: times down the
+    side, days across, the last 8 weeks side by side under each day,
+    Saturday its own block; owner's scale 0-9 / 10-14 / 15-19 / 20-24 / 25+,
+    each week's busiest half hour outlined. A long one-row-per-slot list
+    made him scroll forever. Math in `week/trends.js`, midpoint rule as in
+    53. Chart 4 ("how the busiest slots are changing") is HELD.
 
 ## Open items
 
