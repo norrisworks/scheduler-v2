@@ -7,26 +7,42 @@ import QueryError from '../../components/QueryError'
 import { attendanceByWeekday, slotTable, trendWeeks, weeklyTotals } from './trends'
 import { monthDay } from './weekPlan'
 
-const CHART_WEEKS = 12
-const SLOT_WEEKS = 8
+// Every trend uses the same 8 weeks (the school year so far), so the three
+// charts always cover the same stretch.
+const WEEKS = 8
 
-const IN_COLOR = '#2a78d6'
-const IN_PARTIAL = '#a9c8ee'
+// Shade steps per center. Montgomeryville: the owner's agreed 0–9, 10–14,
+// 15–19, 20–24, 25+. Blue Bell never passes ~14 in a half hour, so on those
+// steps every cell was the same pale shade; its steps are scaled down.
+const STEPS = {
+  red: { max: [9, 14, 19, 24, Infinity], label: ['0–9', '10–14', '15–19', '20–24', '25+'] },
+  blue: { max: [4, 7, 10, 13, Infinity], label: ['0–4', '5–7', '8–10', '11–13', '14+'] },
+}
+
+// Same hues as the week grid beside them: in-center red at Montgomeryville,
+// blue at Blue Bell; online green everywhere.
+const PALETTE = {
+  red: {
+    steps: STEPS.red,
+    line: '#d9473f',
+    partial: '#f0b3ae',
+    bins: ['#FCEBEB', '#F7C1C1', '#F09595', '#E24B4A', '#A32D2D'],
+    ink: ['#501313', '#501313', '#501313', '#ffffff', '#ffffff'],
+  },
+  blue: {
+    steps: STEPS.blue,
+    line: '#2a78d6',
+    partial: '#a9c8ee',
+    bins: ['#E6F1FB', '#B5D4F4', '#85B7EB', '#378ADD', '#185FA5'],
+    ink: ['#0C447C', '#0C447C', '#042C53', '#ffffff', '#ffffff'],
+  },
+}
 const ONLINE_COLOR = '#1baf7a'
 const ONLINE_PARTIAL = '#a7e0c9'
 
-// The owner's agreed scale: five steps of one blue, with a legend.
-const BINS = [
-  { max: 9, bg: '#E6F1FB', fg: '#0C447C', label: '0–9' },
-  { max: 14, bg: '#B5D4F4', fg: '#0C447C', label: '10–14' },
-  { max: 19, bg: '#85B7EB', fg: '#042C53', label: '15–19' },
-  { max: 24, bg: '#378ADD', fg: '#ffffff', label: '20–24' },
-  { max: Infinity, bg: '#185FA5', fg: '#ffffff', label: '25+' },
-]
-const binOf = (n) => BINS.find((b) => n <= b.max)
 
 /**
- * Attendance trends on the Week tab. Always the last 12 weeks, whatever week
+ * Attendance trends on the Week tab. Always the last 8 weeks, whatever week
  * the planner is showing. Everything here is actual attendance (the
  * attendance import), never bookings; in-center and online both count.
  */
@@ -34,7 +50,7 @@ export function useAttendanceTrends(centers) {
   const [visits, setVisits] = useState(null)
   const [error, setError] = useState(null)
   const today = todayISO()
-  const weeks = useMemo(() => trendWeeks(today, CHART_WEEKS), [today])
+  const weeks = useMemo(() => trendWeeks(today, WEEKS), [today])
 
   useEffect(() => {
     if (!centers?.length) return
@@ -77,32 +93,31 @@ function withVisits(trends, center, render) {
 }
 
 /** Charts 1 and 2 — the column beside the week grid. */
-export function TrendsSide({ center, trends }) {
+export function TrendsSide({ center, trends, hue = 'red' }) {
+  const pal = PALETTE[hue] ?? PALETTE.red
   return withVisits(trends, center, (visits, weeks, today) => (
     <div className="space-y-3">
-      <Panel title="Attendance per week" note="Last 12 weeks. The last bar is this week so far.">
-        <WeeklyBars totals={weeklyTotals(visits, weeks, today)} />
+      <Panel title="Attendance per week" note="Last 8 weeks. The lighter bar is this week so far.">
+        <WeeklyBars totals={weeklyTotals(visits, weeks, today)} pal={pal} />
       </Panel>
-      <Panel title="Attendance by day, each week" note="Kids per day, week by week, last 12 weeks. In-center and online together.">
-        <DayRows byDay={attendanceByWeekday(visits, weeks, today)} weeks={weeks} />
+      <Panel title="Attendance by day, week by week" note="Kids per day over the same 8 weeks, in-center and online together.">
+        <DayRows byDay={attendanceByWeekday(visits, weeks, today)} weeks={weeks} pal={pal} />
       </Panel>
     </div>
   ))
 }
 
 /** Chart 3 — every slot, week by week — under the week grid. */
-export function TrendsBelow({ center, trends }) {
-  return withVisits(trends, center, (visits, weeks, today) => {
-    const slotWeeks = weeks.slice(-SLOT_WEEKS)
-    return (
-      <Panel
-        title="Every slot, week by week"
-        note="Kids in the room in each half hour, last 8 weeks (oldest → newest under each day). Outlined: the busiest half hour of that week."
-      >
-        <SlotGrid table={slotTable(visits, slotWeeks, today)} weeks={slotWeeks} />
-      </Panel>
-    )
-  })
+export function TrendsBelow({ center, trends, hue = 'red' }) {
+  const pal = PALETTE[hue] ?? PALETTE.red
+  return withVisits(trends, center, (visits, weeks, today) => (
+    <Panel
+      title="Every slot, week by week"
+      note="Kids in the room in each half hour over the same 8 weeks, oldest to newest under each day. Outlined: that week's busiest half hour."
+    >
+      <SlotGrid table={slotTable(visits, weeks, today)} weeks={weeks} pal={pal} />
+    </Panel>
+  ))
 }
 
 function Panel({ title, note, children }) {
@@ -125,13 +140,13 @@ function Swatch({ color, label }) {
 }
 
 /** Chart 1: stacked bars, in-center below and online on top, numbers for each. */
-function WeeklyBars({ totals }) {
+function WeeklyBars({ totals, pal }) {
   const max = Math.max(1, ...totals.map((t) => t.total))
-  const H = 120
+  const H = 96
   return (
     <div>
       <div className="mb-2 flex gap-3">
-        <Swatch color={IN_COLOR} label="In-center" />
+        <Swatch color={pal.line} label="In-center" />
         <Swatch color={ONLINE_COLOR} label="Online" />
       </div>
       <div className="grid gap-1" style={{ gridTemplateColumns: `3.5rem repeat(${totals.length}, minmax(0, 1fr))` }}>
@@ -140,9 +155,9 @@ function WeeklyBars({ totals }) {
         {totals.map((t) => (
           <div key={t.week} className="flex flex-col items-center justify-end" style={{ height: H + 18 }}>
             <span className="mb-0.5 text-xs font-semibold text-zinc-800 tabular-nums">{t.total}</span>
-            <div className="flex w-full max-w-9 flex-col overflow-hidden rounded-t">
+            <div className="flex w-full max-w-12 flex-col overflow-hidden rounded-t">
               <div style={{ height: (t.online / max) * H, background: t.partial ? ONLINE_PARTIAL : ONLINE_COLOR }} />
-              <div style={{ height: (t.inCenter / max) * H, background: t.partial ? IN_PARTIAL : IN_COLOR }} />
+              <div style={{ height: (t.inCenter / max) * H, background: t.partial ? pal.partial : pal.line }} />
             </div>
           </div>
         ))}
@@ -154,7 +169,7 @@ function WeeklyBars({ totals }) {
           </div>
         ))}
         {/* split rows */}
-        <div className="text-[11px] font-medium" style={{ color: IN_COLOR }}>In-center</div>
+        <div className="text-[11px] font-medium" style={{ color: pal.line }}>In-center</div>
         {totals.map((t) => (
           <div key={t.week} className="text-center text-[11px] text-zinc-700 tabular-nums">{t.inCenter}</div>
         ))}
@@ -168,37 +183,42 @@ function WeeklyBars({ totals }) {
 }
 
 /**
- * Chart 2: one small line chart per weekday (Mon Tue Wed / Thu Fri Sat),
- * all on the same scale so they compare, none overlapping. One line in
- * one box is legible where six lines on one chart were not.
+ * Chart 2: one small line chart per open weekday, side by side in one row,
+ * all on the same scale so they compare and none overlapping (six lines in
+ * one chart were illegible). The scale does not start at zero: days sit at
+ * 20–55 and a zero baseline flattens them. A day with no attendance in the
+ * last 4 weeks (Friday is summer-only) is left out and named in the note.
  */
-function DayRows({ byDay, weeks }) {
-  const all = byDay.flatMap((d) => d.values.filter((v) => v !== null))
-  // Shared scale across the boxes, NOT from zero: the days sit at 20–55,
-  // and a zero baseline flattened every line.
+function DayRows({ byDay, weeks, pal }) {
+  const recent = (d) => d.values.slice(-4).some((v) => v !== null)
+  const shown = byDay.filter(recent)
+  const hidden = byDay.filter((d) => !recent(d))
+  const all = shown.flatMap((d) => d.values.filter((v) => v !== null))
   const top = Math.ceil(Math.max(1, ...all) / 10) * 10
   const bottom = Math.max(0, Math.floor(Math.min(top, ...all) / 10) * 10)
   return (
     <div>
-      <div className="grid grid-cols-3 gap-x-4 gap-y-3">
-        {byDay.map((d) => (
-          <DaySpark key={d.day} d={d} weeks={weeks} top={top} bottom={bottom} />
+      <div className="grid gap-x-3" style={{ gridTemplateColumns: `repeat(${shown.length}, minmax(0, 1fr))` }}>
+        {shown.map((d) => (
+          <DaySpark key={d.day} d={d} weeks={weeks} top={top} bottom={bottom} color={pal.line} />
         ))}
       </div>
-      <p className="mt-2 text-[11px] text-zinc-500">
-        Each box runs {monthDay(weeks[0])} → {monthDay(weeks[weeks.length - 1])}, all on the same {bottom}–{top} scale. Hover a dot for the week.
+      <p className="mt-1 text-[11px] text-zinc-500">
+        {monthDay(weeks[0])} → {monthDay(weeks[weeks.length - 1])}, same {bottom}–{top} scale in every box. Hover a dot for that week.
+        {hidden.length > 0 && ` ${hidden.map((d) => d.label).join(', ')}: no attendance in the last 4 weeks.`}
       </p>
     </div>
   )
 }
 
-function DaySpark({ d, weeks, top, bottom }) {
-  const W = 200
-  const H = 96
-  const padX = 20
-  const padT = 16
+function DaySpark({ d, weeks, top, bottom, color }) {
+  const W = 130
+  const H = 72
+  const padL = 18
+  const padR = 22
+  const padT = 6
   const padB = 6
-  const x = (i) => padX + (i * (W - 2 * padX)) / Math.max(1, weeks.length - 1)
+  const x = (i) => padL + (i * (W - padL - padR)) / Math.max(1, weeks.length - 1)
   const y = (v) => padT + (1 - (v - bottom) / (top - bottom || 1)) * (H - padT - padB)
   const pts = d.values.map((v, i) => (v === null ? null : { i, v }))
   const segs = []
@@ -216,38 +236,31 @@ function DaySpark({ d, weeks, top, bottom }) {
   const last = real[real.length - 1]
 
   return (
-    <div>
-      <div className="flex items-baseline justify-between">
-        <span className="text-xs font-semibold text-zinc-800">{d.label}</span>
-        {last && <span className="text-xs text-zinc-500 tabular-nums">latest {last.v}</span>}
-      </div>
+    <div className="min-w-0">
+      <p className="text-xs font-semibold text-zinc-800">{d.label}</p>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`${d.label} attendance by week`}>
-        {[bottom, top].map((t) => (
-          <g key={t}>
-            <line x1={padX} x2={W - 6} y1={y(t)} y2={y(t)} stroke="#e4e4e7" />
-            <text x={padX - 4} y={y(t) + 3} textAnchor="end" fontSize="9" fill="#a1a1aa">{t}</text>
-          </g>
-        ))}
+        <rect x={padL} y={padT} width={W - padL - padR} height={H - padT - padB} fill="#fafafa" />
         {segs.map((seg, k) => (
           <polyline
             key={k}
             fill="none"
-            stroke={IN_COLOR}
-            strokeWidth="2"
+            stroke={color}
+            strokeWidth="1.75"
             strokeLinejoin="round"
             points={seg.map((p) => `${x(p.i)},${y(p.v)}`).join(' ')}
           />
         ))}
         {real.map((p) => (
-          <circle key={p.i} cx={x(p.i)} cy={y(p.v)} r={p === last ? 3.5 : 2.5} fill={IN_COLOR}>
+          <circle key={p.i} cx={x(p.i)} cy={y(p.v)} r={p === last ? 3 : 2} fill={color}>
             <title>{`${d.label}, week of ${monthDay(weeks[p.i])}: ${p.v}`}</title>
           </circle>
         ))}
+        {/* first value left of its dot, latest right of its dot: never on the line */}
         {first && first !== last && (
-          <text x={x(first.i)} y={y(first.v) - 6} textAnchor="middle" fontSize="11" fill="#52525b">{first.v}</text>
+          <text x={x(first.i) - 4} y={y(first.v) + 3.5} textAnchor="end" fontSize="10" fill="#71717a">{first.v}</text>
         )}
         {last && (
-          <text x={x(last.i)} y={y(last.v) - 6} textAnchor="middle" fontSize="11" fontWeight="600" fill="#18181b">{last.v}</text>
+          <text x={x(last.i) + 5} y={y(last.v) + 3.5} textAnchor="start" fontSize="10" fontWeight="700" fill="#18181b">{last.v}</text>
         )}
       </svg>
     </div>
@@ -256,20 +269,20 @@ function DaySpark({ d, weeks, top, bottom }) {
 
 /**
  * Chart 3, laid out like the week grid: times down the side, days across,
- * and under each day the last 8 weeks side by side. Saturday is its own
+ * and under each day the 8 weeks side by side. Saturday is its own
  * block (different hours). Short enough to see without scrolling.
  */
-function SlotGrid({ table, weeks }) {
+function SlotGrid({ table, weeks, pal }) {
   const { rows, busiest } = table
   const weekdayRows = rows.filter((r) => r.day >= 1 && r.day <= 5)
   const saturdayRows = rows.filter((r) => r.day === 6)
   return (
     <div>
       <div className="mb-2 flex flex-wrap gap-3">
-        {BINS.map((b) => (
-          <span key={b.label} className="flex items-center gap-1 text-xs text-zinc-600">
-            <span className="inline-block h-3 w-3.5 rounded-sm border border-zinc-200" style={{ background: b.bg }} />
-            {b.label}
+        {pal.steps.label.map((label, k) => (
+          <span key={label} className="flex items-center gap-1 text-xs text-zinc-600">
+            <span className="inline-block h-3 w-3.5 rounded-sm border border-zinc-200" style={{ background: pal.bins[k] }} />
+            {label}
           </span>
         ))}
         <span className="flex items-center gap-1 text-xs text-zinc-600">
@@ -277,15 +290,24 @@ function SlotGrid({ table, weeks }) {
           Busiest half hour that week
         </span>
       </div>
-      <div className="flex flex-wrap items-start gap-6 overflow-x-auto">
-        {weekdayRows.length > 0 && <SlotBlock rows={weekdayRows} weeks={weeks} busiest={busiest} />}
-        {saturdayRows.length > 0 && <SlotBlock rows={saturdayRows} weeks={weeks} busiest={busiest} />}
+      {/* Weekdays stretch to fill the card; Saturday keeps its own width. */}
+      <div className="flex items-start gap-6 overflow-x-auto">
+        {weekdayRows.length > 0 && (
+          <div className="min-w-0 flex-[4]">
+            <SlotBlock rows={weekdayRows} weeks={weeks} busiest={busiest} pal={pal} />
+          </div>
+        )}
+        {saturdayRows.length > 0 && (
+          <div className="min-w-0 flex-1">
+            <SlotBlock rows={saturdayRows} weeks={weeks} busiest={busiest} pal={pal} />
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-function SlotBlock({ rows, weeks, busiest }) {
+function SlotBlock({ rows, weeks, busiest, pal }) {
   const days = [...new Set(rows.map((r) => r.day))].sort((a, b) => a - b)
   const times = [...new Set(rows.map((r) => r.minutes))].sort((a, b) => a - b)
   const byKey = new Map(rows.map((r) => [`${r.day}|${r.minutes}`, r]))
@@ -293,7 +315,7 @@ function SlotBlock({ rows, weeks, busiest }) {
   const edge = 'border-l-2 border-zinc-300'
 
   return (
-    <table className="border-separate border-spacing-0 text-xs">
+    <table className="w-full border-separate border-spacing-0 text-xs">
       <thead>
         <tr>
           <th />
@@ -329,15 +351,15 @@ function SlotBlock({ rows, weeks, busiest }) {
                 const n = row ? row.cells[i] : rows.find((r) => r.day === d).cells[i] === null ? null : 0
                 const cls = `h-6 min-w-8 p-px text-center tabular-nums ${i === 0 ? edge : ''}`
                 if (n === null) return <td key={`${d}-${w}`} className={`${cls} text-zinc-300`}>–</td>
-                const b = binOf(n)
+                const k = pal.steps.max.findIndex((m) => n <= m)
                 const peak = n > 0 && n === busiest[i]
                 return (
                   <td key={`${d}-${w}`} className={cls}>
                     <div
                       className="flex h-full items-center justify-center rounded-sm"
                       style={{
-                        background: b.bg,
-                        color: b.fg,
+                        background: pal.bins[k],
+                        color: pal.ink[k],
                         boxShadow: peak ? 'inset 0 0 0 2px #18181b' : undefined,
                         fontWeight: peak ? 700 : 400,
                       }}

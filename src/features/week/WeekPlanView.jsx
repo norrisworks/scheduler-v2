@@ -205,10 +205,10 @@ export default function WeekPlanView() {
                     )}
                   </div>
                   <div className="min-w-0">
-                    <TrendsSide center={center} trends={trends} />
+                    <TrendsSide center={center} trends={trends} hue={IN_CENTER_HUE[center.name] ?? 'red'} />
                   </div>
                 </div>
-                <TrendsBelow center={center} trends={trends} />
+                <TrendsBelow center={center} trends={trends} hue={IN_CENTER_HUE[center.name] ?? 'red'} />
               </section>
             ))}
         </div>

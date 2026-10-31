@@ -886,23 +886,25 @@ anchor). **Never call `toISOString()` for dates.**
   importer bug was found that way.
 
 55. **Week tab: one center at a time, attendance trends on the same page**
-    (2026-10-30). A Montgomeryville | Blue Bell toggle at the top (MV
-    default). For the shown center: the week grid on the left with two
-    trend charts beside it (xl+; below it on narrower screens), and the slot
-    chart full width under the grid. Owner rejected a separate Trends page
-    and a page of empty side margins. Actual attendance only
-    (`attendance_visits`), no percentages. (1) Attendance per week, last 12
-    weeks, stacked in-center + online with the numbers for each written
-    under the bars; current week lighter. (2) Attendance by day: one small line chart per weekday in a 3x2
-    grid (Mon Tue Wed / Thu Fri Sat), shared scale that does NOT start at
-    zero (zero flattened every line), first and latest value labelled,
-    hover for each week. Rejected before this: six lines on one chart
-    (illegible), bar rows (noise), a bare number table (he wants a visual). (3) Every slot: times down the
-    side, days across, the last 8 weeks side by side under each day,
-    Saturday its own block; owner's scale 0-9 / 10-14 / 15-19 / 20-24 / 25+,
-    each week's busiest half hour outlined. A long one-row-per-slot list
-    made him scroll forever. Math in `week/trends.js`, midpoint rule as in
-    53. Chart 4 ("how the busiest slots are changing") is HELD.
+    (2026-10-30). Montgomeryville | Blue Bell toggle at the top (MV
+    default). For the shown center: week grid left, charts 1-2 beside it
+    (xl+), chart 3 full width under the grid. The side column must not run
+    much taller than the grid, or chart 3 is shoved down. Actual attendance
+    only (`attendance_visits`), no percentages. ALL charts cover the same
+    last 8 weeks. Colours match the grid: in-center red at MV, blue at BB,
+    online green. (1) Attendance per week, stacked in-center + online,
+    counts written under the bars, current week lighter. (2) One small
+    line chart per open weekday in ONE row, shared scale NOT from zero,
+    first value left of its dot and latest right of it; a day with no
+    attendance in the last 4 weeks (summer Fridays) is left out and named.
+    Rejected: six lines on one chart (illegible), bar rows (noise), a bare
+    number table (he wants a visual). (3) Every slot: times down, days
+    across, the 8 weeks side by side under each day, Saturday its own block,
+    stretched to the card width; shade steps MV 0-9/10-14/15-19/20-24/25+
+    (owner's), BB 0-4/5-7/8-10/11-13/14+ (BB never passes ~14); each week's
+    busiest half hour outlined. A one-row-per-slot list made him scroll
+    forever. Math in `week/trends.js`, midpoint rule as in 53. Chart 4
+    ("how the busiest slots are changing") is HELD.
 
 ## Open items
 
