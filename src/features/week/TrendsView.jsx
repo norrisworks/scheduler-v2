@@ -373,7 +373,8 @@ function SlotBlock({ rows, weeks, busiest, pal, max }) {
   const times = [...new Set(rows.map((r) => r.minutes))].sort((a, b) => a - b)
   const byKey = new Map(rows.map((r) => [`${r.day}|${r.minutes}`, r]))
   const dayLabel = (d) => rows.find((r) => r.day === d).dayLabel
-  const edge = 'border-l-2 border-zinc-300'
+  // Day boundary: a dark divider plus a few pixels of air before the day's first week.
+  const edge = 'border-l-2 border-zinc-500 pl-1.5'
 
   return (
     <table className="w-full border-separate border-spacing-0 text-xs">
@@ -392,7 +393,7 @@ function SlotBlock({ rows, weeks, busiest, pal, max }) {
             weeks.map((w, i) => (
               <th
                 key={`${d}-${w}`}
-                className={`px-px pb-1 ${weeks.length > 8 ? 'text-[9px]' : 'text-[10px]'} font-normal whitespace-nowrap text-zinc-400 tabular-nums ${i === 0 ? edge : ''}`}
+                className={`pb-1 ${i === 0 ? edge : 'pl-px'} ${i === weeks.length - 1 ? 'pr-1.5' : 'pr-px'} ${weeks.length > 8 ? 'text-[9px]' : 'text-[10px]'} font-normal whitespace-nowrap text-zinc-400 tabular-nums`}
               >
                 {monthDay(w)}
               </th>
@@ -410,7 +411,7 @@ function SlotBlock({ rows, weeks, busiest, pal, max }) {
                 // No row = nobody that half hour the whole period; still "–" when
                 // that day of the week hasn't happened yet.
                 const n = row ? row.cells[i] : rows.find((r) => r.day === d).cells[i] === null ? null : 0
-                const cls = `h-6 ${weeks.length > 8 ? 'min-w-6 text-[11px]' : 'min-w-8'} p-px text-center tabular-nums ${i === 0 ? edge : ''}`
+                const cls = `h-6 ${weeks.length > 8 ? 'min-w-6 text-[11px]' : 'min-w-8'} py-px ${i === weeks.length - 1 ? 'pr-1.5' : 'pr-px'} ${i === 0 ? edge : 'pl-px'} text-center tabular-nums`
                 if (n === null) return <td key={`${d}-${w}`} className={`${cls} text-zinc-300`}>–</td>
                 const shade = n > 0 ? slotShade(n, max, pal.hue) : { background: ZERO_FILL, color: '#71717a' }
                 const peak = n > 0 && n === busiest[i]
