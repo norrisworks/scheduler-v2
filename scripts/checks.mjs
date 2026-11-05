@@ -15,7 +15,7 @@ import { rescheduleRows, validateReschedule, collisionKind, collisionMessage, re
 import { findSourceConflicts, planSourceConflicts, findCrossDayConflicts, planCrossDayConflicts, isRadiusConfirmed } from '../src/features/day/sourceConflicts.js'
 import { sessionTimeSlots, autoAssignBalanced, autoAssignBestMatch, summaryMessage } from '../src/features/assign/algorithms.js'
 import { buildGroups } from '../src/features/day/rowGrouping.js'
-import { proposeRanking, ineligibleForStudentReason, proposalReasons, sameGender, eligibleForStudent, moveEntry } from '../src/features/assign/proposeRanking.js'
+import { proposeRanking, ineligibleForStudentReason, proposalReasons, sameGender, eligibleForStudent, moveEntry, toggleEntry, setAllEntries } from '../src/features/assign/proposeRanking.js'
 import { describeMaterialize, materializeChanged } from '../src/features/materializer/materializeResult.js'
 import { cleanPersonName, titleCaseName, generateDisplayName, violatesNamingConvention, staleGradeInName, displayNameShape, nearlySameFirstName, isPlaceholderName, nameKey } from '../src/features/imports/namingConvention.js'
 import { isDataRow, readWorkstreamRow, matchInstructor, planWorkstreamImport } from '../src/features/imports/workstreamImport.js'
@@ -3182,6 +3182,19 @@ eq('a Radius file of only unchanged rows can still be committed (stamps + log)',
   eq('slot rows run in day then time order', t.rows.map((r) => `${r.dayLabel} ${r.minutes}`), ['Tue 1020', 'Tue 1050', 'Sat 600', 'Sat 630'])
   eq('slot cells are kids in the room each week', t.rows[0].cells, [2, 1])
   eq('busiest per week', t.busiest, [2, 1])
+}
+
+{
+  // New student: rank only the instructors you tick (one is enough).
+  const e = ['a', 'b', 'c', 'd'].map((id, i) => ({ instructorId: id, rank: i + 1, on: true }))
+  const offB = toggleEntry(e, 1)
+  eq('unticking drops the row below the ticked ones and re-ranks', offB.map((x) => `${x.instructorId}${x.rank ?? '-'}`), ['a1', 'c2', 'd3', 'b-'])
+  const none = setAllEntries(e, false)
+  eq('untick all leaves nothing ranked', none.every((x) => x.rank === null), true)
+  const justC = toggleEntry(none, 2)
+  eq('ticking one from none makes it #1 and the only ranked', justC.filter((x) => x.on).map((x) => `${x.instructorId}${x.rank}`), ['c1'])
+  const plusA = toggleEntry(justC, justC.findIndex((x) => x.instructorId === 'a'))
+  eq('a re-ticked row joins the end of the ticked block', plusA.filter((x) => x.on).map((x) => `${x.instructorId}${x.rank}`), ['c1', 'a2'])
 }
 
 let failed = 0

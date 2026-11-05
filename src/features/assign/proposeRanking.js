@@ -98,6 +98,34 @@ export function renumber(entries) {
   return entries.map((entry, i) => ({ ...entry, rank: i + 1 }))
 }
 
+/**
+ * Tick or untick one instructor in the new-student proposal. Ticked rows
+ * stay on top in their order and are the only ones saved; an unticked row
+ * drops below them, and a re-ticked row joins the END of the ticked block.
+ * Ranks count ticked rows only (unticked carry rank null).
+ */
+export function toggleEntry(entries, index) {
+  const target = entries[index]
+  if (!target) return entries
+  const flipped = { ...target, on: target.on === false }
+  const rest = entries.filter((_, i) => i !== index)
+  const on = rest.filter((e) => e.on !== false)
+  const off = rest.filter((e) => e.on === false)
+  // Either way it lands between the ticked block and the unticked rest.
+  return rankTicked([...on, flipped, ...off])
+}
+
+/** Tick every row, or none, keeping the current order. */
+export function setAllEntries(entries, on) {
+  return rankTicked(entries.map((e) => ({ ...e, on })))
+}
+
+/** Ranks 1..n down the ticked rows; unticked rows get null. */
+export function rankTicked(entries) {
+  let n = 0
+  return entries.map((e) => (e.on === false ? { ...e, rank: null } : { ...e, rank: ++n }))
+}
+
 /** Move an entry to a new index, then renumber. Used by the drag reorder. */
 export function moveEntry(entries, from, to) {
   if (from === to || from < 0 || to < 0 || from >= entries.length || to >= entries.length) {

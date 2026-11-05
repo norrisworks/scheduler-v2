@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { readableTextOn } from '../../lib/colors'
-import { moveEntry, renumber } from '../assign/proposeRanking'
+import { moveEntry, rankTicked, renumber, setAllEntries, toggleEntry } from '../assign/proposeRanking'
 import { fetchProposedOrder } from '../instructors/rankAccess'
 import {
   ACADEMIC_OPTIONS,
@@ -42,6 +42,7 @@ export default function CreateStudentDialog({ centerId, instructors, onClose, on
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  const tickedCount = entries.filter((e) => e.on !== false).length
   const missing = REQUIRED.filter(([key]) => !String(form[key] ?? '').trim()).map(([, label]) => label)
   const nameWarning = form.name.trim() && violatesNamingConvention(form.name)
 
@@ -62,6 +63,7 @@ export default function CreateStudentDialog({ centerId, instructors, onClose, on
               instructor: byId.get(o.instructorId),
               instructorId: o.instructorId,
               rank: i + 1,
+              on: true,
               reasons: [
                 ...(o.sameGender ? ['same gender'] : []),
                 ...(o.fallbackOnly ? ['fallback only'] : []),
@@ -103,7 +105,9 @@ export default function CreateStudentDialog({ centerId, instructors, onClose, on
       return
     }
 
-    const ranked = renumber(entries)
+    // Only the ticked instructors are saved; the rest stay unranked for
+    // this student and can be added later from the student's page.
+    const ranked = renumber(entries.filter((e) => e.on !== false))
     if (ranked.length > 0) {
       const { error: rankError } = await supabase.from('instructor_rankings').insert(
         ranked.map((e) => ({
@@ -139,7 +143,7 @@ export default function CreateStudentDialog({ centerId, instructors, onClose, on
             Add student — {step === 'details' ? '1. Details' : '2. Rankings'}
           </h2>
           <span className="text-[11px] text-zinc-400">
-            {step === 'details' ? 'all fields required' : 'a student cannot be created unranked'}
+            {step === 'details' ? 'all fields required' : 'rank at least one instructor'}
           </span>
         </div>
 
@@ -229,10 +233,32 @@ export default function CreateStudentDialog({ centerId, instructors, onClose, on
             </div>
           ) : (
             <div className="space-y-2">
-              <p className="text-[11px] text-zinc-500">
-                Best-fit order, same gender as {form.name.trim() || 'the student'} preferred. Drag or
-                type a number to change it.
-              </p>
+              <div className="flex items-start gap-2">
+                <p className="flex-1 text-[11px] text-zinc-500">
+                  Best-fit order, same gender as {form.name.trim() || 'the student'} preferred. Untick
+                  anyone you don't want to rank yet; one is enough. Drag or type a number to reorder.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEntries((prev) => setAllEntries(prev, false))
+                    setTouched(true)
+                  }}
+                  className="shrink-0 rounded border border-zinc-300 px-1.5 py-0.5 text-[11px] text-zinc-600 hover:bg-zinc-100"
+                >
+                  Untick all
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEntries((prev) => setAllEntries(prev, true))
+                    setTouched(true)
+                  }}
+                  className="shrink-0 rounded border border-zinc-300 px-1.5 py-0.5 text-[11px] text-zinc-600 hover:bg-zinc-100"
+                >
+                  Tick all
+                </button>
+              </div>
               {entries.length === 0 ? (
                 <p className="py-6 text-center text-xs text-amber-700">
                   No active instructor here can teach {form.level}. Set capability flags on the
@@ -243,30 +269,46 @@ export default function CreateStudentDialog({ centerId, instructors, onClose, on
                   {entries.map((entry, index) => (
                     <li
                       key={entry.instructorId}
-                      draggable
+                      draggable={entry.on !== false}
                       onDragStart={() => setDragIndex(index)}
                       onDragOver={(e) => e.preventDefault()}
                       onDrop={() => {
-                        if (dragIndex !== null) {
-                          setEntries((prev) => moveEntry(prev, dragIndex, index))
+                        if (dragIndex !== null && entry.on !== false) {
+                          setEntries((prev) => rankTicked(moveEntry(prev, dragIndex, index)))
                           setTouched(true)
                         }
                         setDragIndex(null)
                       }}
                       className={
-                        'flex cursor-grab items-center gap-2 rounded-lg border px-2 py-1.5 ' +
-                        (dragIndex === index ? 'border-brand-400 bg-brand-50' : 'border-zinc-200')
+                        'flex items-center gap-2 rounded-lg border px-2 py-1.5 ' +
+                        (entry.on === false
+                          ? 'border-zinc-100 bg-zinc-50 opacity-50'
+                          : 'cursor-grab ' + (dragIndex === index ? 'border-brand-400 bg-brand-50' : 'border-zinc-200'))
                       }
                     >
                       <input
+                        type="checkbox"
+                        checked={entry.on !== false}
+                        aria-label={`Rank ${entry.instructor.name}`}
+                        onChange={() => {
+                          setEntries((prev) => toggleEntry(prev, index))
+                          setTouched(true)
+                        }}
+                        className="h-4 w-4 shrink-0 accent-brand-500"
+                      />
+                      <input
                         type="text"
                         inputMode="numeric"
-                        value={entry.rank}
+                        value={entry.rank ?? '–'}
+                        disabled={entry.on === false}
                         aria-label={`Rank for ${entry.instructor.name}`}
                         onChange={(e) => {
                           const n = Number(e.target.value)
                           if (!Number.isFinite(n) || n < 1) return
-                          setEntries((prev) => moveEntry(prev, index, Math.min(n, prev.length) - 1))
+                          setEntries((prev) => {
+                            const ticked = prev.filter((x) => x.on !== false).length
+                            return rankTicked(moveEntry(prev, index, Math.min(n, ticked) - 1))
+                          })
                           setTouched(true)
                         }}
                         className="w-9 shrink-0 rounded border border-zinc-300 py-0.5 text-center text-xs tabular-nums"
@@ -336,10 +378,10 @@ export default function CreateStudentDialog({ centerId, instructors, onClose, on
             <button
               type="button"
               onClick={create}
-              disabled={saving || entries.length === 0}
+              disabled={saving || tickedCount === 0}
               className="rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-40"
             >
-              {saving ? 'Creating…' : `Create with ${entries.length} rankings`}
+              {saving ? 'Creating…' : `Create with ${tickedCount} ranking${tickedCount === 1 ? '' : 's'}`}
             </button>
           )}
         </div>
