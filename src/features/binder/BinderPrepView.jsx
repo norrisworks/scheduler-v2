@@ -27,8 +27,8 @@ import { BINDER_RESET, BINDER_STATUSES, binderCounts, binderRows, binderStatusOf
  */
 export default function BinderPrepView() {
   const { centerId, center } = useCenter()
-  // Prep happens the night before, so tomorrow is the default.
-  const [date, setDate] = useState(() => addDays(todayISO(), 1))
+  // Opens on today (the owner's call, 2026-11-05; it used to open on tomorrow).
+  const [date, setDate] = useState(() => todayISO())
   const [snapshot, setSnapshot] = useState({ key: null, rows: [] })
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
@@ -174,13 +174,13 @@ export default function BinderPrepView() {
           >
             ›
           </button>
-          {date !== tomorrow && (
+          {date !== todayISO() && (
             <button
               type="button"
-              onClick={() => setDate(tomorrow)}
+              onClick={() => setDate(todayISO())}
               className="rounded-lg border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
             >
-              Tomorrow
+              Today
             </button>
           )}
         </div>

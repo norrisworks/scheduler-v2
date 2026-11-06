@@ -991,3 +991,6 @@ it can't silently regress.
     proposal comes in fully ticked; untick anyone, one is enough, and only
     ticked rows are saved (ranks 1..n over the ticked). The rest can be
     added later from the student's page (InstructorPins).
+
+58. **Binder tab opens on today** (2026-11-05), not tomorrow; its jump
+    button reads "Today".
