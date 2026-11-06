@@ -2389,8 +2389,9 @@ await (async () => {
      { weekdayOpen: 900, weekdayClose: 1170, saturdayOpen: 600, saturdayClose: 780 })
 
   // Planned on a Thursday or Friday for the FOLLOWING Mon–Sat.
-  eq('a Thursday defaults to next Monday', defaultPlanWeekStart('2026-10-01'), '2026-10-05')
-  eq('a Monday still plans the NEXT week', defaultPlanWeekStart('2026-10-05'), '2026-10-12')
+  eq('a Thursday shows this week', defaultPlanWeekStart('2026-10-01'), '2026-09-28')
+  eq('a Monday shows this week', defaultPlanWeekStart('2026-10-05'), '2026-10-05')
+  eq('a Sunday shows the week starting tomorrow', defaultPlanWeekStart('2026-10-04'), '2026-10-05')
   eq('the plan week runs Mon–Sat', planWeekDates('2026-10-05'),
      ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-10'])
 

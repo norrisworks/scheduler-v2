@@ -60,7 +60,7 @@ export default function WeekPlanView() {
       /* private window: just not remembered */
     }
   }
-  const trends = useAttendanceTrends(isAdmin ? ordered : null, period)
+  const trends = useAttendanceTrends(isAdmin ? ordered : null, period, weekStart)
   // One center at a time; Montgomeryville first.
   const [centerId, setCenterId] = useState(null)
   const shownId = centerId ?? ordered[0]?.id
@@ -141,7 +141,7 @@ export default function WeekPlanView() {
   }
 
   const dates = planWeekDates(weekStart)
-  const isNextWeek = weekStart === defaultPlanWeekStart(todayISO())
+  const isThisWeek = weekStart === defaultPlanWeekStart(todayISO())
 
   return (
     <div className="mx-auto max-w-[1900px] px-6 py-6">
@@ -183,13 +183,13 @@ export default function WeekPlanView() {
           >
             ›
           </button>
-          {!isNextWeek && (
+          {!isThisWeek && (
             <button
               type="button"
               onClick={() => setWeekStart(defaultPlanWeekStart(todayISO()))}
               className="ml-1 rounded-lg border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-600 hover:bg-zinc-100"
             >
-              Next week
+              This week
             </button>
           )}
         </div>

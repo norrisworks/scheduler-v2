@@ -891,8 +891,10 @@ anchor). **Never call `toISOString()` for dates.**
     (xl+, columns 1fr:1fr; the grid card stretches to the charts' height), chart 3 full width under the grid. The side column must not run
     much taller than the grid, or chart 3 is shoved down. Actual attendance
     only (`attendance_visits`), no percentages. ALL charts cover the same
-    period, picked top right (4/6/8/10/12 weeks, default 8, remembered per
-    browser; capped at 12 because chart 3 gets too wide). Colours match the grid: in-center red at MV, blue at BB,
+    period, picked top right (4/8/16 weeks, default 8, remembered per
+    browser), and the period ENDS at the week the planner is showing:
+    paging the grid back pages the charts back. At 16 weeks chart 3's
+    columns narrow and the week labels stand on end. Colours match the grid: in-center red at MV, blue at BB,
     online green. (1) Attendance per week, stacked in-center + online,
     each count INSIDE its section (no table under the bars), total above,
     current week lighter. (2) One small
@@ -906,7 +908,8 @@ anchor). **Never call `toISOString()` for dates.**
     stretched to the card width; CONTINUOUS shading in the center's hue
     from 1 up to the period's busiest cell (legend is a gradient), ZERO is
     a plain gray block; the owner rejected bucketed shade steps and a
-    coloured zero. Each week's busiest half hour outlined. A one-row-per-slot list made him scroll
+    coloured zero. Each week's busiest half hour outlined; a bold Total row under every column
+    (kids that day). A one-row-per-slot list made him scroll
     forever. Math in `week/trends.js`, midpoint rule as in 53. Chart 4
     ("how the busiest slots are changing") is HELD.
 
@@ -979,3 +982,12 @@ Preview-first for anything destructive; bulk data changes are proposed, never
 committed unilaterally. Report failures plainly. When the owner reverses an
 earlier decision, the newest instruction wins and gets encoded in checks so
 it can't silently regress.
+
+56. **Week tab opens on THIS week** (2026-11-05), not next week; the jump
+    button reads "This week". On a Sunday that is the week starting the
+    next day. (`defaultPlanWeekStart`.)
+
+57. **Add student: tick which instructors to rank** (2026-11-05). The
+    proposal comes in fully ticked; untick anyone, one is enough, and only
+    ticked rows are saved (ranks 1..n over the ticked). The rest can be
+    added later from the student's page (InstructorPins).

@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { fetchAll } from '../../lib/fetchAll'
-import { formatTime, minutesToTime, todayISO } from '../../lib/dates'
+import { addDays, formatTime, minutesToTime, todayISO } from '../../lib/dates'
 import Spinner from '../../components/Spinner'
 import QueryError from '../../components/QueryError'
 import { attendanceByWeekday, slotTable, trendWeeks, weeklyTotals } from './trends'
 import { HEAT_HUES, monthDay, oklchToRgb } from './weekPlan'
 
 // All three charts always cover the same stretch, chosen by the owner from
-// these lengths. Capped at 12: past that chart 3 gets too wide to read.
-export const PERIOD_CHOICES = [4, 6, 8, 10, 12]
+// these lengths, ENDING at the week the planner is showing.
+export const PERIOD_CHOICES = [4, 8, 16]
 export const DEFAULT_PERIOD = 8
 const MAX_WEEKS = Math.max(...PERIOD_CHOICES)
 
@@ -48,17 +48,24 @@ const ONLINE_PARTIAL = '#a7e0c9'
 
 
 /**
- * Attendance trends on the Week tab: the last `count` weeks, whatever week
- * the planner is showing. Everything here is actual attendance (the
- * attendance import), never bookings; in-center and online both count.
- * The longest period is fetched once, so switching periods is instant.
+ * Attendance trends on the Week tab: the `count` weeks ENDING with the week
+ * the planner is showing (`anchorMonday`), so paging the planner back pages
+ * the charts back too. Everything here is actual attendance (the attendance
+ * import), never bookings; in-center and online both count. The longest
+ * period is fetched for each anchor, so switching periods is instant; the
+ * previous data stays up while a new anchor loads.
  */
-export function useAttendanceTrends(centers, count = DEFAULT_PERIOD) {
+export function useAttendanceTrends(centers, count = DEFAULT_PERIOD, anchorMonday) {
   const [visits, setVisits] = useState(null)
   const [error, setError] = useState(null)
   const today = todayISO()
-  const from = useMemo(() => trendWeeks(today, MAX_WEEKS)[0], [today])
-  const weeks = useMemo(() => trendWeeks(today, count), [today, count])
+  const anchor = anchorMonday ?? today
+  const from = useMemo(() => trendWeeks(anchor, MAX_WEEKS)[0], [anchor])
+  const weeks = useMemo(() => trendWeeks(anchor, count), [anchor, count])
+  const to = useMemo(() => {
+    const end = addDays(weeks[weeks.length - 1], 6)
+    return end < today ? end : today
+  }, [weeks, today])
 
   useEffect(() => {
     if (!centers?.length) return
@@ -69,17 +76,20 @@ export function useAttendanceTrends(centers, count = DEFAULT_PERIOD) {
         .select('center_id, date, arrival, departure, delivery')
         .in('center_id', centers.map((c) => c.id))
         .gte('date', from)
-        .lte('date', today)
+        .lte('date', to)
         .order('id'),
     ).then(({ data, error: err }) => {
       if (stale) return
       if (err) setError(err.message)
-      else setVisits(data ?? [])
+      else {
+        setError(null)
+        setVisits(data ?? [])
+      }
     })
     return () => {
       stale = true
     }
-  }, [centers, from, today])
+  }, [centers, from, to])
 
   return { visits, error, weeks, today }
 }
@@ -115,6 +125,13 @@ export function TrendsSide({ center, trends, hue = 'red' }) {
   ))
 }
 
+/** Kids per date (visits, in-center + online) — chart 3's bottom row. */
+function visitsPerDate(visits) {
+  const m = new Map()
+  for (const v of visits) m.set(v.date, (m.get(v.date) ?? 0) + 1)
+  return m
+}
+
 /** Chart 3 — every slot, week by week — under the week grid. */
 export function TrendsBelow({ center, trends, hue = 'red' }) {
   const pal = PALETTE[hue] ?? PALETTE.red
@@ -123,7 +140,7 @@ export function TrendsBelow({ center, trends, hue = 'red' }) {
       title="Every slot, week by week"
       note={`Kids in the room in each half hour over the same ${weeks.length} weeks, oldest to newest under each day. Outlined: that week's busiest half hour.`}
     >
-      <SlotGrid table={slotTable(visits, weeks, today)} weeks={weeks} pal={pal} />
+      <SlotGrid table={slotTable(visits, weeks, today)} weeks={weeks} pal={pal} dayTotals={visitsPerDate(visits)} />
     </Panel>
   ))
 }
@@ -309,7 +326,7 @@ function DaySpark({ d, weeks, top, bottom, color, axis }) {
  * and under each day the period's weeks side by side. Saturday is its own
  * block (different hours). Short enough to see without scrolling.
  */
-function SlotGrid({ table, weeks, pal }) {
+function SlotGrid({ table, weeks, pal, dayTotals }) {
   const { rows: allRows, busiest } = table
   // Same rule as chart 2: a day with no attendance in the last 4 weeks
   // (summer-only Fridays) is left out and named under the legend.
@@ -355,12 +372,12 @@ function SlotGrid({ table, weeks, pal }) {
             className="min-w-0 flex-1"
             style={{ maxWidth: 70 + new Set(weekdayRows.map((r) => r.day)).size * weeks.length * 44 }}
           >
-            <SlotBlock rows={weekdayRows} weeks={weeks} busiest={busiest} pal={pal} max={max} />
+            <SlotBlock rows={weekdayRows} weeks={weeks} busiest={busiest} pal={pal} max={max} dayTotals={dayTotals} />
           </div>
         )}
         {saturdayRows.length > 0 && (
           <div className="flex-none">
-            <SlotBlock rows={saturdayRows} weeks={weeks} busiest={busiest} pal={pal} max={max} />
+            <SlotBlock rows={saturdayRows} weeks={weeks} busiest={busiest} pal={pal} max={max} dayTotals={dayTotals} />
           </div>
         )}
       </div>
@@ -368,7 +385,7 @@ function SlotGrid({ table, weeks, pal }) {
   )
 }
 
-function SlotBlock({ rows, weeks, busiest, pal, max }) {
+function SlotBlock({ rows, weeks, busiest, pal, max, dayTotals }) {
   const days = [...new Set(rows.map((r) => r.day))].sort((a, b) => a - b)
   const times = [...new Set(rows.map((r) => r.minutes))].sort((a, b) => a - b)
   const byKey = new Map(rows.map((r) => [`${r.day}|${r.minutes}`, r]))
@@ -376,6 +393,9 @@ function SlotBlock({ rows, weeks, busiest, pal, max }) {
   // Day boundary: a dark divider plus a few pixels of air before the day's first week.
   const edge = 'border-l-2 border-zinc-500 pl-1.5'
 
+  const wide = weeks.length > 8
+  // Each column's date: that week's copy of the day.
+  const dateOf = (w, d) => addDays(w, (d + 6) % 7)
   return (
     <table className="w-full border-separate border-spacing-0 text-xs">
       <thead>
@@ -393,9 +413,10 @@ function SlotBlock({ rows, weeks, busiest, pal, max }) {
             weeks.map((w, i) => (
               <th
                 key={`${d}-${w}`}
-                className={`pb-1 ${i === 0 ? edge : 'pl-px'} ${i === weeks.length - 1 ? 'pr-1.5' : 'pr-px'} ${weeks.length > 8 ? 'text-[9px]' : 'text-[10px]'} font-normal whitespace-nowrap text-zinc-400 tabular-nums`}
+                className={`pb-1 align-bottom ${i === 0 ? edge : 'pl-px'} ${i === weeks.length - 1 ? 'pr-1.5' : 'pr-px'} ${wide ? 'text-[9px]' : 'text-[10px]'} font-normal whitespace-nowrap text-zinc-400 tabular-nums`}
               >
-                {monthDay(w)}
+                {/* 16 weeks: labels stand on end so the columns can stay narrow */}
+                {wide ? <span className="inline-block rotate-180 [writing-mode:vertical-rl]">{monthDay(w)}</span> : monthDay(w)}
               </th>
             )),
           )}
@@ -411,7 +432,7 @@ function SlotBlock({ rows, weeks, busiest, pal, max }) {
                 // No row = nobody that half hour the whole period; still "–" when
                 // that day of the week hasn't happened yet.
                 const n = row ? row.cells[i] : rows.find((r) => r.day === d).cells[i] === null ? null : 0
-                const cls = `h-6 ${weeks.length > 8 ? 'min-w-6 text-[11px]' : 'min-w-8'} py-px ${i === weeks.length - 1 ? 'pr-1.5' : 'pr-px'} ${i === 0 ? edge : 'pl-px'} text-center tabular-nums`
+                const cls = `h-6 ${wide ? 'min-w-5 text-[10px]' : 'min-w-8'} py-px ${i === weeks.length - 1 ? 'pr-1.5' : 'pr-px'} ${i === 0 ? edge : 'pl-px'} text-center tabular-nums`
                 if (n === null) return <td key={`${d}-${w}`} className={`${cls} text-zinc-300`}>–</td>
                 const shade = n > 0 ? slotShade(n, max, pal.hue) : { background: ZERO_FILL, color: '#71717a' }
                 const peak = n > 0 && n === busiest[i]
@@ -435,6 +456,26 @@ function SlotBlock({ rows, weeks, busiest, pal, max }) {
           </tr>
         ))}
       </tbody>
+      <tfoot>
+        <tr>
+          <td className="pt-1.5 pr-2 text-right text-xs font-bold whitespace-nowrap text-zinc-800">Total</td>
+          {days.map((d) =>
+            weeks.map((w, i) => {
+              const n = dayTotals?.get(dateOf(w, d))
+              return (
+                <td
+                  key={`${d}-${w}`}
+                  className={`border-t border-zinc-300 pt-1.5 text-center font-bold tabular-nums ${wide ? 'text-[10px]' : 'text-xs'} ${
+                    i === 0 ? edge : 'pl-px'
+                  } ${i === weeks.length - 1 ? 'pr-1.5' : 'pr-px'} ${n ? 'text-zinc-900' : 'text-zinc-300'}`}
+                >
+                  {n ?? '–'}
+                </td>
+              )
+            }),
+          )}
+        </tr>
+      </tfoot>
     </table>
   )
 }

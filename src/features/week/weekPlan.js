@@ -31,13 +31,12 @@ export function centerOperatingHours(center) {
 }
 
 /**
- * The default week to plan: NEXT week's Monday. The owner plans on Thursday
- * or Friday for the following Mon–Sat, so "next week" is the useful default
- * every day of the current week.
+ * The default week shown: THIS week's Monday (the owner's call, 2026-11-05;
+ * it used to jump to next week). On a Sunday that is tomorrow's Monday.
  */
 export function defaultPlanWeekStart(todayIso) {
-  // startOfWeek is Sunday-based; +8 lands on next week's Monday.
-  return addDays(startOfWeek(todayIso), 8)
+  // startOfWeek is Sunday-based; +1 lands on that week's Monday.
+  return addDays(startOfWeek(todayIso), 1)
 }
 
 /** Monday..Saturday of the plan week. */
