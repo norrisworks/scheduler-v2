@@ -29,11 +29,11 @@ export const ONLINE_GREEN = '#22c55e'
 export const ASSESSMENT_YELLOW = '#FACC15'
 
 /**
- * The three placeholder students Radius books assessments under
- * ('Assessment ES', 'Assessment MS', 'Assessment HS').
+ * The placeholder students assessments are booked under: 'Assessment MS'
+ * and the owner's renamed 'ASSMT (ES)' / 'ASSMT (HS)' (2026-11-06).
  */
 export function isAssessmentStudent(name) {
-  return /^assessment\b/i.test(String(name ?? '').trim())
+  return /^(assessment|assmt)\b/i.test(String(name ?? '').trim())
 }
 
 /** v1 instructorColors palette — used when seeding or editing instructors. */

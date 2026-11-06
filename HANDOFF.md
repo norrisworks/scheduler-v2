@@ -1001,5 +1001,5 @@ it can't silently regress.
     Efi K, Kathir K) came up unmatched. Column list is `STUDENT_COLUMNS`.
 
 60. **Assessment cards get a bright yellow border** (2026-11-06): the
-    placeholder students "Assessment ES / MS / HS" (`isAssessmentStudent`).
+    placeholder students "Assessment MS", "ASSMT (ES)", "ASSMT (HS)" (`isAssessmentStudent`: name starts with Assessment or ASSMT).
     Applied after online green and first-day red, so yellow wins.

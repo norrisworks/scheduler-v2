@@ -3200,7 +3200,7 @@ eq('a Radius file of only unchanged rows can still be committed (stamps + log)',
 }
 
 {
-  eq('assessment placeholders get the yellow border', ['Assessment ES', 'Assessment MS', 'assessment HS'].every(isAssessmentStudent), true)
+  eq('assessment placeholders get the yellow border', ['Assessment MS', 'ASSMT (ES)', 'ASSMT (HS)', 'assessment HS'].every(isAssessmentStudent), true)
   eq('a real student does not', isAssessmentStudent('Asher B'), false)
 }
 
