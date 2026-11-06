@@ -4,7 +4,7 @@ import { formatTime, minutesToTime, timeToMinutes, todayISO } from '../../lib/da
 import { dragTargetMinutes } from './reschedule'
 import { SLOT_HEIGHT } from './timeGrid'
 import { STATUSES } from './levels'
-import { ACADEMIC_STATUS, BRAND_RED, ONLINE_GREEN } from './studentOptions'
+import { ACADEMIC_STATUS, ASSESSMENT_YELLOW, BRAND_RED, ONLINE_GREEN, isAssessmentStudent } from './studentOptions'
 import { sessionMarker } from './sessionMarker'
 import { coverageWarning } from './shiftCoverage'
 import { INSTRUCTOR_DRAG_TYPE } from './dnd'
@@ -167,6 +167,8 @@ export default function SessionCard({
       // student is the rarer, more important signal.
       ...(session.delivery_method === 'online' ? { border: `3px solid ${ONLINE_GREEN}` } : null),
       ...(firstDayBadge(session).firstDay ? { border: `3px solid ${BRAND_RED}` } : null),
+      // Assessment placeholders (owner's call, 2026-11-06): bright yellow.
+      ...(isAssessmentStudent(student?.name) ? { border: `3px solid ${ASSESSMENT_YELLOW}` } : null),
       ...(ring ? { outline: ring, outlineOffset: '-2px' } : null),
       // While dragging, the card rides along snapped to the half hour, lifted
       // above its neighbours.

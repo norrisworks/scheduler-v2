@@ -35,6 +35,7 @@ import { genderLabel, normalizeGender as normalizeGenderValue } from '../src/lib
 import { readFileSync, readdirSync } from 'node:fs'
 import { join as joinPath } from 'node:path'
 import { attendanceByWeekday, inRoomAt, mondayOf, slotTable, trendWeeks, weeklyTotals } from '../src/features/week/trends.js'
+import { isAssessmentStudent } from '../src/features/day/studentOptions.js'
 
 const checks = []
 const eq = (label, got, want) => checks.push([label, got, want, JSON.stringify(got) === JSON.stringify(want)])
@@ -3196,6 +3197,11 @@ eq('a Radius file of only unchanged rows can still be committed (stamps + log)',
   eq('ticking one from none makes it #1 and the only ranked', justC.filter((x) => x.on).map((x) => `${x.instructorId}${x.rank}`), ['c1'])
   const plusA = toggleEntry(justC, justC.findIndex((x) => x.instructorId === 'a'))
   eq('a re-ticked row joins the end of the ticked block', plusA.filter((x) => x.on).map((x) => `${x.instructorId}${x.rank}`), ['c1', 'a2'])
+}
+
+{
+  eq('assessment placeholders get the yellow border', ['Assessment ES', 'Assessment MS', 'assessment HS'].every(isAssessmentStudent), true)
+  eq('a real student does not', isAssessmentStudent('Asher B'), false)
 }
 
 let failed = 0

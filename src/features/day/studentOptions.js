@@ -25,6 +25,17 @@ export const BRAND_RED = '#EC3A33'
  * original emerald-600; still distinct from the first-day red at 3px. */
 export const ONLINE_GREEN = '#22c55e'
 
+/** Bright yellow border for the assessment placeholder cards. */
+export const ASSESSMENT_YELLOW = '#FACC15'
+
+/**
+ * The three placeholder students Radius books assessments under
+ * ('Assessment ES', 'Assessment MS', 'Assessment HS').
+ */
+export function isAssessmentStudent(name) {
+  return /^assessment\b/i.test(String(name ?? '').trim())
+}
+
 /** v1 instructorColors palette — used when seeding or editing instructors. */
 export const INSTRUCTOR_PALETTE = [
   '#E53935', '#1E88E5', '#43A047', '#FB8C00', '#8E24AA', '#00ACC1',

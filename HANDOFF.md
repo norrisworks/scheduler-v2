@@ -999,3 +999,7 @@ it can't silently regress.
     lead id + first name pair never ran because the student select left the
     column out; everyone matched by name, so preferred-name renames (AJ B,
     Efi K, Kathir K) came up unmatched. Column list is `STUDENT_COLUMNS`.
+
+60. **Assessment cards get a bright yellow border** (2026-11-06): the
+    placeholder students "Assessment ES / MS / HS" (`isAssessmentStudent`).
+    Applied after online green and first-day red, so yellow wins.
