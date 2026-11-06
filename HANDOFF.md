@@ -994,3 +994,8 @@ it can't silently regress.
 
 58. **Binder tab opens on today** (2026-11-05), not tomorrow; its jump
     button reads "Today".
+
+59. **Attendance import must load `radius_first_name`** (2026-11-05). The
+    lead id + first name pair never ran because the student select left the
+    column out; everyone matched by name, so preferred-name renames (AJ B,
+    Efi K, Kathir K) came up unmatched. Column list is `STUDENT_COLUMNS`.

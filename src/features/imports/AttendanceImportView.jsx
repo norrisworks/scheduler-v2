@@ -15,6 +15,13 @@ import QueryError from '../../components/QueryError'
  * it the right source: a no-show simply is not here, so their prep survives.
  * Nothing but binder state is written — no session statuses, no roster edits.
  */
+// radius_first_name is REQUIRED: the lead id + first name pair is the exact
+// match route. Without it every student fell back to name matching, and
+// anyone renamed to a preferred name (AJ B, Efi K, Kathir K) came up
+// unmatched (fixed 2026-11-05).
+const STUDENT_COLUMNS =
+  'id, name, center_id, radius_lead_id, radius_first_name, radius_account, binder_status, binder_note, binder_status_set_at'
+
 export default function AttendanceImportView() {
   const { user, isAdmin } = useAuth()
   const [fileName, setFileName] = useState(null)
@@ -43,7 +50,7 @@ export default function AttendanceImportView() {
         fetchAll(() =>
           supabase
             .from('students')
-            .select('id, name, center_id, radius_lead_id, radius_account, binder_status, binder_note, binder_status_set_at')
+            .select(STUDENT_COLUMNS)
             .order('id'),
         ),
       ])
