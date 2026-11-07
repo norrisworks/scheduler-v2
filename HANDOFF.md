@@ -1003,3 +1003,9 @@ it can't silently regress.
 60. **Assessment cards get a bright yellow border** (2026-11-06): the
     placeholder students "Assessment MS", "ASSMT (ES)", "ASSMT (HS)" (`isAssessmentStudent`: name starts with Assessment or ASSMT).
     Applied after online green and first-day red, so yellow wins.
+
+61. **Radius import: any Radius-listed session that drops out of a later
+    file gets the cancel offer** (2026-11-07), not only source=radius. A
+    session moved in the scheduler (manual) and then listed by Radius was
+    only "flagged", so a parent cancellation in Radius never reached it
+    (Eva T, Sat 11/7). The cancel is still a tick, never automatic.

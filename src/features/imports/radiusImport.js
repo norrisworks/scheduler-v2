@@ -492,8 +492,8 @@ export function planRadiusImport(
 
     // A Radius-CONFIRMED session the file now skips is a different animal
     // from a standing-slot absence. The slot absence means nothing (most
-    // families are not on Radius); but a session that Radius itself wrote
-    // (source) and a previous file listed (last_seen_in_radius), sitting
+    // families are not on Radius); but a session a previous file listed
+    // (last_seen_in_radius), sitting
     // inside this file's date range and absent from it, was almost certainly
     // cancelled in Radius. Surfaced with a cancel ACTION — never auto-applied.
     const sortedDates = [...new Set(bucket.rows.map((r) => r.date))].sort()
@@ -503,7 +503,11 @@ export function planRadiusImport(
       .filter(
         ([key, s]) =>
           !seenKeys.has(key) &&
-          s.source === 'radius' &&
+          // Any session an earlier file LISTED, whoever created it. A session
+          // moved in the scheduler (source 'manual') that Radius then listed
+          // is Radius-owned from that point: Eva T's Sat 11/7, moved here on
+          // 11/3, confirmed by the 11/4 file, cancelled by her mom in Radius,
+          // was only "flagged" and stayed on the calendar (2026-11-07).
           s.last_seen_in_radius &&
           s.status === 'scheduled' &&
           s.date >= dateFrom &&

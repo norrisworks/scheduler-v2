@@ -2684,6 +2684,7 @@ await (async () => {
         sess('slot', '2026-09-22', '17:30:00', { source: null, last_seen_in_radius: null }),
         sess('never-seen', '2026-09-22', '18:00:00', { last_seen_in_radius: null }),
         sess('done', '2026-09-22', '18:30:00', { status: 'completed' }),
+        sess('moved', '2026-09-23', '10:00:00', { source: 'manual' }),             // moved here, then listed by Radius
         sess('outside', '2026-09-30', '16:00:00'),                              // after the range
       ],
     },
@@ -2691,7 +2692,7 @@ await (async () => {
   const c = plan.centers[0]
   eq('a matched confirmed session is not an absence', c.unchanged.length, 1)
   eq('confirmed absences inside the RANGE are caught — gap days included',
-     c.radiusAbsent.map((s) => s.id).sort(), ['gap-day', 'same-day'])
+     c.radiusAbsent.map((s) => s.id).sort(), ['gap-day', 'moved', 'same-day'])
   eq('and are not double-listed as flagged',
      c.flagged.map((s) => s.id).sort(), ['done', 'never-seen', 'slot'])
   eq('a session outside the range is neither',
