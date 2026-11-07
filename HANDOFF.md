@@ -1009,3 +1009,7 @@ it can't silently regress.
     session moved in the scheduler (manual) and then listed by Radius was
     only "flagged", so a parent cancellation in Radius never reached it
     (Eva T, Sat 11/7). The cancel is still a tick, never automatic.
+
+62. **Attendance pair match ignores a "(nickname)" in the stored Radius
+    first name** (2026-11-07): Students export has "Royce (RJ)", attendance
+    has "Royce". `firstNameKeys` compares base name, nickname and whole.

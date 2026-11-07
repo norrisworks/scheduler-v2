@@ -95,14 +95,34 @@ export function displayCandidates(fullName) {
  *    export it made 2 matches, 1 of them wrong. A missed reset costs one
  *    manual click; a wrong one clears a child's binder with nobody looking.
  */
+/**
+ * A first name and any nickname in parentheses, as separate keys: the
+ * Students export stores 'Royce (RJ)' while the attendance export says
+ * 'Royce' — the pair must still match (RJ B, 2026-11-07).
+ */
+export function firstNameKeys(first) {
+  const raw = String(first ?? '')
+  const keys = new Set()
+  const base = nameKey(raw.replace(/\([^)]*\)/g, ' '))
+  if (base) keys.add(base)
+  for (const m of raw.matchAll(/\(([^)]*)\)/g)) {
+    const nick = nameKey(m[1])
+    if (nick) keys.add(nick)
+  }
+  const whole = nameKey(raw)
+  if (whole) keys.add(whole)
+  return keys
+}
+
 export function matchAttendanceStudent(row, students) {
   if (isPlaceholderName(row.fullName)) return { student: null, via: 'placeholder name' }
 
   if (row.leadId && row.firstName) {
+    const rowFirst = firstNameKeys(row.firstName)
     const byPair = students.filter(
       (s) =>
         String(s.radius_lead_id ?? '').trim() === row.leadId &&
-        nameKey(s.radius_first_name) === nameKey(row.firstName),
+        [...firstNameKeys(s.radius_first_name)].some((k) => rowFirst.has(k)),
     )
     if (byPair.length === 1) return { student: byPair[0], via: 'lead id + first name' }
     if (byPair.length > 1) return { student: null, via: 'ambiguous lead id + first name' }

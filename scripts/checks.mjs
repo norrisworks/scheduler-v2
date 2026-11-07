@@ -36,6 +36,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join as joinPath } from 'node:path'
 import { attendanceByWeekday, inRoomAt, mondayOf, slotTable, trendWeeks, weeklyTotals } from '../src/features/week/trends.js'
 import { isAssessmentStudent } from '../src/features/day/studentOptions.js'
+import { matchAttendanceStudent as matchAtt } from '../src/features/imports/attendanceImport.js'
 
 const checks = []
 const eq = (label, got, want) => checks.push([label, got, want, JSON.stringify(got) === JSON.stringify(want)])
@@ -3203,6 +3204,19 @@ eq('a Radius file of only unchanged rows can still be committed (stamps + log)',
 {
   eq('assessment placeholders get the yellow border', ['Assessment MS', 'ASSMT (ES)', 'ASSMT (HS)', 'assessment HS'].every(isAssessmentStudent), true)
   eq('a real student does not', isAssessmentStudent('Asher B'), false)
+}
+
+{
+  // Renamed students match on lead id + Radius first name, nickname or not.
+  const kids = [
+    { id: 'aj', name: 'AJ B', radius_lead_id: '3381841', radius_first_name: 'Anthony' },
+    { id: 'rj', name: 'RJ B', radius_lead_id: '3307304', radius_first_name: 'Royce (RJ)' },
+    { id: 'sib', name: 'Mia B', radius_lead_id: '3307304', radius_first_name: 'Mia' },
+  ]
+  const r = (leadId, firstName, lastName) => ({ leadId, firstName, lastName, fullName: `${firstName} ${lastName}` })
+  eq('a preferred-name student matches by lead + Radius first name', matchAtt(r('3381841', 'Anthony', 'Branch Jr'), kids).student?.id, 'aj')
+  eq('a "(RJ)" nickname in the stored first name still matches "Royce"', matchAtt(r('3307304', 'Royce', 'B'), kids).student?.id, 'rj')
+  eq('the sibling on the same lead is not confused for him', matchAtt(r('3307304', 'Mia', 'B'), kids).student?.id, 'sib')
 }
 
 let failed = 0
