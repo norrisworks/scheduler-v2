@@ -1013,3 +1013,7 @@ it can't silently regress.
 62. **Attendance pair match ignores a "(nickname)" in the stored Radius
     first name** (2026-11-07): Students export has "Royce (RJ)", attendance
     has "Royce". `firstNameKeys` compares base name, nickname and whole.
+
+64. **Decision 63 reverted the same day — owner's call.** Deleting a
+    standing slot KEEPS its upcoming sessions on purpose. Do not change
+    this. Leftover sessions after a slot change are the owner's to handle.
