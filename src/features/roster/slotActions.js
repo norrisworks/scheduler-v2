@@ -1,5 +1,5 @@
 import { supabase } from '../../lib/supabase'
-import { addDays, minutesToTime, todayISO } from '../../lib/dates'
+import { todayISO } from '../../lib/dates'
 
 /**
  * The ONE set of standing-slot write paths. The drawer (useStudent) and the
@@ -48,15 +48,6 @@ export async function futureCancelledCount(id) {
 }
 
 export async function removeSlot(id, { alsoCancelled = false } = {}) {
-  // The slot's upcoming sessions go WITH it. Once the slot row is deleted
-  // the FK nulls their link, and the materializer only clears sessions that
-  // still point at a slot, so they stayed on the calendar forever beside
-  // the replacement slot's sessions (Daun C, Efi K, Noah V, 2026-11-09).
-  // Same rows the materializer would clear: recurring, untouched, still
-  // scheduled. Today's only if not yet started; hand-edited ones are kept.
-  const { error: futureErr } = await deleteUpcoming(id)
-  if (futureErr) return { error: futureErr }
-
   if (alsoCancelled) {
     const { error } = await supabase
       .from('sessions')
@@ -67,21 +58,4 @@ export async function removeSlot(id, { alsoCancelled = false } = {}) {
     if (error) return { error }
   }
   return supabase.from('recurring_slots').delete().eq('id', id)
-}
-
-async function deleteUpcoming(slotId) {
-  const today = todayISO()
-  const now = new Date()
-  const nowTime = minutesToTime(now.getHours() * 60 + now.getMinutes())
-  const base = () =>
-    supabase
-      .from('sessions')
-      .delete()
-      .eq('recurring_slot_id', slotId)
-      .eq('source', 'recurring')
-      .eq('is_modified', false)
-      .eq('status', 'scheduled')
-  const later = await base().gte('date', addDays(today, 1))
-  if (later.error) return later
-  return base().eq('date', today).gt('start_time', nowTime)
 }
