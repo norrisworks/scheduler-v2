@@ -1013,3 +1013,12 @@ it can't silently regress.
 62. **Attendance pair match ignores a "(nickname)" in the stored Radius
     first name** (2026-11-07): Students export has "Royce (RJ)", attendance
     has "Royce". `firstNameKeys` compares base name, nickname and whole.
+
+63. **Deleting a standing slot deletes its upcoming sessions with it**
+    (2026-11-10). The FK is ON DELETE SET NULL and the materializer only
+    clears sessions still linked to a slot, so a deleted slot left its
+    future sessions on the calendar next to the replacement slot (Daun C,
+    Efi K, Noah V). `removeSlot` now deletes the slot's recurring,
+    unmodified, scheduled sessions from tomorrow on plus today's not yet
+    started, before deleting the slot. Editing a slot in place (patch) was
+    always fine: the materializer moves those.
