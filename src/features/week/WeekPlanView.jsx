@@ -6,7 +6,7 @@ import { useCenter } from '../centers/CenterProvider'
 import Spinner from '../../components/Spinner'
 import QueryError from '../../components/QueryError'
 import { DEFAULT_PERIOD, PERIOD_CHOICES, TrendsBelow, TrendsSide, useAttendanceTrends } from './TrendsView'
-import { addDays, formatDateShort, formatTime, minutesToTime, todayISO } from '../../lib/dates'
+import { addDays, dayOfWeek, formatDateShort, formatTime, minutesToTime, todayISO } from '../../lib/dates'
 import {
   centerOperatingHours,
   centerWeekMax,
@@ -69,7 +69,9 @@ export default function WeekPlanView() {
     if (!isAdmin || ordered.length === 0) return
     let stale = false
     setSessions(null)
-    const dates = planWeekDates(weekStart)
+    // Mon–Sat plus the Sunday after: Blue Bell ran Sundays (not Saturdays)
+    // through June 2026, so a week's weekend day can be either.
+    const dates = [...planWeekDates(weekStart), addDays(weekStart, 6)]
     // Both centers' week together already runs ~600 rows — paged so the
     // silent 1,000 cap can never quietly empty a day.
     const today = todayISO()
@@ -379,7 +381,9 @@ function WeekTable({ grid, max, inHue }) {
                 <span className="block text-base leading-tight font-bold text-zinc-900">
                   {monthDay(grid.saturday.date)}
                 </span>
-                <span className="block text-sm font-normal text-zinc-500">Sat</span>
+                <span className="block text-sm font-normal text-zinc-500">
+                  {dayOfWeek(grid.saturday.date) === 0 ? 'Sun' : 'Sat'}
+                </span>
               </th>
             )}
             <th className={`px-1 pt-1 text-center align-top ${DAY_EDGE}`}>

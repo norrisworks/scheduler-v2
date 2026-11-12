@@ -266,7 +266,10 @@ export default function RadiusImportView() {
         }
         // Radius-confirmed sessions absent from this file, chosen for
         // cancellation in the preview. The rest stay flagged.
-        const cancelIds = center.radiusAbsent.filter((s) => absentCancels[s.id]).map((s) => s.id)
+        const sameDayOthers = (center.sameDay ?? []).flatMap((d) => d.others)
+        const cancelIds = [...center.radiusAbsent, ...sameDayOthers]
+          .filter((s) => absentCancels[s.id])
+          .map((s) => s.id)
         if (cancelIds.length > 0) {
           const { error } = await withRetry(() => supabase
             .from('sessions')
@@ -275,7 +278,10 @@ export default function RadiusImportView() {
           if (error) throw new Error(error.message)
           cancelled += cancelIds.length
         }
-        flagged += center.flagged.length + (center.radiusAbsent.length - cancelIds.length)
+        flagged +=
+          center.flagged.length +
+          center.radiusAbsent.filter((s) => !absentCancels[s.id]).length +
+          sameDayOthers.filter((s) => !absentCancels[s.id]).length
 
         // The booker, stamped separately for every matched row that carries
         // one: it cannot ride the upsert (PostgREST needs every row to have
@@ -391,7 +397,10 @@ export default function RadiusImportView() {
     : 0
   const totalCancels = plan
     ? plan.centers.reduce(
-        (n, c) => n + c.radiusAbsent.filter((s) => absentCancels[s.id]).length,
+        (n, c) =>
+          n +
+          [...c.radiusAbsent, ...(c.sameDay ?? []).flatMap((d) => d.others)].filter((s) => absentCancels[s.id])
+            .length,
         0,
       )
     : 0
@@ -630,6 +639,59 @@ export default function RadiusImportView() {
                         </label>
                       </li>
                     ))}
+                  </ul>
+                </div>
+              )}
+
+              {(c.sameDay ?? []).length > 0 && (
+                <div className="border-b border-amber-200 bg-amber-50 p-3">
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-semibold text-amber-900">
+                      Already has another session that day
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAbsentCancels((prev) => ({
+                          ...prev,
+                          ...Object.fromEntries(c.sameDay.flatMap((d) => d.others).map((s) => [s.id, true])),
+                        }))
+                      }
+                      className="ml-auto rounded border border-amber-300 bg-white px-1.5 py-0.5 text-[11px] font-medium text-amber-900 hover:bg-amber-100"
+                    >
+                      Mark all cancel
+                    </button>
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-amber-800">
+                    This file books these students at a new time, and they already have a different
+                    session that same day that the file doesn't list. Tick the old one to cancel it at
+                    import; unticked, both stay on the calendar.
+                  </p>
+                  <ul className="mt-1.5 space-y-1">
+                    {c.sameDay.map((d) =>
+                      d.others.map((s) => (
+                        <li key={s.id} className="text-[11px] text-amber-900">
+                          <label className="flex cursor-pointer flex-wrap items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={!!absentCancels[s.id]}
+                              onChange={(e) =>
+                                setAbsentCancels((prev) => ({
+                                  ...prev,
+                                  [s.id]: e.target.checked || undefined,
+                                }))
+                              }
+                            />
+                            <span className="font-semibold">{d.student.name}</span>
+                            <span>
+                              {d.row.date}: Radius books {formatTimeMeridiem(d.row.startTime)}; cancel the{' '}
+                              {formatTimeMeridiem(s.start_time)}
+                              {s.source === 'manual' ? ' (added by hand)' : ''}
+                            </span>
+                          </label>
+                        </li>
+                      )),
+                    )}
                   </ul>
                 </div>
               )}

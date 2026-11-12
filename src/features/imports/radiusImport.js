@@ -516,11 +516,41 @@ export function planRadiusImport(
       .map(([, s]) => s)
     const radiusAbsentIds = new Set(radiusAbsent.map((s) => s.id))
 
+    // SAME-DAY double booking: a session this file is CREATING while the
+    // student already has another live session that day that the file does
+    // not list (Jocelyn M, 11/12: placed by hand at 4:00 before she enrolled,
+    // then dad booked 6:00 in Radius — both stayed on the calendar). Offered
+    // as a cancel tick for the OTHER session, never auto-applied.
+    const sameDay = []
+    const sameDayIds = new Set()
+    for (const c of created) {
+      if (c.target.status !== 'scheduled') continue
+      const others = [...existing.entries()]
+        .filter(
+          ([key, s]) =>
+            s.student_id === c.student.id &&
+            s.date === c.row.date &&
+            s.status === 'scheduled' &&
+            // Standing-slot sessions already have their own duplicates panel
+            // (planSourceConflicts); this catches the hand-made and other ones.
+            s.source !== 'recurring' &&
+            !seenKeys.has(key) &&
+            !radiusAbsentIds.has(s.id),
+        )
+        .map(([, s]) => s)
+      if (others.length === 0) continue
+      sameDay.push({ row: c.row, student: c.student, others })
+      for (const o of others) sameDayIds.add(o.id)
+    }
+
     // Anything ELSE the DB has in the window that the file did not mention —
     // informational only, absence carries no information for these.
     const dates = new Set(sortedDates)
     const flagged = [...existing.entries()]
-      .filter(([key, s]) => dates.has(s.date) && !seenKeys.has(key) && !radiusAbsentIds.has(s.id))
+      .filter(
+        ([key, s]) =>
+          dates.has(s.date) && !seenKeys.has(key) && !radiusAbsentIds.has(s.id) && !sameDayIds.has(s.id),
+      )
       .map(([, s]) => s)
 
     results.push({
@@ -531,6 +561,7 @@ export function planRadiusImport(
       unmatched,
       flagged,
       radiusAbsent,
+      sameDay,
       dates: sortedDates,
     })
   }

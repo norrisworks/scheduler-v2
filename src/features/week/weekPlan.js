@@ -269,7 +269,29 @@ export function planWeekGrid({ sessions, weekStart, hours, visits = [], today = 
   )
 
   const weekdayDates = dates.filter((d) => dayOfWeek(d) >= 1 && dayOfWeek(d) <= 5)
-  const saturdayDate = dates.find((d) => dayOfWeek(d) === 6) ?? null
+  // The weekend column: Saturday normally; the Sunday after (Monday + 6)
+  // when Saturday has nothing and Sunday does — Blue Bell ran Sundays
+  // through June 2026. If a week ever had both, Saturday shows (3 weeks in
+  // all the data had both).
+  const sundayIso = addDays(weekStart, 6)
+  const sundayRows = () => {
+    const actual = today && sundayIso < today ? visits.filter((v) => v.date === sundayIso) : []
+    if (actual.length > 0) {
+      sourceOf.set(sundayIso, 'actual')
+      return actual.map(visitAsSpan)
+    }
+    sourceOf.set(sundayIso, today && sundayIso < today ? 'booked_no_attendance' : 'booked')
+    return counting.filter((s) => s.date === sundayIso)
+  }
+  const satDate = dates.find((d) => dayOfWeek(d) === 6) ?? null
+  let saturdayDate = satDate
+  if (!satDate || (byDate.get(satDate) ?? []).length === 0) {
+    const sun = sundayRows()
+    if (sun.length > 0) {
+      byDate.set(sundayIso, sun)
+      saturdayDate = sundayIso
+    }
+  }
 
   const visibleWeekdays = weekdayDates.filter((d) => (byDate.get(d) ?? []).length > 0)
   const saturdaySessions = saturdayDate ? (byDate.get(saturdayDate) ?? []) : []
@@ -277,7 +299,12 @@ export function planWeekGrid({ sessions, weekStart, hours, visits = [], today = 
 
   const weekdaySessions = visibleWeekdays.flatMap((d) => byDate.get(d))
   const [wOpen, wClose] = extendRange(hours.weekdayOpen, hours.weekdayClose, weekdaySessions)
-  const [sOpen, sClose] = extendRange(hours.saturdayOpen, hours.saturdayClose, saturdaySessions)
+  // A Sunday has its own hours: fit the rows to its sessions alone rather
+  // than stretching Saturday's 10–1 default over an afternoon.
+  const isSunday = saturdayDate && dayOfWeek(saturdayDate) === 0
+  const [sOpen, sClose] = isSunday
+    ? extendRange(24 * 60, 0, saturdaySessions)
+    : extendRange(hours.saturdayOpen, hours.saturdayClose, saturdaySessions)
 
   const weekdayBands = visibleWeekdays.length ? bands(wOpen, wClose) : []
   const saturdayBands = saturdayVisible ? bands(sOpen, sClose) : []

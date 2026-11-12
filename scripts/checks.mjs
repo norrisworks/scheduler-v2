@@ -2701,6 +2701,23 @@ await (async () => {
   eq('only still-scheduled sessions get the cancel offer',
      c.radiusAbsent.every((s) => s.status === 'scheduled'), true)
   eq('a file with no MVBB rows says so', plan.virtualRowCount, 0)
+
+  // Same-day double booking: the file CREATES 9/24 4:00 and the student
+  // already has a hand-made 9/24 2:00 the file doesn't list.
+  const plan2 = planRadiusImport([fileRow('9/24/2026', '4:00 PM')], {
+    centersByName: new Map([['montgomeryville', mv]]),
+    centersById: new Map([['mv', mv]]),
+    studentsByCenter: new Map([['mv', [student]]]),
+    existingSessions: [
+      sess('by-hand', '2026-09-24', '14:00:00', { source: 'manual', last_seen_in_radius: null }),
+      sess('other-day', '2026-09-25', '14:00:00', { source: 'manual', last_seen_in_radius: null }),
+    ],
+  })
+  const c2 = plan2.centers[0]
+  eq('a new Radius booking flags the other live session that day',
+     c2.sameDay.flatMap((d) => d.others.map((s) => s.id)), ['by-hand'])
+  eq('and that session is not ALSO in the informational list',
+     c2.flagged.some((s) => s.id === 'by-hand'), false)
 }
 
 // ---- wiring that must not drift (2026-10-02): the five-tweaks surfaces.
@@ -3217,6 +3234,31 @@ eq('a Radius file of only unchanged rows can still be committed (stamps + log)',
   eq('a preferred-name student matches by lead + Radius first name', matchAtt(r('3381841', 'Anthony', 'Branch Jr'), kids).student?.id, 'aj')
   eq('a "(RJ)" nickname in the stored first name still matches "Royce"', matchAtt(r('3307304', 'Royce', 'B'), kids).student?.id, 'rj')
   eq('the sibling on the same lead is not confused for him', matchAtt(r('3307304', 'Mia', 'B'), kids).student?.id, 'sib')
+}
+
+{
+  // A week whose weekend day was a Sunday (Blue Bell through June 2026):
+  // Saturday empty, Sunday after has attendance -> the weekend column is Sunday.
+  const g = planWeekGrid({
+    sessions: [],
+    weekStart: '2026-04-20',
+    hours: { weekdayOpen: 900, weekdayClose: 1170, saturdayOpen: 600, saturdayClose: 780 },
+    visits: [
+      { date: '2026-04-20', arrival: '16:00:00', departure: '17:00:00' },
+      { date: '2026-04-26', arrival: '13:00:00', departure: '14:00:00' },
+    ],
+    today: '2026-11-12',
+  })
+  eq('Sunday fills the weekend column when Saturday is empty', g.saturday?.date, '2026-04-26')
+  eq('and its rows fit Sunday\'s own hours', g.saturdayBands[0], 12 * 60 + 30)
+  const g2 = planWeekGrid({
+    sessions: [],
+    weekStart: '2026-11-09',
+    hours: { weekdayOpen: 900, weekdayClose: 1170, saturdayOpen: 600, saturdayClose: 780 },
+    visits: [{ date: '2026-11-07', arrival: '10:00:00', departure: '11:00:00' }],
+    today: '2026-11-12',
+  })
+  eq('a normal week with no weekend data has no weekend column', g2.saturday, null)
 }
 
 let failed = 0

@@ -1028,3 +1028,14 @@ it can't silently regress.
      definition). Do not build until the owner settles those.
   2. *YA chart on the Week tab* — owner's wording "a chart that displays YA
      data". Meaning to confirm before building.
+
+66. **Week grid shows Sunday when the weekend day was a Sunday**
+    (2026-11-12). Blue Bell ran Sundays through June 2026; the weekend
+    column uses the Sunday after (Mon+6) when Saturday is empty, with its
+    own hours. A week with both shows Saturday (3 weeks ever).
+
+67. **Radius import flags same-day double bookings** (2026-11-12): a row
+    the file CREATES while the student already has another live,
+    non-standing-slot session that day the file does not list (Jocelyn M).
+    Amber panel with a cancel tick per old session (shares absentCancels),
+    never automatic. Standing-slot clashes stay in the duplicates panel.
