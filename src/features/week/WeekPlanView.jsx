@@ -172,9 +172,31 @@ export default function WeekPlanView() {
           >
             ‹
           </button>
-          <span className="px-1 text-sm font-medium text-zinc-800 tabular-nums">
+          {/* Week picker: the range label IS the picker. Click it, pick any
+              day, and the grid jumps to that day's week. */}
+          <label
+            className="relative cursor-pointer rounded-lg px-2 py-1 text-sm font-medium text-zinc-800 tabular-nums hover:bg-zinc-100"
+            title="Pick a week"
+          >
             {formatDateShort(dates[0])} – {formatDateShort(dates[dates.length - 1])}
-          </span>
+            <span className="ml-1 text-xs text-zinc-400" aria-hidden>▾</span>
+            <input
+              type="date"
+              aria-label="Jump to week"
+              value={weekStart}
+              onClick={(e) => {
+                try {
+                  e.currentTarget.showPicker?.()
+                } catch {
+                  /* older browsers open the picker on click anyway */
+                }
+              }}
+              onChange={(e) => {
+                if (e.target.value) setWeekStart(defaultPlanWeekStart(e.target.value))
+              }}
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            />
+          </label>
           <button
             type="button"
             onClick={() => setWeekStart(addDays(weekStart, 7))}

@@ -1017,3 +1017,14 @@ it can't silently regress.
 64. **Decision 63 reverted the same day — owner's call.** Deleting a
     standing slot KEEPS its upcoming sessions on purpose. Do not change
     this. Leftover sessions after a slot change are the owner's to handle.
+
+65. **Week tab week picker** (2026-11-12): click the date range between the
+    arrows, pick any day, the grid (and the trends) jump to that week.
+
+### Feature pipeline (owner's order, 2026-11-12) — PARKED, do not start unasked
+  1. *Radius families not booked* — option #1 from the 11/9 list: a list of
+     Radius-booking families with nothing booked for the viewed week.
+     UI/UX still being discussed (placement, dismiss-per-week, 4 vs 8 week
+     definition). Do not build until the owner settles those.
+  2. *YA chart on the Week tab* — owner's wording "a chart that displays YA
+     data". Meaning to confirm before building.
